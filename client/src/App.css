@@ -1,0 +1,75 @@
+:root {
+  --mobile-padding: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.page-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.responsive-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.responsive-flex {
+  display: flex;
+  min-width: 0;
+}
+
+.responsive-card {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .page-container {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .responsive-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .page-container {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .responsive-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .responsive-flex {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}

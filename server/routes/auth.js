@@ -1,0 +1,131 @@
+const express = require('express');
+const router = express.Router();
+const passport = require('../config/passport'); // adjust path if needed
+const jwt = require('jsonwebtoken');
+const authMiddleware = require('../middleware/authMiddleware');
+const userController = require('../controllers/userController');
+const User = require('../models/User');
+const Session = require('../models/Session');
+
+// Step 1: Redirect user to Google
+router.get('/google', passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    session: false
+}));
+
+// Step 2: Google redirects back here
+router.get('/google/callback',
+    passport.authenticate('google', {
+        session: false,
+        failureRedirect: `${process.env.CLIENT_URL}/login?error=auth_failed`
+    }),
+    (req, res) => {
+        // req.user = the user object returned by done(null, user) in passport.js
+        const token = jwt.sign(
+            { id: req.user._id },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        // Send token to frontend via URL param
+        res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${token}`);
+    }
+);
+
+// Onboarding
+router.post('/onboarding', authMiddleware, userController.saveOnboarding);
+
+// Get current logged in user
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ user });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+router.post('/fix-badges', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+
+    const allSessions = await Session.find({
+      userId,
+      status: 'completed'
+    });
+
+    const BADGE_RULES = [
+      {
+        id: 'first_interview',
+        check: (user) => user.totalSessions >= 1
+      },
+      {
+        id: 'streak_3',
+        check: (user) => user.streak?.current >= 3
+      },
+      {
+        id: 'streak_7',
+        check: (user) => user.streak?.current >= 7
+      },
+      {
+        id: 'streak_14',
+        check: (user) => user.streak?.current >= 14
+      },
+      {
+        id: 'streak_30',
+        check: (user) => user.streak?.current >= 30
+      },
+      {
+        id: 'streak_60',
+        check: (user) => user.streak?.current >= 60
+      },
+      {
+        id: 'score_90',
+        check: (user, score) => score >= 90
+      },
+      {
+        id: 'sessions_50',
+        check: (user) => user.totalSessions >= 50
+      }
+    ];
+
+    const updatedUser = {
+      ...user.toObject(),
+      totalSessions: allSessions.length
+    };
+
+    const existingBadges = new Set(user.badges || []);
+    const newlyEarned = [];
+
+    BADGE_RULES.forEach(rule => {
+      if (
+        !existingBadges.has(rule.id) &&
+        rule.check(updatedUser, 0)
+      ) {
+        existingBadges.add(rule.id);
+        newlyEarned.push(rule.id);
+      }
+    });
+
+    await User.findByIdAndUpdate(userId, {
+      badges: [...existingBadges],
+      totalSessions: allSessions.length
+    });
+
+    res.json({
+      message: 'Badges fixed!',
+      totalSessions: allSessions.length,
+      newBadges: newlyEarned,
+      allBadges: [...existingBadges]
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+module.exports = router;

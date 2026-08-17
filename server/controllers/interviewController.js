@@ -1,5 +1,6 @@
 const Session = require('../models/Session');
 const User = require('../models/User');
+const { evaluateBadges } = require('../utils/badgeEngine');
 
 const {
   generateQuestions,
@@ -1028,10 +1029,11 @@ const getAnalytics = async (req, res) => {
   }
 };
 
+
 const getPerformanceAnalytics = async (req, res) => {
     try {
       const userId = getUserId(req);
-
+ 
       const sessions =
         await Session.find({
           $or: [
@@ -1044,7 +1046,7 @@ const getPerformanceAnalytics = async (req, res) => {
             createdAt: -1,
           })
           .lean();
-
+ 
       if (!sessions.length) {
         return res.json({
           totalInterviews: 0,
@@ -1054,16 +1056,17 @@ const getPerformanceAnalytics = async (req, res) => {
           scoreTrend: [],
           topicPerformance: [],
           weakTopics: [],
+          badges: [],
         });
       }
-
+ 
       const scores = sessions.map(
         session =>
           getNormalizedSessionScore(
             session
           )
       );
-
+ 
       const averageScore =
         Math.round(
           scores.reduce(
@@ -1072,10 +1075,10 @@ const getPerformanceAnalytics = async (req, res) => {
             0
           ) / scores.length
         );
-
+ 
       const bestScore =
         Math.max(...scores);
-
+ 
       const scoreTrend = [
         ...sessions,
       ]
@@ -1084,19 +1087,19 @@ const getPerformanceAnalytics = async (req, res) => {
           (session, index) => ({
             interview:
               index + 1,
-
+ 
             score:
               getNormalizedSessionScore(
                 session
               ),
-
+ 
             date:
               session.createdAt,
           })
         );
-
+ 
       const topicStats = {};
-
+ 
       sessions.forEach(
         session => {
           (
@@ -1111,16 +1114,16 @@ const getPerformanceAnalytics = async (req, res) => {
               ) {
                 return;
               }
-
+ 
               const topic =
                 question.topic ||
                 'General';
-
+ 
               const score =
                 getNormalizedQuestionScore(
                   question
                 );
-
+ 
               if (
                 !topicStats[topic]
               ) {
@@ -1132,12 +1135,12 @@ const getPerformanceAnalytics = async (req, res) => {
                   count: 0,
                 };
               }
-
+ 
               topicStats[
                 topic
               ].totalScore +=
                 score;
-
+ 
               topicStats[
                 topic
               ].count += 1;
@@ -1145,20 +1148,20 @@ const getPerformanceAnalytics = async (req, res) => {
           );
         }
       );
-
+ 
       const topicPerformance =
         Object.values(
           topicStats
         )
           .map(item => ({
             topic: item.topic,
-
+ 
             averageScore:
               Math.round(
                 item.totalScore /
                   item.count
               ),
-
+ 
             attempts:
               item.count,
           }))
@@ -1167,7 +1170,7 @@ const getPerformanceAnalytics = async (req, res) => {
               b.averageScore -
               a.averageScore
           );
-
+ 
       const weakTopics =
         topicPerformance
           .filter(
@@ -1185,37 +1188,45 @@ const getPerformanceAnalytics = async (req, res) => {
             topic =>
               topic.topic
           );
-
+ 
+      // ── NEW: compute badges from real session history ──────────────
+      const user = await User.findById(userId).lean();
+      const chronological = [...sessions].reverse();
+      const badges = evaluateBadges({ user, sessions: chronological });
+      // ─────────────────────────────────────────────────────────────
+ 
       return res.json({
         totalInterviews:
           sessions.length,
-
+ 
         totalSessions:
           sessions.length,
-
+ 
         averageScore,
-
+ 
         bestScore,
-
+ 
         scoreTrend,
-
+ 
         topicPerformance,
-
+ 
         weakTopics,
+ 
+        badges,
       });
     } catch (error) {
       console.error(
         'getPerformanceAnalytics error:',
         error
       );
-
+ 
       return res.status(500).json({
         error:
           'Failed to load performance analytics.',
       });
     }
   };
-
+ 
 const getAICoach = async (req, res) => {
     try {
       const userId = getUserId(req);

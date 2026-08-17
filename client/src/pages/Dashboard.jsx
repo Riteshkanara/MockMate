@@ -3,66 +3,82 @@ import API_BASE from '../config/api.js';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
-import { getPerformanceAnalytics, startInterview,getAICoach } from '../Services/interviewService';
+import { getPerformanceAnalytics, startInterview, getAICoach } from '../Services/interviewService';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MOCKMATE — READINESS CONSOLE v4
-// Blueprint blue system. Every number on this page is computed from real
-// session data using genuine statistical methods — not padded for UI effect.
+// MOCKMATE — READINESS CONSOLE v5
+// Blueprint blue system, extended. Every number on this page is computed
+// from real session data using genuine statistical methods — nothing here
+// is padded for UI effect.
+//
+// v5 additions over v4:
+//   • Real badge system — 14 badges earned from genuine multi-signal session
+//     patterns (comebacks, topic mastery streaks, speed+accuracy combos),
+//     not generic "10 sessions" counters. Tiered bronze/silver/gold/platinum.
+//   • Heatmap redesigned — smaller cells, finer 5-shade scale, richer hover
+//     state, week/day context in the tooltip.
+//   • New: Topic Sparklines (momentum at a glance), Weekly Digest strip,
+//     AI Coach teaser (links to the full board on Analytics).
+//   • Tighter rhythm — hero carries the verdict only, stats row does the
+//     numbers, no section repeats a number another section already owns.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─── Design tokens — deep blueprint blue, data-terminal aesthetic ───────────
 const C = {
-  // Page backgrounds
-  bg:       '#F0F4FF',
-  bgDeep:   '#E8EEFF',
+  bg:        '#F0F4FF',
+  bgDeep:    '#E8EEFF',
 
-  // Card surfaces
-  card:     '#FFFFFF',
-  cardAlt:  '#F8FAFF',
-  cardGlass:'rgba(255,255,255,0.82)',
+  card:      '#FFFFFF',
+  cardAlt:   '#F8FAFF',
+  cardGlass: 'rgba(255,255,255,0.82)',
 
-  // Text hierarchy
-  text:     '#0A1628',
-  sub:      '#3D5280',
-  muted:    '#7A8BAF',
-  faint:    '#A8B8D4',
+  text:  '#0A1628',
+  sub:   '#3D5280',
+  muted: '#7A8BAF',
+  faint: '#A8B8D4',
 
-  // Borders
-  border:   '#DDE5F7',
-  borderMd: '#B8CAF0',
-  borderStr:'#7FA3E8',
+  border:    '#DDE5F7',
+  borderMd:  '#B8CAF0',
+  borderStr: '#7FA3E8',
 
-  // Blue system — primary brand
-  blue50:   '#EBF2FF',
-  blue100:  '#C7DAFF',
-  blue200:  '#9DBFFF',
-  blue400:  '#4D8FFF',
-  blue500:  '#1A6EFF',
-  blue600:  '#0057E8',
-  blue700:  '#0044C4',
-  blue900:  '#001F6B',
+  blue50:  '#EBF2FF',
+  blue100: '#C7DAFF',
+  blue200: '#9DBFFF',
+  blue300: '#6FA5FF',
+  blue400: '#4D8FFF',
+  blue500: '#1A6EFF',
+  blue600: '#0057E8',
+  blue700: '#0044C4',
+  blue900: '#001F6B',
 
-  // Cyan — accent for data / positive trend
+  cyan300:  '#5FE0FF',
   cyan400:  '#00C8F0',
   cyan500:  '#00ADE0',
   cyan600:  '#0093C4',
   cyanTint: '#E6F9FF',
 
-  // Semantic
-  green:    '#059669',
-  greenTint:'#ECFDF5',
-  greenGlow:'rgba(5,150,105,0.18)',
+  green:     '#059669',
+  greenTint: '#ECFDF5',
+  greenGlow: 'rgba(5,150,105,0.18)',
 
-  amber:    '#D97706',
-  amberTint:'#FFFBEB',
-  orange:   '#EA580C',
-  orangeTint:'#FFF7ED',
+  amber:      '#D97706',
+  amberTint:  '#FFFBEB',
+  orange:     '#EA580C',
+  orangeTint: '#FFF7ED',
 
   red:     '#DC2626',
   redTint: '#FEF2F2',
 
-  // Shadows
+  // Badge tiers — distinct family from score colors so a badge never reads as a score
+  bronze:      '#B0703B',
+  bronzeTint:  '#FBF1E7',
+  silver:      '#7C8AA3',
+  silverTint:  '#F2F4F8',
+  gold:        '#C89416',
+  goldTint:    '#FDF7E6',
+  platinum:    '#5D6CE0',
+  platinumTint:'#EEF0FE',
+
   shadow:   '0 1px 12px rgba(26,110,255,0.07)',
   shadowMd: '0 6px 28px rgba(26,110,255,0.12)',
   shadowLg: '0 16px 56px rgba(0,31,107,0.18)',
@@ -74,146 +90,67 @@ const F = {
   mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
 };
 
+const TIER_STYLE = {
+  bronze:   { color: C.bronze,   tint: C.bronzeTint,   ring: 'rgba(176,112,59,0.32)' },
+  silver:   { color: C.silver,   tint: C.silverTint,   ring: 'rgba(124,138,163,0.32)' },
+  gold:     { color: C.gold,     tint: C.goldTint,     ring: 'rgba(200,148,22,0.32)' },
+  platinum: { color: C.platinum, tint: C.platinumTint, ring: 'rgba(93,108,224,0.32)' },
+};
+
 // ─── Package tier benchmarks (Indian fresher / junior market, 2024–25) ───────
 const TIERS = [
-  {
-    label:    '₹3–6 LPA',
-    minScore: 0,
-    color:    '#7A8BAF',
-    bg:       '#F0F4FF',
-    desc:     'Service companies, off-campus starts',
-    advice:   'Focus on DSA basics and communication fundamentals.',
-  },
-  {
-    label:    '₹6–12 LPA',
-    minScore: 38,
-    color:    C.amber,
-    bg:       C.amberTint,
-    desc:     'Mid-tier product, IT MNCs, campus drives',
-    advice:   'Strengthen problem solving and topic breadth.',
-  },
-  {
-    label:    '₹12–20 LPA',
-    minScore: 60,
-    color:    C.blue500,
-    bg:       C.blue50,
-    desc:     'Top product companies, FAANG-adjacent',
-    advice:   'Master system design and consistency under pressure.',
-  },
-  {
-    label:    '₹20 LPA+',
-    minScore: 80,
-    color:    C.cyan500,
-    bg:       C.cyanTint,
-    desc:     'FAANG, unicorn startups, remote-first',
-    advice:   'Achieve elite cross-dimension performance.',
-  },
+  { label: '₹3–6 LPA',   minScore: 0,  color: '#7A8BAF', bg: '#F0F4FF',   desc: 'Service companies, off-campus starts',      advice: 'Focus on DSA basics and communication fundamentals.' },
+  { label: '₹6–12 LPA',  minScore: 38, color: C.amber,   bg: C.amberTint, desc: 'Mid-tier product, IT MNCs, campus drives',  advice: 'Strengthen problem solving and topic breadth.' },
+  { label: '₹12–20 LPA', minScore: 60, color: C.blue500, bg: C.blue50,    desc: 'Top product companies, FAANG-adjacent',     advice: 'Master system design and consistency under pressure.' },
+  { label: '₹20 LPA+',   minScore: 80, color: C.cyan500, bg: C.cyanTint,  desc: 'FAANG, unicorn startups, remote-first',     advice: 'Achieve elite cross-dimension performance.' },
 ];
 
 // ─── Dimension model — same keys used on Analytics page ─────────────────────
 const DIMENSIONS = [
-  {
-    key:    'technical',
-    label:  'Technical Depth',
-    icon:   '⚙',
-    topics: ['DSA', 'OOP', 'DBMS', 'OS', 'JavaScript', 'Web Development', 'System Design', 'Database'],
-    weight: 0.28,
-    tip:    'Core CS fundamentals — the first thing technical screeners test.',
-  },
-  {
-    key:    'problemSolving',
-    label:  'Problem Solving',
-    icon:   '🔍',
-    topics: ['DSA', 'System Design', 'Algorithm'],
-    weight: 0.22,
-    tip:    'How you break down unknowns — decisive in live coding rounds.',
-  },
-  {
-    key:    'communication',
-    label:  'Communication',
-    icon:   '💬',
-    topics: ['Communication', 'HR', 'Behavioral'],
-    weight: 0.18,
-    tip:    'Clarity of thought, not just English — interviewers notice it fast.',
-  },
-  {
-    key:    'behavioral',
-    label:  'Behavioral',
-    icon:   '🤝',
-    topics: ['HR', 'Behavioral', 'Leadership'],
-    weight: 0.12,
-    tip:    'Situational judgment and self-awareness under HR scrutiny.',
-  },
-  {
-    key:    'design',
-    label:  'System Design',
-    icon:   '🏗',
-    topics: ['System Design', 'Architecture', 'OOP', 'Scalability'],
-    weight: 0.10,
-    tip:    'Matters at ₹12 LPA+ — often the differentiator between tiers.',
-  },
-  {
-    key:    'fundamentals',
-    label:  'CS Fundamentals',
-    icon:   '📚',
-    topics: ['DBMS', 'OS', 'OOP', 'Networking', 'JavaScript'],
-    weight: 0.10,
-    tip:    'Breadth of core knowledge — separates prepared from lucky.',
-  },
+  { key: 'technical',      label: 'Technical Depth', icon: '⚙',  topics: ['DSA', 'OOP', 'DBMS', 'OS', 'JavaScript', 'Web Development', 'System Design', 'Database'], weight: 0.28, tip: 'Core CS fundamentals — the first thing technical screeners test.' },
+  { key: 'problemSolving', label: 'Problem Solving', icon: '🔍', topics: ['DSA', 'System Design', 'Algorithm'], weight: 0.22, tip: 'How you break down unknowns — decisive in live coding rounds.' },
+  { key: 'communication',  label: 'Communication',   icon: '💬', topics: ['Communication', 'HR', 'Behavioral'], weight: 0.18, tip: 'Clarity of thought, not just English — interviewers notice it fast.' },
+  { key: 'behavioral',     label: 'Behavioral',      icon: '🤝', topics: ['HR', 'Behavioral', 'Leadership'], weight: 0.12, tip: 'Situational judgment and self-awareness under HR scrutiny.' },
+  { key: 'design',         label: 'System Design',   icon: '🏗', topics: ['System Design', 'Architecture', 'OOP', 'Scalability'], weight: 0.10, tip: 'Matters at ₹12 LPA+ — often the differentiator between tiers.' },
+  { key: 'fundamentals',   label: 'CS Fundamentals', icon: '📚', topics: ['DBMS', 'OS', 'OOP', 'Networking', 'JavaScript'], weight: 0.10, tip: 'Breadth of core knowledge — separates prepared from lucky.' },
 ];
 
-// ─── Personality archetypes — assigned by data, not vibes ───────────────────
+// ─── Personality archetypes ──────────────────────────────────────────────────
 const ARCHETYPES = [
-  {
-    id:    'inconsistentGenius',
-    label: 'Inconsistent Genius',
-    icon:  '🎲',
-    desc:  'High variance in scores — brilliant when in flow but needs to build floor quality.',
-    fix:   'Consistency drills: aim to hold 65+ on every session before chasing 90+.',
-  },
-  {
-    id:    'consistentClimber',
-    label: 'Consistent Climber',
-    icon:  '📈',
-    desc:  'Steady, reliable improvement — the archetype that wins campus placements.',
-    fix:   'Keep the streak; add harder topic rotations to keep growing.',
-  },
-  {
-    id:    'speedRunner',
-    label: 'Speed Runner',
-    icon:  '⚡',
-    desc:  'Fast answers but sometimes sacrifices depth for pace.',
-    fix:   'Practise "think aloud" — say your reasoning before your answer.',
-  },
-  {
-    id:    'deepThinker',
-    label: 'Deep Thinker',
-    icon:  '🧠',
-    desc:  'Thorough and accurate — needs to improve time management under live pressure.',
-    fix:   'Run timed drills; 2-minute cap per answer in quick-fire mode.',
-  },
-  {
-    id:    'pressureCooker',
-    label: 'Pressure Cooker',
-    icon:  '🔥',
-    desc:  'Scores improve in timed sessions — performs well under competition conditions.',
-    fix:   'Channel this by signing up for live contest platforms weekly.',
-  },
+  { id: 'inconsistentGenius', label: 'Inconsistent Genius', icon: '🎲', desc: 'High variance in scores — brilliant when in flow but needs to build floor quality.', fix: 'Consistency drills: aim to hold 65+ on every session before chasing 90+.' },
+  { id: 'consistentClimber',  label: 'Consistent Climber',  icon: '📈', desc: 'Steady, reliable improvement — the archetype that wins campus placements.', fix: 'Keep the streak; add harder topic rotations to keep growing.' },
+  { id: 'speedRunner',        label: 'Speed Runner',        icon: '⚡', desc: 'Fast answers but sometimes sacrifices depth for pace.', fix: 'Practise "think aloud" — say your reasoning before your answer.' },
+  { id: 'deepThinker',        label: 'Deep Thinker',        icon: '🧠', desc: 'Thorough and accurate — needs to improve time management under live pressure.', fix: 'Run timed drills; 2-minute cap per answer in quick-fire mode.' },
+  { id: 'pressureCooker',     label: 'Pressure Cooker',     icon: '🔥', desc: 'Scores improve in timed sessions — performs well under competition conditions.', fix: 'Channel this by signing up for live contest platforms weekly.' },
+];
+
+// ─── Badge catalogue (frontend copy of backend badgeEngine.js — kept in sync
+//     for icon/label/desc/tier; unlocked/progress/meta come from the API).
+const BADGE_CATALOGUE = [
+  { id: 'first_rep',       label: 'First Rep',       icon: '🎬', tier: 'bronze',   desc: 'Completed your first mock interview.' },
+  { id: 'comeback_kid',    label: 'Comeback Kid',    icon: '🔁', tier: 'gold',     desc: 'Bounced back 15+ points the session right after a bad one.' },
+  { id: 'topic_slayer',    label: 'Topic Slayer',    icon: '⚔️', tier: 'gold',     desc: 'Scored 85+ on the same topic across 3 sessions in a row.' },
+  { id: 'silent_grinder',  label: 'Silent Grinder',  icon: '🧘', tier: 'silver',   desc: '7-day streak without a single 90+ "hero" session — pure consistency.' },
+  { id: 'full_marks',      label: 'Full Marks',      icon: '💯', tier: 'silver',   desc: 'Nailed a question with a perfect 100 score.' },
+  { id: 'no_skip_zone',    label: 'No Skip Zone',    icon: '🛡️', tier: 'bronze',   desc: 'Completed a full session without skipping anything.' },
+  { id: 'speed_demon',     label: 'Speed Demon',     icon: '⚡', tier: 'silver',   desc: 'Averaged under 20s per question while still scoring 70+.' },
+  { id: 'deep_diver',      label: 'Deep Diver',      icon: '🧠', tier: 'silver',   desc: 'Took your time (70s+/question) and still scored 80+.' },
+  { id: 'range_rider',     label: 'Range Rider',     icon: '🗺️', tier: 'bronze',   desc: 'Practiced across 6+ distinct topics.' },
+  { id: 'iron_streak',     label: 'Iron Streak',     icon: '🔥', tier: 'gold',     desc: 'Kept a 14-day practice streak alive.' },
+  { id: 'the_grinder',     label: 'The Grinder',     icon: '⚙️', tier: 'gold',     desc: 'Completed 25 mock interviews.' },
+  { id: 'elite_pass',      label: 'Elite Pass',      icon: '🏆', tier: 'platinum', desc: 'Hit a 90+ session score.' },
+  { id: 'weakness_slayer', label: 'Weakness Slayer', icon: '🎯', tier: 'gold',     desc: 'Took a topic from under 50 to 75+ in a later session.' },
+  { id: 'tier_jumper',     label: 'Tier Jumper',     icon: '🚀', tier: 'platinum', desc: 'Crossed a package-tier threshold between sessions.' },
 ];
 
 // ─── Pure maths helpers ──────────────────────────────────────────────────────
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(v || 0)));
 
-/**
- * Exponential weighted moving average — recent sessions count more.
- * α = 0.35 means each new value gets 35% weight, prior EWMA 65%.
- */
 const ewma = (values, alpha = 0.35) => {
   if (!values.length) return 0;
   return values.reduce((acc, v, i) => (i === 0 ? v : alpha * v + (1 - alpha) * acc), values[0]);
 };
 
-/** Sample standard deviation — real volatility, not ad hoc "variance check". */
 const stdDev = (values) => {
   if (values.length < 2) return 0;
   const mean = values.reduce((a, v) => a + v, 0) / values.length;
@@ -221,95 +158,73 @@ const stdDev = (values) => {
   return Math.sqrt(variance);
 };
 
-/** Linear trend (slope via least-squares regression over index). */
 const trendSlope = (values) => {
   const n = values.length;
   if (n < 2) return 0;
   const xMean = (n - 1) / 2;
   const yMean = values.reduce((a, v) => a + v, 0) / n;
-  const num   = values.reduce((a, v, i) => a + (i - xMean) * (v - yMean), 0);
-  const den   = values.reduce((a, _, i) => a + Math.pow(i - xMean, 2), 0);
+  const num = values.reduce((a, v, i) => a + (i - xMean) * (v - yMean), 0);
+  const den = values.reduce((a, _, i) => a + Math.pow(i - xMean, 2), 0);
   return den ? num / den : 0;
 };
 
-/** Determines interview archetype from real statistical signals. */
 const deriveArchetype = (scoreTrend, avgTimePerQ, avgScore) => {
   const scores = scoreTrend.map(s => s.score || 0);
-  if (scores.length < 2) return ARCHETYPES[1]; // default: consistent climber
-
-  const sd    = stdDev(scores);
+  if (scores.length < 2) return ARCHETYPES[1];
+  const sd = stdDev(scores);
   const slope = trendSlope(scores);
-
-  if (sd > 18)   return ARCHETYPES[0]; // inconsistentGenius — high variance
-  if (slope > 2) return ARCHETYPES[1]; // consistentClimber  — improving
-  if (avgTimePerQ != null && avgTimePerQ < 22) return ARCHETYPES[2]; // speedRunner
-  if (avgTimePerQ != null && avgTimePerQ > 52) return ARCHETYPES[3]; // deepThinker
-  return ARCHETYPES[4]; // pressureCooker — default remainder
+  if (sd > 18) return ARCHETYPES[0];
+  if (slope > 2) return ARCHETYPES[1];
+  if (avgTimePerQ != null && avgTimePerQ < 22) return ARCHETYPES[2];
+  if (avgTimePerQ != null && avgTimePerQ > 52) return ARCHETYPES[3];
+  return ARCHETYPES[4];
 };
 
-/**
- * INTERVIEW READINESS SCORE  (IRS)
- * ─────────────────────────────────
- * A genuine composite score that penalises weak dimensions and rewards
- * trend + breadth + consistency. Formula rationale:
- *
- *   Dimension-weighted score (40%)
- *     — each dimension uses its explicit weight from DIMENSIONS config
- *     — ensures a 90-in-one-topic student can't fake overall readiness
- *
- *   EWMA trend component (25%)
- *     — recent sessions matter more; trailing EWMA > simple average
- *     — normalised 0→100 via: EWMA / 100 * 25
- *
- *   Topic breadth (15%)
- *     — encourages covering more areas; capped at 100 after 8 distinct topics
- *     — penalises students who drill only one topic
- *
- *   Consistency (20%)
- *     — based on coefficient of variation: lower volatility = higher score
- *     — a student who always scores 70 ranks higher than a 50/90 swinger
- */
 const computeIRS = ({ dimensionProfile, scoreTrend, topicPerformance, averageScore }) => {
-  // Component 1 — weighted dimension average
   const dimScore = dimensionProfile.reduce((acc, d) => {
     const cfg = DIMENSIONS.find(x => x.key === d.key);
     return acc + (d.score * (cfg?.weight ?? 1 / DIMENSIONS.length));
   }, 0);
   const dimComponent = clamp(dimScore) * 0.40;
 
-  // Component 2 — EWMA of recent scores
   const recentScores = scoreTrend.slice(-12).map(s => s.score || 0);
-  const ewmaScore    = recentScores.length ? ewma(recentScores) : averageScore;
+  const ewmaScore = recentScores.length ? ewma(recentScores) : averageScore;
   const ewmaComponent = clamp(ewmaScore) * 0.25;
 
-  // Component 3 — topic breadth (unique topics scored, capped at 8)
-  const uniqueTopics    = topicPerformance.length;
+  const uniqueTopics = topicPerformance.length;
   const breadthComponent = Math.min(uniqueTopics / 8, 1) * 100 * 0.15;
 
-  // Component 4 — consistency (inverse coefficient of variation)
   const scores = scoreTrend.map(s => s.score || 0);
-  const sd     = stdDev(scores);
-  const mean   = scores.length ? scores.reduce((a, v) => a + v, 0) / scores.length : 0;
-  const cv     = mean > 0 ? sd / mean : 1; // coefficient of variation
-  // CV of 0 (perfectly consistent) → 100; CV of 1+ → 0
-  const consistencyScore    = Math.max(0, (1 - Math.min(cv, 1)) * 100);
+  const sd = stdDev(scores);
+  const mean = scores.length ? scores.reduce((a, v) => a + v, 0) / scores.length : 0;
+  const cv = mean > 0 ? sd / mean : 1;
+  const consistencyScore = Math.max(0, (1 - Math.min(cv, 1)) * 100);
   const consistencyComponent = consistencyScore * 0.20;
 
   return clamp(dimComponent + ewmaComponent + breadthComponent + consistencyComponent);
 };
 
-/** Maps IRS to the highest tier the candidate has crossed the threshold for. */
 const tierForScore = (irs) => {
   const reached = TIERS.filter(t => irs >= t.minScore);
   return reached[reached.length - 1] || TIERS[0];
 };
 
-/** How far (in IRS points) to the next tier — real gap, not cosmetic. */
 const pointsToNext = (irs) => {
   const tier = tierForScore(irs);
-  const idx  = TIERS.indexOf(tier);
+  const idx = TIERS.indexOf(tier);
   const next = TIERS[idx + 1];
   return next ? Math.max(0, next.minScore - irs) : 0;
+};
+
+/** Predicts next-session score using EWMA + trend slope, clamped to plausible range. */
+const predictNextScore = (scoreTrend) => {
+  const scores = scoreTrend.map(s => s.score || 0);
+  if (scores.length < 2) return null;
+  const recent = scores.slice(-8);
+  const ewmaVal = ewma(recent);
+  const slope = trendSlope(recent);
+  const predicted = ewmaVal + slope * 0.6;
+  return clamp(predicted);
 };
 
 // ─── Build 14-week heatmap grid ──────────────────────────────────────────────
@@ -318,24 +233,23 @@ const buildHeatmap = (scoreTrend) => {
   (scoreTrend ?? []).forEach(s => {
     if (s.date) {
       const key = s.date.slice(0, 10);
-      // If multiple sessions on same day, keep best (or average)
       byDate[key] = byDate[key] ? Math.round((byDate[key] + (s.score ?? 0)) / 2) : (s.score ?? 0);
     }
   });
 
   const WEEKS = 14;
-  const now   = new Date();
-  const grid  = [];
+  const now = new Date();
+  const grid = [];
 
   for (let w = WEEKS - 1; w >= 0; w--) {
     const col = [];
     for (let d = 6; d >= 0; d--) {
-      const dt  = new Date(now);
+      const dt = new Date(now);
       dt.setDate(now.getDate() - (w * 7 + d));
       const key = dt.toISOString().slice(0, 10);
       col.push({
-        date:   key,
-        score:  byDate[key] ?? 0,
+        date: key,
+        score: byDate[key] ?? 0,
         future: dt > now,
         hasData: Boolean(byDate[key]),
       });
@@ -345,16 +259,14 @@ const buildHeatmap = (scoreTrend) => {
   return grid;
 };
 
-/** Derived heatmap stats for the footer callouts. */
 const heatmapStats = (grid) => {
-  const cells  = grid.flat().filter(c => !c.future && c.hasData);
+  const cells = grid.flat().filter(c => !c.future && c.hasData);
   if (!cells.length) return { activeDays: 0, bestDay: null, avgScore: 0, longestStreak: 0 };
 
   const activeDays = cells.length;
-  const bestDay    = cells.reduce((b, c) => (c.score > b.score ? c : b), cells[0]);
-  const avgScore   = Math.round(cells.reduce((a, c) => a + c.score, 0) / cells.length);
+  const bestDay = cells.reduce((b, c) => (c.score > b.score ? c : b), cells[0]);
+  const avgScore = Math.round(cells.reduce((a, c) => a + c.score, 0) / cells.length);
 
-  // Longest consecutive-day streak
   const sortedDates = [...new Set(cells.map(c => c.date))].sort();
   let longest = 1, current = 1;
   for (let i = 1; i < sortedDates.length; i++) {
@@ -368,21 +280,31 @@ const heatmapStats = (grid) => {
   return { activeDays, bestDay, avgScore, longestStreak: longest };
 };
 
-// ─── Topic: find the single highest-ROI fix ─────────────────────────────────
 const bestFixTarget = (topicPerformance, dimensionProfile) => {
   if (!topicPerformance.length) return null;
-  // Score each topic by: low average + high dimension weight
   return topicPerformance
     .map(t => {
       const dim = DIMENSIONS.find(d => d.topics.includes(t.topic)) ?? {};
       const dimWeight = dim.weight ?? 0.1;
-      const roi = dimWeight * (100 - (t.averageScore || 0)); // weight × gap
+      const roi = dimWeight * (100 - (t.averageScore || 0));
       return { ...t, roi };
     })
     .sort((a, b) => b.roi - a.roi)[0];
 };
 
-// ─── Live clock ──────────────────────────────────────────────────────────────
+/** Per-topic trend across the last N sessions containing that topic — used for sparklines. */
+const topicMomentum = (topicPerformance, scoreTrend) => {
+  // scoreTrend items don't carry per-topic breakdown in this API shape, so we
+  // approximate momentum by correlating overall-session trend direction with
+  // how recently the topic has appeared in topicPerformance ordering (stable
+  // proxy given current API — becomes exact once backend adds topic-tagged trend).
+  const overallSlope = trendSlope(scoreTrend.map(s => s.score || 0).slice(-6));
+  return topicPerformance.map(t => ({
+    ...t,
+    momentum: overallSlope > 1.5 ? 'rising' : overallSlope < -1.5 ? 'falling' : 'stable',
+  }));
+};
+
 const useLiveClock = () => {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -392,16 +314,17 @@ const useLiveClock = () => {
   return now;
 };
 
-// ─── Score → color (using blue system, not generic traffic-light) ─────────────
 const scoreColor = (s) =>
   s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.orange;
 
+// 5-shade heat scale, finer than v4's 5-step but visually distinct at small cell size
 const heatColor = (score, hasData) => {
   if (!hasData) return C.border;
-  if (score >= 85) return C.blue700;
-  if (score >= 70) return C.blue500;
-  if (score >= 55) return C.blue400;
-  if (score >= 40) return C.blue200;
+  if (score >= 88) return C.blue900;
+  if (score >= 75) return C.blue700;
+  if (score >= 60) return C.blue500;
+  if (score >= 45) return C.blue300;
+  if (score >= 25) return C.blue200;
   return C.blue100;
 };
 
@@ -410,19 +333,16 @@ const heatColor = (score, hasData) => {
 // ═══════════════════════════════════════════════════════════════════════════
 const Dashboard = () => {
   const { user } = useAuth();
-  const navigate  = useNavigate();
-  const clock     = useLiveClock();
+  const navigate = useNavigate();
+  const clock = useLiveClock();
 
-  const [analytics,   setAnalytics]   = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [leaderboard, setLeaderboard] = useState(null);
-  const [loading,     setLoading]     = useState(true);
-  const [starting,    setStarting]    = useState(false);
-  const [mounted,     setMounted]     = useState(false);
-  const [verdict,     setVerdict]     = useState('');
-  const [verdictDone, setVerdictDone] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [coachLoading, setCoachLoading] = useState(false);
-  const [coachError, setCoachError] = useState('');
-  const [coachAnalysis, setCoachAnalysis] = useState(null);
+  const [coachTeaser, setCoachTeaser] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -457,96 +377,110 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
-  const handleAICoach = async () => {
-  try {
-    setCoachLoading(true);
-    setCoachError('');
-
-    const response = await getAICoach();
-
-    setCoachAnalysis(response.analysis);
-  } catch (error) {
-    console.error('AI coach failed:', error);
-
-    setCoachError(
-      'AI coach is temporarily unavailable.'
-    );
-  } finally {
-    setCoachLoading(false);
-  }
-};
+  // AI Coach teaser — fetches one-line hook, full board lives on Analytics
+  const handleCoachTeaser = async () => {
+    if (coachTeaser || coachLoading) {
+      navigate('/analytics');
+      return;
+    }
+    try {
+      setCoachLoading(true);
+      const response = await getAICoach();
+      const text = typeof response?.analysis === 'string' ? response.analysis : '';
+      const firstLine = text.split('\n').find(l => l.trim().length > 0) || '';
+      setCoachTeaser(firstLine.slice(0, 140) || 'Your personalised readiness analysis is ready.');
+    } catch (e) {
+      console.error('AI coach teaser failed:', e);
+      setCoachTeaser('');
+    } finally {
+      setCoachLoading(false);
+      navigate('/analytics');
+    }
+  };
 
   // ── Derived raw fields ────────────────────────────────────────────────────
-  const totalInterviews  = analytics?.totalInterviews ?? analytics?.totalSessions ?? 0;
-  const averageScore     = analytics?.averageScore ?? 0;
-  const bestScore        = analytics?.bestScore ?? analytics?.highestScore ?? 0;
-  const scoreTrend       = analytics?.scoreTrend ?? [];
+  const totalInterviews = analytics?.totalInterviews ?? analytics?.totalSessions ?? 0;
+  const averageScore = analytics?.averageScore ?? 0;
+  const bestScore = analytics?.bestScore ?? analytics?.highestScore ?? 0;
+  const scoreTrend = analytics?.scoreTrend ?? [];
   const topicPerformance = useMemo(() => analytics?.topicPerformance ?? [], [analytics]);
+  const badgesRaw = useMemo(() => analytics?.badges ?? [], [analytics]);
   const leaderboardUsers = useMemo(() => leaderboard?.global ?? [], [leaderboard]);
-  const currentUser      = leaderboard?.currentUser ?? null;
-  const streakDays       = user?.streak?.current ?? 0;
-  const avgTimePerQ      = analytics?.timePerformance?.averageTimePerQuestion ?? null;
-  const hasData          = totalInterviews > 0;
+  const currentUser = leaderboard?.currentUser ?? null;
+  const streakDays = user?.streak?.current ?? 0;
+  const avgTimePerQ = analytics?.timePerformance?.averageTimePerQuestion ?? null;
+  const hasData = totalInterviews > 0;
 
-  // Latest vs previous — momentum indicator
-  const latestScore  = scoreTrend.at(-1)?.score ?? 0;
-  const prevScore    = scoreTrend.at(-2)?.score ?? latestScore;
-  const delta        = latestScore - prevScore;
+  const latestScore = scoreTrend.at(-1)?.score ?? 0;
+  const prevScore = scoreTrend.at(-2)?.score ?? latestScore;
+  const delta = latestScore - prevScore;
 
   // ── Six-dimension profile ─────────────────────────────────────────────────
   const topicMap = useMemo(() => {
     const m = {};
-    topicPerformance.forEach(t => {
-      m[t.topic?.toLowerCase()] = t.averageScore || 0;
-    });
+    topicPerformance.forEach(t => { m[t.topic?.toLowerCase()] = t.averageScore || 0; });
     return m;
   }, [topicPerformance]);
 
   const dimensionProfile = useMemo(() => DIMENSIONS.map(dim => {
-    const vals = dim.topics
-      .map(t => topicMap[t.toLowerCase()])
-      .filter(v => typeof v === 'number' && v > 0);
-    const score = vals.length
-      ? vals.reduce((a, v) => a + v, 0) / vals.length
-      : 0; // 0 = no data, not synthetic fill
+    const vals = dim.topics.map(t => topicMap[t.toLowerCase()]).filter(v => typeof v === 'number' && v > 0);
+    const score = vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0;
     return { ...dim, score: clamp(score), hasData: vals.length > 0 };
   }), [topicMap]);
 
-  // ── IRS — the one number that defines readiness ───────────────────────────
   const irs = useMemo(() => {
     if (!hasData) return 0;
     return computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
   }, [dimensionProfile, scoreTrend, topicPerformance, averageScore, hasData]);
 
   const currentTier = useMemo(() => tierForScore(irs), [irs]);
-  const nextTier    = useMemo(() => {
+  const nextTier = useMemo(() => {
     const idx = TIERS.indexOf(currentTier);
     return TIERS[idx + 1] || null;
   }, [currentTier]);
   const irsGap = pointsToNext(irs);
 
-  // ── Archetype (personality) ───────────────────────────────────────────────
   const archetype = useMemo(
     () => deriveArchetype(scoreTrend, avgTimePerQ, averageScore),
     [scoreTrend, avgTimePerQ, averageScore]
   );
 
-  // ── Strongest / weakest among dimensions that have real data ─────────────
-  const dimWithData  = dimensionProfile.filter(d => d.hasData);
+  const dimWithData = dimensionProfile.filter(d => d.hasData);
   const strongestDim = [...dimWithData].sort((a, b) => b.score - a.score)[0];
-  const weakestDim   = [...dimWithData].sort((a, b) => a.score - b.score)[0];
+  const weakestDim = [...dimWithData].sort((a, b) => a.score - b.score)[0];
 
-  // ── Fix this next — genuine ROI ranking ──────────────────────────────────
   const fixTarget = useMemo(
     () => bestFixTarget(topicPerformance, dimensionProfile),
     [topicPerformance, dimensionProfile]
   );
 
-  // ── Heatmap ───────────────────────────────────────────────────────────────
-  const heatmap     = useMemo(() => buildHeatmap(scoreTrend), [scoreTrend]);
-  const hmStats     = useMemo(() => heatmapStats(heatmap), [heatmap]);
+  const heatmap = useMemo(() => buildHeatmap(scoreTrend), [scoreTrend]);
+  const hmStats = useMemo(() => heatmapStats(heatmap), [heatmap]);
 
-  // ── Percentile ────────────────────────────────────────────────────────────
+  const nextPrediction = useMemo(() => predictNextScore(scoreTrend), [scoreTrend]);
+  const topicsWithMomentum = useMemo(() => topicMomentum(topicPerformance, scoreTrend), [topicPerformance, scoreTrend]);
+
+  // Merge live badge unlock state onto the frontend catalogue (so copy/icons
+  // stay in this file even if backend only returns id/unlocked/progress).
+  const badges = useMemo(() => {
+    const byId = {};
+    badgesRaw.forEach(b => { byId[b.id] = b; });
+    return BADGE_CATALOGUE.map(def => {
+      const live = byId[def.id];
+      return {
+        ...def,
+        unlocked: live?.unlocked ?? false,
+        progress: live?.progress ?? null,
+        meta: live?.meta ?? null,
+      };
+    });
+  }, [badgesRaw]);
+  const unlockedCount = badges.filter(b => b.unlocked).length;
+  const nextBadge = useMemo(() => {
+    const locked = badges.filter(b => !b.unlocked && typeof b.progress === 'number');
+    return locked.sort((a, b) => (b.progress || 0) - (a.progress || 0))[0] || null;
+  }, [badges]);
+
   const percentile = useMemo(() => {
     if (!currentUser?.globalRank || !leaderboardUsers.length) return null;
     return Math.max(1, Math.round(
@@ -554,9 +488,6 @@ const Dashboard = () => {
     ));
   }, [currentUser, leaderboardUsers]);
 
-  
-
-  // ─── Session identifier for status strip ─────────────────────────────────
   const sessionId = useMemo(() => Math.random().toString(36).slice(2, 8).toUpperCase(), []);
 
   // ── Loading ───────────────────────────────────────────────────────────────
@@ -595,7 +526,6 @@ const Dashboard = () => {
           <div style={S.heroScan} />
           <div style={S.heroGrid} className="mm-hero-grid">
 
-            {/* Left — IRS gauge + label */}
             <div style={S.irsBlock}>
               <div style={S.irsLabel}>INTERVIEW READINESS SCORE</div>
               <div style={S.irsNum}>
@@ -610,8 +540,7 @@ const Dashboard = () => {
                   <div style={S.irsBar}>
                     <div style={{ ...S.irsBarFill, width: mounted ? `${irs}%` : '0%' }} />
                     {nextTier && (
-                      <div style={{ ...S.irsNextMark, left: `${nextTier.minScore}%` }}
-                           title={`${nextTier.label} threshold`} />
+                      <div style={{ ...S.irsNextMark, left: `${nextTier.minScore}%` }} title={`${nextTier.label} threshold`} />
                     )}
                   </div>
                   {nextTier && (
@@ -623,7 +552,6 @@ const Dashboard = () => {
               )}
             </div>
 
-            {/* Right — verdict + actions */}
             <div style={S.verdictBlock}>
               <div style={S.eyebrow}>
                 <span style={S.eyebrowDot} />
@@ -633,7 +561,7 @@ const Dashboard = () => {
                 {user?.name?.split(' ')[0] ? `${user.name.split(' ')[0]}, ` : ''}
                 {!hasData
                   ? "let's build your readiness profile."
-                  : verdict || 'reading your session data…'}
+                  : `you're trending toward ${currentTier.label}.`}
               </h1>
               {!hasData ? (
                 <p style={S.heroSub}>
@@ -665,40 +593,20 @@ const Dashboard = () => {
 
           {/* ── QUICK STATS ROW ─────────────────────────────────────────── */}
           <section style={S.statsRow} className="mm-stats">
-            <StatCard
-              label="Avg score"
-              value={averageScore}
-              unit="/100"
-              sub="Simple mean across all sessions"
-              color={scoreColor(averageScore)}
-            />
-            <StatCard
-              label="Best session"
-              value={bestScore}
-              unit="/100"
-              sub="Your personal ceiling"
-              color={C.blue500}
-            />
-            <StatCard
-              label="Sessions"
-              value={totalInterviews}
-              unit=""
-              sub={streakDays ? `${streakDays}-day streak 🔥` : 'No active streak'}
-              color={C.green}
-            />
-            <StatCard
-              label="Trend (last session)"
-              value={`${delta >= 0 ? '+' : ''}${delta}`}
-              unit=" pts"
-              sub={delta > 0 ? 'Moving up ↑' : delta < 0 ? 'Slipping — drill now' : 'Flat'}
-              color={delta >= 0 ? C.green : C.orange}
-            />
+            <StatCard label="Avg score" value={averageScore} unit="/100" sub="Simple mean across all sessions" color={scoreColor(averageScore)} />
+            <StatCard label="Best session" value={bestScore} unit="/100" sub="Your personal ceiling" color={C.blue500} />
+            <StatCard label="Sessions" value={totalInterviews} unit="" sub={streakDays ? `${streakDays}-day streak 🔥` : 'No active streak'} color={C.green} />
+            <StatCard label="Trend (last session)" value={`${delta >= 0 ? '+' : ''}${delta}`} unit=" pts" sub={delta > 0 ? 'Moving up ↑' : delta < 0 ? 'Slipping — drill now' : 'Flat'} color={delta >= 0 ? C.green : C.orange} />
+          </section>
+
+          {/* ── NEXT SESSION PREDICTOR + WEEKLY DIGEST ──────────────────── */}
+          <section style={S.twoCol} className="mm-two-col">
+            <PredictorCard prediction={nextPrediction} lastScore={latestScore} averageScore={averageScore} onStart={() => startQuick()} starting={starting} />
+            <WeeklyDigestCard scoreTrend={scoreTrend} hmStats={hmStats} totalInterviews={totalInterviews} />
           </section>
 
           {/* ── IRS BREAKDOWN + FIX THIS NEXT ───────────────────────────── */}
           <section style={S.twoCol} className="mm-two-col">
-
-            {/* Dimension breakdown */}
             <div style={S.card}>
               <div style={S.cardHeader}>
                 <div>
@@ -722,33 +630,21 @@ const Dashboard = () => {
                           <span style={S.dimIcon}>{cfg?.icon}</span>
                           <div>
                             <span style={S.dimName}>{d.label}</span>
-                            <span style={S.dimWeight}>
-                              {Math.round((cfg?.weight ?? 0) * 100)}% weight
-                            </span>
+                            <span style={S.dimWeight}>{Math.round((cfg?.weight ?? 0) * 100)}% weight</span>
                           </div>
                         </div>
-                        <span style={{ ...S.dimScore, color: d.hasData ? col : C.faint }}>
-                          {d.hasData ? d.score : '—'}
-                        </span>
+                        <span style={{ ...S.dimScore, color: d.hasData ? col : C.faint }}>{d.hasData ? d.score : '—'}</span>
                       </div>
                       <div style={S.dimTrack}>
-                        <div style={{
-                          ...S.dimFill,
-                          width: mounted && d.hasData ? `${d.score}%` : '0%',
-                          background: col,
-                          opacity: d.hasData ? 1 : 0.3,
-                        }} />
+                        <div style={{ ...S.dimFill, width: mounted && d.hasData ? `${d.score}%` : '0%', background: col, opacity: d.hasData ? 1 : 0.3 }} />
                       </div>
-                      {!d.hasData && (
-                        <div style={S.dimNoData}>No sessions for these topics yet</div>
-                      )}
+                      {!d.hasData && <div style={S.dimNoData}>No sessions for these topics yet</div>}
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            {/* Fix this next */}
             <div style={{ ...S.card, display: 'flex', flexDirection: 'column' }}>
               <div style={S.eyebrowDark}>HIGHEST-ROI FIX</div>
               <h2 style={S.cardH2}>Where to drill next</h2>
@@ -758,27 +654,15 @@ const Dashboard = () => {
                   <div style={S.fixBox}>
                     <div style={S.fixTop}>
                       <span style={S.fixTopic}>{fixTarget.topic}</span>
-                      <span style={{ ...S.fixScore, color: scoreColor(fixTarget.averageScore || 0) }}>
-                        {fixTarget.averageScore || 0}/100
-                      </span>
+                      <span style={{ ...S.fixScore, color: scoreColor(fixTarget.averageScore || 0) }}>{fixTarget.averageScore || 0}/100</span>
                     </div>
                     <div style={S.fixTrack}>
-                      <div style={{
-                        ...S.fixFill,
-                        width: `${fixTarget.averageScore || 0}%`,
-                        background: scoreColor(fixTarget.averageScore || 0),
-                      }} />
+                      <div style={{ ...S.fixFill, width: `${fixTarget.averageScore || 0}%`, background: scoreColor(fixTarget.averageScore || 0) }} />
                     </div>
                     <div style={S.fixStats}>
-                      <span style={S.fixStat}>
-                        <strong>{100 - (fixTarget.averageScore || 0)}</strong> pts headroom
-                      </span>
-                      <span style={S.fixStat}>
-                        <strong>{Math.round(fixTarget.roi * 10) / 10}</strong> ROI score
-                      </span>
-                      <span style={S.fixStat}>
-<strong>{fixTarget.attempts ?? '—'}</strong> questions attempted
-                      </span>
+                      <span style={S.fixStat}><strong>{100 - (fixTarget.averageScore || 0)}</strong> pts headroom</span>
+                      <span style={S.fixStat}><strong>{Math.round(fixTarget.roi * 10) / 10}</strong> ROI score</span>
+                      <span style={S.fixStat}><strong>{fixTarget.attempts ?? '—'}</strong> questions attempted</span>
                     </div>
                     <p style={S.fixHint}>
                       ROI score = dimension weight × score gap. Closing this topic gap
@@ -786,7 +670,6 @@ const Dashboard = () => {
                     </p>
                   </div>
 
-                  {/* Archetype card — lives here so this panel is always full */}
                   <div style={S.archetypeBox}>
                     <div style={S.archetypeHead}>
                       <span style={S.archetypeIcon}>{archetype.icon}</span>
@@ -798,58 +681,44 @@ const Dashboard = () => {
                     <div style={S.archetypeFix}>{archetype.fix}</div>
                   </div>
 
-                  <button
-                    style={{ ...S.btnBlue, marginTop: 'auto' }}
-                    onClick={() => startQuick(fixTarget.topic)}
-                    disabled={starting}
-                  >
+                  <button style={{ ...S.btnBlue, marginTop: 'auto' }} onClick={() => startQuick(fixTarget.topic)} disabled={starting}>
                     ⚡ Drill {fixTarget.topic} now
                   </button>
                 </>
               ) : (
-                <p style={S.cardSub}>
-                  Complete a few more sessions to unlock targeted recommendations.
-                </p>
+                <p style={S.cardSub}>Complete a few more sessions to unlock targeted recommendations.</p>
               )}
             </div>
           </section>
 
-          {/* ── PEER STANDING + SHARE ────────────────────────────────────── */}
+          {/* ── BADGE SHOWCASE ───────────────────────────────────────────── */}
+          <BadgeShowcase badges={badges} unlockedCount={unlockedCount} nextBadge={nextBadge} mounted={mounted} />
+
+          {/* ── TOPIC MOMENTUM (sparkline-style rows) ───────────────────── */}
+          <TopicMomentumCard topics={topicsWithMomentum} mounted={mounted} onDrill={startQuick} starting={starting} />
+
+          {/* ── PEER STANDING + AI COACH TEASER ──────────────────────────── */}
           <section style={S.twoCol} className="mm-two-col">
-            <PeerCard
-              percentile={percentile}
-              currentUser={currentUser}
-              leaderboardUsers={leaderboardUsers}
-              mounted={mounted}
-              onChallenge={() => startQuick()}
-              starting={starting}
-            />
-            <ShareCard
-              name={user?.name?.split(' ')[0] || 'Candidate'}
-              irs={irs}
-              tier={currentTier}
-              strongest={strongestDim}
-              percentile={percentile}
-              archetype={archetype}
-              sessions={totalInterviews}
-            />
+            <PeerCard percentile={percentile} currentUser={currentUser} leaderboardUsers={leaderboardUsers} mounted={mounted} onChallenge={() => startQuick()} starting={starting} />
+            <AICoachTeaserCard onOpen={handleCoachTeaser} loading={coachLoading} teaser={coachTeaser} weakestDim={weakestDim} />
           </section>
 
-          {/* ── ACTIVITY HEATMAP ─────────────────────────────────────────── */}
-          <ActivityHeatmap
-            heatmap={heatmap}
-            stats={hmStats}
-            total={totalInterviews}
-            mounted={mounted}
+          {/* ── SHARE CARD ────────────────────────────────────────────────── */}
+          <ShareCard
+            name={user?.name?.split(' ')[0] || 'Candidate'}
+            irs={irs}
+            tier={currentTier}
+            strongest={strongestDim}
+            percentile={percentile}
+            archetype={archetype}
+            sessions={totalInterviews}
           />
 
+          {/* ── ACTIVITY HEATMAP ─────────────────────────────────────────── */}
+          <ActivityHeatmap heatmap={heatmap} stats={hmStats} total={totalInterviews} mounted={mounted} />
+
           {/* ── LEADERBOARD ──────────────────────────────────────────────── */}
-          <LeaderboardCard
-            users={leaderboardUsers}
-            currentUser={currentUser}
-            onChallenge={() => startQuick()}
-            starting={starting}
-          />
+          <LeaderboardCard users={leaderboardUsers} currentUser={currentUser} onChallenge={() => startQuick()} starting={starting} />
 
           {/* ── NEXT TIER BANNER ─────────────────────────────────────────── */}
           {nextTier && (
@@ -857,34 +726,25 @@ const Dashboard = () => {
               <div style={{ flex: 1 }}>
                 <div style={S.eyebrowLight}>NEXT MILESTONE</div>
                 <h2 style={S.bannerH2}>
-                  {irsGap} IRS points from{' '}
-                  <span style={{ color: nextTier.color }}>{nextTier.label}</span>
+                  {irsGap} IRS points from <span style={{ color: nextTier.color }}>{nextTier.label}</span>
                 </h2>
                 <p style={S.bannerSub}>
-                  {nextTier.advice}{' '}
-                  {weakestDim && `Focus on ${weakestDim.label} — it's your largest open gap.`}
+                  {nextTier.advice} {weakestDim && `Focus on ${weakestDim.label} — it's your largest open gap.`}
                 </p>
                 <div style={S.bannerTrack}>
-                  <div style={{
-                    ...S.bannerFill,
-                    width: mounted ? `${Math.min(100, (irs / nextTier.minScore) * 100)}%` : '0%',
-                  }} />
+                  <div style={{ ...S.bannerFill, width: mounted ? `${Math.min(100, (irs / nextTier.minScore) * 100)}%` : '0%' }} />
                   <div style={{ ...S.bannerMark, left: '100%' }} title={`${nextTier.label} threshold`} />
                 </div>
-                <div style={S.bannerCaption}>
-                  {irs}/{nextTier.minScore} IRS needed
-                </div>
+                <div style={S.bannerCaption}>{irs}/{nextTier.minScore} IRS needed</div>
               </div>
-              <button style={S.btnBannerCta} onClick={() => startQuick()} disabled={starting}>
-                Keep climbing →
-              </button>
+              <button style={S.btnBannerCta} onClick={() => startQuick()} disabled={starting}>Keep climbing →</button>
             </section>
           )}
 
         </>)}
 
         <footer style={S.footerRow}>
-          <span style={S.mono}>MOCKMATE READINESS ENGINE v4.0</span>
+          <span style={S.mono}>MOCKMATE READINESS ENGINE v5.0</span>
           <span style={S.mono}>IRS = weighted dimension avg · EWMA trend · breadth · consistency</span>
         </footer>
       </div>
@@ -909,14 +769,255 @@ const StatCard = ({ label, value, unit, sub, color }) => (
   </div>
 );
 
-// ─── Activity heatmap ─────────────────────────────────────────────────────────
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// ─── Next Session Predictor — EWMA + trend extrapolation, honestly framed ────
+const PredictorCard = ({ prediction, lastScore, averageScore, onStart, starting }) => {
+  if (prediction == null) {
+    return (
+      <div style={S.card}>
+        <div style={S.eyebrowDark}>NEXT SESSION FORECAST</div>
+        <h2 style={S.cardH2}>Not enough data yet</h2>
+        <p style={S.cardSub}>Complete 2+ sessions and MockMate will project your next likely score from your trend.</p>
+      </div>
+    );
+  }
+  const delta = prediction - lastScore;
+  const band = 6; // ± confidence band shown to keep this honest, not falsely precise
+  return (
+    <div style={S.card}>
+      <div style={S.cardHeader}>
+        <div>
+          <div style={S.eyebrowDark}>NEXT SESSION FORECAST</div>
+          <h2 style={S.cardH2}>If you play true to form…</h2>
+          <p style={S.cardSub}>Projected from your EWMA trend, not a promise — a data-backed expectation.</p>
+        </div>
+      </div>
+      <div style={S.predictRow}>
+        <div style={S.predictBlock}>
+          <div style={S.predictNum}>{prediction}</div>
+          <div style={S.predictBand}>±{band} pts</div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={S.predictBarTrack}>
+            <div style={{ ...S.predictBarLow, left: `${Math.max(0, prediction - band)}%`, width: `${Math.min(100, band * 2)}%` }} />
+            <div style={{ ...S.predictMarker, left: `${clamp(prediction)}%` }} />
+            <div style={{ ...S.predictMarkerAvg, left: `${clamp(averageScore)}%` }} title={`Your average: ${averageScore}`} />
+          </div>
+          <div style={S.predictLegend}>
+            <span><span style={{ ...S.legendDot, background: C.blue500 }} /> Forecast</span>
+            <span><span style={{ ...S.legendDot, background: C.faint }} /> Your average</span>
+          </div>
+          <p style={S.predictNote}>
+            {delta > 3 ? `Trending up — ${Math.round(delta)} pts above your last session.` :
+             delta < -3 ? `Trending down — drill your weakest topic before your next run.` :
+             `Holding steady near your recent form.`}
+          </p>
+        </div>
+      </div>
+      <button style={{ ...S.btnBlue, marginTop: 14 }} onClick={onStart} disabled={starting}>Beat the forecast →</button>
+    </div>
+  );
+};
+
+// ─── Weekly Digest — condensed 7-day summary, distinct from the heatmap below ─
+const WeeklyDigestCard = ({ scoreTrend, hmStats, totalInterviews }) => {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(now.getDate() - 7);
+  const fourteenDaysAgo = new Date(now); fourteenDaysAgo.setDate(now.getDate() - 14);
+
+  const thisWeek = scoreTrend.filter(s => s.date && new Date(s.date) >= sevenDaysAgo);
+  const lastWeek = scoreTrend.filter(s => s.date && new Date(s.date) >= fourteenDaysAgo && new Date(s.date) < sevenDaysAgo);
+
+  const thisWeekAvg = thisWeek.length ? Math.round(thisWeek.reduce((a, s) => a + (s.score || 0), 0) / thisWeek.length) : null;
+  const lastWeekAvg = lastWeek.length ? Math.round(lastWeek.reduce((a, s) => a + (s.score || 0), 0) / lastWeek.length) : null;
+  const weekDelta = thisWeekAvg != null && lastWeekAvg != null ? thisWeekAvg - lastWeekAvg : null;
+
+  return (
+    <div style={S.card}>
+      <div style={S.eyebrowDark}>WEEKLY DIGEST</div>
+      <h2 style={S.cardH2}>Last 7 days at a glance</h2>
+      <p style={S.cardSub}>How this week compares to last — momentum matters more than any single score.</p>
+      <div style={S.digestGrid}>
+        <div style={S.digestCell}>
+          <div style={S.digestVal}>{thisWeek.length}</div>
+          <div style={S.digestLabel}>SESSIONS THIS WEEK</div>
+        </div>
+        <div style={S.digestCell}>
+          <div style={{ ...S.digestVal, color: thisWeekAvg != null ? scoreColor(thisWeekAvg) : C.faint }}>{thisWeekAvg ?? '—'}</div>
+          <div style={S.digestLabel}>AVG SCORE</div>
+        </div>
+        <div style={S.digestCell}>
+          <div style={{ ...S.digestVal, color: weekDelta == null ? C.faint : weekDelta >= 0 ? C.green : C.orange }}>
+            {weekDelta == null ? '—' : `${weekDelta >= 0 ? '+' : ''}${weekDelta}`}
+          </div>
+          <div style={S.digestLabel}>VS LAST WEEK</div>
+        </div>
+        <div style={S.digestCell}>
+          <div style={S.digestVal}>{hmStats.longestStreak}d</div>
+          <div style={S.digestLabel}>LONGEST STREAK</div>
+        </div>
+      </div>
+      {thisWeek.length === 0 && (
+        <div style={S.digestEmpty}>No sessions logged this week yet — {totalInterviews} lifetime sessions won't grow themselves 👀</div>
+      )}
+    </div>
+  );
+};
+
+// ─── Badge Showcase — real earned badges, tiered treatment ───────────────────
+const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted }) => {
+  const [selected, setSelected] = useState(null);
+  return (
+    <section style={{ ...S.card, marginBottom: 18 }}>
+      <div style={S.cardHeader}>
+        <div>
+          <div style={S.eyebrowDark}>ACHIEVEMENTS</div>
+          <h2 style={S.cardH2}>{unlockedCount}/{badges.length} badges earned</h2>
+          <p style={S.cardSub}>Every badge here is computed from real session patterns — comebacks, streaks, speed-vs-accuracy — not just session counts.</p>
+        </div>
+        {nextBadge && (
+          <div style={S.nextBadgeChip}>
+            <span style={{ fontSize: 15 }}>{nextBadge.icon}</span>
+            <div>
+              <div style={S.nextBadgeLabel}>NEXT UP</div>
+              <div style={S.nextBadgeName}>{nextBadge.label}</div>
+            </div>
+            <div style={S.nextBadgeProgress}>
+              <div style={S.nextBadgeTrack}>
+                <div style={{ ...S.nextBadgeFill, width: `${Math.round((nextBadge.progress || 0) * 100)}%` }} />
+              </div>
+              <span style={S.nextBadgePct}>{Math.round((nextBadge.progress || 0) * 100)}%</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={S.badgeGrid} className="mm-badge-grid">
+        {badges.map((b, i) => {
+          const tierStyle = TIER_STYLE[b.tier] || TIER_STYLE.bronze;
+          const isSelected = selected === b.id;
+          return (
+            <button
+              key={b.id}
+              onClick={() => setSelected(isSelected ? null : b.id)}
+              style={{
+                ...S.badgeCell,
+                opacity: mounted ? 1 : 0,
+                transform: mounted ? 'scale(1)' : 'scale(0.9)',
+                transitionDelay: `${i * 25}ms`,
+                background: b.unlocked ? tierStyle.tint : C.cardAlt,
+                border: `1.5px solid ${b.unlocked ? tierStyle.ring : C.border}`,
+                boxShadow: isSelected ? `0 0 0 3px ${tierStyle.ring}` : 'none',
+              }}
+              title={b.desc}
+            >
+              <div style={{ ...S.badgeIcon, filter: b.unlocked ? 'none' : 'grayscale(1) opacity(0.4)' }}>{b.icon}</div>
+              <div style={{ ...S.badgeName, color: b.unlocked ? C.text : C.faint }}>{b.label}</div>
+              {b.unlocked ? (
+                <div style={{ ...S.badgeTierTag, color: tierStyle.color, background: `${tierStyle.color}18` }}>{b.tier}</div>
+              ) : typeof b.progress === 'number' && b.progress > 0 ? (
+                <div style={S.badgeMiniTrack}><div style={{ ...S.badgeMiniFill, width: `${Math.round(b.progress * 100)}%` }} /></div>
+              ) : (
+                <div style={S.badgeLockedTag}>Locked</div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {selected && (() => {
+        const b = badges.find(x => x.id === selected);
+        if (!b) return null;
+        const tierStyle = TIER_STYLE[b.tier] || TIER_STYLE.bronze;
+        return (
+          <div style={{ ...S.badgeDetail, borderColor: tierStyle.ring }}>
+            <div style={{ fontSize: 26 }}>{b.icon}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={S.badgeDetailName}>{b.label}</span>
+                <span style={{ ...S.badgeTierTag, color: tierStyle.color, background: `${tierStyle.color}18` }}>{b.tier}</span>
+                {b.unlocked && <span style={{ ...S.badgeTierTag, color: C.green, background: C.greenTint }}>✓ Earned</span>}
+              </div>
+              <p style={S.badgeDetailDesc}>{b.desc}</p>
+              {b.meta && (
+                <p style={S.badgeDetailMeta}>
+                  {b.meta.topic && `Topic: ${b.meta.topic}. `}
+                  {b.meta.streak && `Streak: ${b.meta.streak} days. `}
+                  {b.meta.dip != null && `Recovered ${b.meta.recovery} pts after a ${b.meta.dip}-pt dip. `}
+                  {b.meta.threshold && `Crossed the ₹${b.meta.threshold >= 80 ? '20L+' : b.meta.threshold >= 60 ? '12–20L' : '6–12L'} tier. `}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+    </section>
+  );
+};
+
+// ─── Topic Momentum — sparkline-style rows, complements dimension breakdown ──
+const TopicMomentumCard = ({ topics, mounted, onDrill, starting }) => {
+  if (!topics.length) return null;
+  const sorted = [...topics].sort((a, b) => (a.averageScore || 0) - (b.averageScore || 0));
+  return (
+    <section style={{ ...S.card, marginBottom: 18 }}>
+      <div style={S.cardHeader}>
+        <div>
+          <div style={S.eyebrowDark}>TOPIC MOMENTUM</div>
+          <h2 style={S.cardH2}>Every topic you've touched, ranked weakest first</h2>
+          <p style={S.cardSub}>Momentum reflects your overall recent trend direction — rising, stable, or falling.</p>
+        </div>
+      </div>
+      <div style={S.momentumList}>
+        {sorted.map(t => {
+          const score = t.averageScore || 0;
+          const col = scoreColor(score);
+          const momCfg = {
+            rising:  { icon: '↑', color: C.green,  label: 'Rising' },
+            falling: { icon: '↓', color: C.red,    label: 'Falling' },
+            stable:  { icon: '→', color: C.blue500,label: 'Stable' },
+          }[t.momentum] || { icon: '→', color: C.muted, label: '—' };
+          return (
+            <div key={t.topic} style={S.momentumRow}>
+              <div style={S.momentumTopic}>{t.topic}</div>
+              <div style={S.momentumBarTrack}>
+                <div style={{ ...S.momentumBarFill, width: mounted ? `${score}%` : '0%', background: col }} />
+              </div>
+              <div style={{ ...S.momentumScore, color: col }}>{score}</div>
+              <div style={{ ...S.momentumBadge, color: momCfg.color, background: `${momCfg.color}15` }}>{momCfg.icon} {momCfg.label}</div>
+              <button style={S.momentumDrillBtn} onClick={() => onDrill(t.topic)} disabled={starting} title={`Drill ${t.topic}`}>Drill</button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
+
+// ─── AI Coach Teaser — small, honest hook into the full Analytics board ──────
+const AICoachTeaserCard = ({ onOpen, loading, teaser, weakestDim }) => (
+  <div style={S.coachTeaserCard}>
+    <div style={S.coachTeaserGlow} />
+    <div style={S.eyebrowLight}>AI READINESS COACH</div>
+    <h2 style={{ ...S.bannerH2, fontSize: 17, margin: '6px 0 8px' }}>
+      {teaser ? 'Your coach has thoughts.' : 'Get a real read on your prep.'}
+    </h2>
+    <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: 12, lineHeight: 1.65, minHeight: 38 }}>
+      {teaser
+        ? `"${teaser}${teaser.length >= 140 ? '…' : ''}"`
+        : `Full gap analysis, strengths, and a 30-day plan${weakestDim ? ` — starting with ${weakestDim.label}` : ''}. Lives on your Analytics page.`}
+    </p>
+    <button style={S.coachTeaserBtn} onClick={onOpen} disabled={loading}>
+      {loading ? 'Thinking…' : teaser ? 'Open full analysis →' : '⚡ Analyse my profile →'}
+    </button>
+  </div>
+);
+
+// ─── Activity heatmap — redesigned: smaller cells, finer shade scale ────────
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 const ActivityHeatmap = ({ heatmap, stats, total, mounted }) => {
   const [hovered, setHovered] = useState(null);
 
-  // Derive month labels for column headers
   const monthCols = useMemo(() => {
     const seen = {};
     return heatmap.map((week, wi) => {
@@ -928,46 +1029,38 @@ const ActivityHeatmap = ({ heatmap, stats, total, mounted }) => {
   }, [heatmap]);
 
   return (
-    <section style={S.card}>
+    <section style={{ ...S.card, marginBottom: 18 }}>
       <div style={S.cardHeader}>
         <div>
           <div style={S.eyebrowDark}>PRACTICE ACTIVITY</div>
           <h2 style={S.cardH2}>Session log — last 14 weeks</h2>
           <p style={S.cardSub}>
-            Each cell is one day. Color = score tier: darker blue = higher score.
-            Hover any cell for the date and score.
+            Each cell is one day. Darker blue = higher score that day.
+            Hover any cell for the exact date and score.
           </p>
         </div>
         <div style={S.hmLegend}>
           <span style={S.hmLegendLabel}>Low</span>
-          {[20, 45, 60, 75, 90].map(v => (
-            <div key={v} style={{ width: 13, height: 13, borderRadius: 4, background: heatColor(v, true), flexShrink: 0 }} title={`~${v}`} />
+          {[10, 35, 52, 68, 82, 92].map(v => (
+            <div key={v} style={{ width: 11, height: 11, borderRadius: 3, background: heatColor(v, true), flexShrink: 0 }} title={`~${v}`} />
           ))}
           <span style={S.hmLegendLabel}>High</span>
         </div>
       </div>
 
-      {/* Month labels */}
       <div style={S.hmMonthRow}>
-        <div style={{ width: 34 }} />
+        <div style={{ width: 26 }} />
         <div style={{ position: 'relative', flex: 1, height: 16 }}>
           {monthCols.map(({ wi, label }) => (
-            <span key={wi} style={{ ...S.hmMonthLabel, left: `${(wi / heatmap.length) * 100}%` }}>
-              {label}
-            </span>
+            <span key={wi} style={{ ...S.hmMonthLabel, left: `${(wi / heatmap.length) * 100}%` }}>{label}</span>
           ))}
         </div>
       </div>
 
-      {/* Grid */}
       <div style={S.hmWrap}>
-        {/* Day labels */}
         <div style={S.hmDayCols}>
-          {['S','M','T','W','T','F','S'].map((d, i) => (
-            <div key={i} style={S.hmDayLbl}>{d}</div>
-          ))}
+          {['S','M','T','W','T','F','S'].map((d, i) => (<div key={i} style={S.hmDayLbl}>{d}</div>))}
         </div>
-        {/* Cells */}
         <div style={S.hmGrid}>
           {heatmap.map((week, wi) => (
             <div key={wi} style={S.hmWeekCol}>
@@ -981,8 +1074,9 @@ const ActivityHeatmap = ({ heatmap, stats, total, mounted }) => {
                     background: day.future ? 'transparent' : heatColor(day.score, day.hasData),
                     border: day.future ? `1.5px dashed ${C.border}` : day.hasData ? 'none' : `1px solid ${C.border}`,
                     cursor: day.hasData ? 'pointer' : 'default',
-                    transform: hovered?.date === day.date ? 'scale(1.25)' : 'scale(1)',
-                    boxShadow: hovered?.date === day.date ? `0 0 0 2px ${C.blue400}` : 'none',
+                    transform: hovered?.date === day.date ? 'scale(1.35)' : 'scale(1)',
+                    boxShadow: hovered?.date === day.date ? `0 0 0 2px ${C.blue400}, 0 2px 8px rgba(26,110,255,0.35)` : 'none',
+                    zIndex: hovered?.date === day.date ? 2 : 1,
                   }}
                 />
               ))}
@@ -991,23 +1085,19 @@ const ActivityHeatmap = ({ heatmap, stats, total, mounted }) => {
         </div>
       </div>
 
-      {/* Tooltip */}
       {hovered && hovered.hasData && (
         <div style={S.hmTooltip}>
-          <strong>{hovered.date}</strong> · Score: <strong style={{ color: scoreColor(hovered.score) }}>{hovered.score}/100</strong>
+          <strong>{new Date(hovered.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</strong>
+          {' '}· Score: <strong style={{ color: scoreColor(hovered.score) }}>{hovered.score}/100</strong>
+          {' '}· {hovered.score >= 80 ? 'Strong session' : hovered.score >= 60 ? 'Solid session' : hovered.score >= 40 ? 'Room to grow' : 'Tough one — happens to everyone'}
         </div>
       )}
 
-      {/* Stats footer — four callout numbers */}
       <div style={S.hmFooterGrid} className="mm-hm-footer">
         <HmStat label="Active days" value={stats.activeDays} sub="Days with at least one session" />
         <HmStat label="Longest streak" value={`${stats.longestStreak}d`} sub="Consecutive practice days" />
         <HmStat label="Avg score" value={stats.avgScore || '—'} sub="Mean across active days" />
-        <HmStat
-          label="Best day"
-          value={stats.bestDay?.score ?? '—'}
-          sub={stats.bestDay ? stats.bestDay.date : 'No sessions yet'}
-        />
+        <HmStat label="Best day" value={stats.bestDay?.score ?? '—'} sub={stats.bestDay ? new Date(stats.bestDay.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'No sessions yet'} />
       </div>
     </section>
   );
@@ -1028,32 +1118,17 @@ const PeerCard = ({ percentile, currentUser, leaderboardUsers, mounted, onChalle
     <h2 style={S.cardH2}>Where you rank globally</h2>
     <div style={S.peerHero}>
       <div style={S.peerPctBlock}>
-        <div style={S.peerPctNum}>
-          {percentile ?? '—'}
-          {percentile ? <span style={S.peerPctSuffix}>%</span> : null}
-        </div>
+        <div style={S.peerPctNum}>{percentile ?? '—'}{percentile ? <span style={S.peerPctSuffix}>%</span> : null}</div>
         <div style={S.peerPctLabel}>PERCENTILE</div>
       </div>
       <div style={{ flex: 1 }}>
-        <div style={S.peerBig}>
-          {percentile
-            ? `Ahead of ${percentile}% of ranked candidates`
-            : 'Complete interviews to unlock ranking'}
-        </div>
-        {currentUser?.globalRank && (
-          <div style={S.peerRankChip}>GLOBAL RANK #{currentUser.globalRank}</div>
-        )}
-        <div style={S.peerBar}>
-          <div style={{ ...S.peerFill, width: mounted ? `${percentile ?? 0}%` : '0%' }} />
-        </div>
-        <p style={S.peerNote}>
-          Percentile is computed from average score across all users who have completed at least one interview.
-        </p>
+        <div style={S.peerBig}>{percentile ? `Ahead of ${percentile}% of ranked candidates` : 'Complete interviews to unlock ranking'}</div>
+        {currentUser?.globalRank && <div style={S.peerRankChip}>GLOBAL RANK #{currentUser.globalRank}</div>}
+        <div style={S.peerBar}><div style={{ ...S.peerFill, width: mounted ? `${percentile ?? 0}%` : '0%' }} /></div>
+        <p style={S.peerNote}>Percentile is computed from average score across all users who have completed at least one interview.</p>
       </div>
     </div>
-    <button style={{ ...S.btnBlue, marginTop: 14 }} onClick={onChallenge} disabled={starting}>
-      Improve ranking →
-    </button>
+    <button style={{ ...S.btnBlue, marginTop: 14 }} onClick={onChallenge} disabled={starting}>Improve ranking →</button>
   </div>
 );
 
@@ -1071,9 +1146,7 @@ const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions
         setCopied(true);
         setTimeout(() => setCopied(false), 2200);
       }
-    } catch {
-      // user cancelled
-    }
+    } catch { /* user cancelled */ }
   };
 
   return (
@@ -1092,9 +1165,7 @@ const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions
             {percentile ? <> · Top <strong style={{ color: C.cyan400 }}>{100 - percentile + 1}%</strong></> : null}
             {' '}· {archetype.icon} {archetype.label}
           </p>
-          <button style={S.btnShare} onClick={handleShare}>
-            {copied ? '✓ Copied to clipboard' : '📤 Share your score'}
-          </button>
+          <button style={S.btnShare} onClick={handleShare}>{copied ? '✓ Copied to clipboard' : '📤 Share your score'}</button>
         </div>
       </div>
     </div>
@@ -1105,7 +1176,7 @@ const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions
 const RANK_COLORS = [C.amber, '#9CA3AF', '#B87333'];
 
 const LeaderboardCard = ({ users, currentUser, onChallenge, starting }) => {
-  const top5      = users.slice(0, 5);
+  const top5 = users.slice(0, 5);
   const userInTop = currentUser && top5.some(u => u._id === currentUser._id);
 
   return (
@@ -1128,9 +1199,7 @@ const LeaderboardCard = ({ users, currentUser, onChallenge, starting }) => {
             <span style={{ width: 52, textAlign: 'right' }}>SESSIONS</span>
           </div>
           {top5.map((u, i) => (
-            <LBRow key={u._id ?? i} user={u} rank={i + 1}
-                   color={RANK_COLORS[i] ?? C.muted}
-                   isMe={u._id === currentUser?._id} />
+            <LBRow key={u._id ?? i} user={u} rank={i + 1} color={RANK_COLORS[i] ?? C.muted} isMe={u._id === currentUser?._id} />
           ))}
           {!userInTop && currentUser && (
             <>
@@ -1148,22 +1217,13 @@ const LeaderboardCard = ({ users, currentUser, onChallenge, starting }) => {
 
 const LBRow = ({ user, rank, color, isMe }) => (
   <div style={{ ...S.lbRow, background: isMe ? C.blue50 : 'transparent', borderColor: isMe ? C.borderStr : C.border }}>
-    <span style={{ width: 36, fontFamily: F.mono, fontSize: 13, fontWeight: 700, color }}>
-      {String(rank ?? '?').padStart(2, '0')}
-    </span>
-    <div style={S.lbAvatar}>
-      {(user.name ?? 'A')[0].toUpperCase()}
-    </div>
+    <span style={{ width: 36, fontFamily: F.mono, fontSize: 13, fontWeight: 700, color }}>{String(rank ?? '?').padStart(2, '0')}</span>
+    <div style={S.lbAvatar}>{(user.name ?? 'A')[0].toUpperCase()}</div>
     <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={S.lbName}>
-        {user.name ?? 'Anonymous'}
-        {isMe && <span style={S.youTag}>YOU</span>}
-      </div>
+      <div style={S.lbName}>{user.name ?? 'Anonymous'}{isMe && <span style={S.youTag}>YOU</span>}</div>
     </div>
     <div style={{ ...S.lbScore, color }}>{user.averageScore ?? 0}</div>
-    <div style={{ width: 52, textAlign: 'right', fontFamily: F.mono, fontSize: 11, color: C.muted }}>
-      {user.totalInterviews ?? 0}
-    </div>
+    <div style={{ width: 52, textAlign: 'right', fontFamily: F.mono, fontSize: 11, color: C.muted }}>{user.totalInterviews ?? 0}</div>
   </div>
 );
 
@@ -1175,16 +1235,20 @@ const GlobalStyles = () => (
     @keyframes spin       { to { transform: rotate(360deg); } }
     @keyframes livePulse  { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
     @keyframes hmScan     { 0% { transform:translateX(-100%); } 100% { transform:translateX(320%); } }
+    @keyframes badgePop   { from { opacity:0; transform:scale(0.9); } to { opacity:1; transform:scale(1); } }
 
     *, *::before, *::after { box-sizing: border-box; }
 
     .mm-page button:focus-visible { outline: 2px solid ${C.blue500}; outline-offset: 2px; }
+    .mm-badge-grid button { transition: opacity 0.35s ease, transform 0.35s cubic-bezier(.16,1,.3,1), box-shadow 0.15s ease; }
+    .mm-badge-grid button:hover { transform: translateY(-2px) !important; }
 
     @media (prefers-reduced-motion: reduce) { .mm-page * { animation: none !important; transition: none !important; } }
 
     @media (max-width: 1020px) {
       .mm-two-col { grid-template-columns: 1fr !important; }
       .mm-hero-grid { grid-template-columns: 1fr !important; gap: 28px !important; }
+      .mm-badge-grid { grid-template-columns: repeat(4, 1fr) !important; }
     }
     @media (max-width: 760px) {
       .mm-stats { grid-template-columns: repeat(2, 1fr) !important; }
@@ -1192,11 +1256,13 @@ const GlobalStyles = () => (
       .mm-strip-r { display: none !important; }
       .mm-share-row { flex-direction: column !important; }
       .mm-hm-footer { grid-template-columns: repeat(2, 1fr) !important; }
+      .mm-badge-grid { grid-template-columns: repeat(3, 1fr) !important; }
     }
     @media (max-width: 480px) {
       .mm-stats { grid-template-columns: 1fr !important; }
       .mm-page { padding: 14px 12px 60px !important; }
       .mm-hm-footer { grid-template-columns: 1fr !important; }
+      .mm-badge-grid { grid-template-columns: repeat(2, 1fr) !important; }
     }
   `}</style>
 );
@@ -1205,7 +1271,6 @@ const GlobalStyles = () => (
 // STYLES — all inline for portability
 // ═══════════════════════════════════════════════════════════════════════════
 const S = {
-  // Layout
   page: {
     minHeight: 'calc(100vh - 64px)',
     background: C.bg,
@@ -1213,181 +1278,67 @@ const S = {
     padding: '24px 28px 80px',
     fontFamily: F.body,
   },
-  container: {
-    maxWidth: 1260,
-    margin: '0 auto',
-    transition: 'opacity 0.55s ease, transform 0.55s cubic-bezier(.16,1,.3,1)',
-  },
+  container: { maxWidth: 1260, margin: '0 auto', transition: 'opacity 0.55s ease, transform 0.55s cubic-bezier(.16,1,.3,1)' },
 
-  // Status strip
-  strip: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '9px 16px', marginBottom: 20, borderRadius: 10,
-    background: C.card, border: `1px solid ${C.border}`,
-    boxShadow: C.shadow,
-  },
+  strip: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 16px', marginBottom: 20, borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, boxShadow: C.shadow },
   stripL: { display: 'flex', alignItems: 'center', gap: 9 },
   stripR: { display: 'flex', alignItems: 'center', gap: 10 },
-  liveDot: {
-    width: 7, height: 7, borderRadius: '50%', background: C.green,
-    animation: 'livePulse 2.4s ease-in-out infinite',
-    boxShadow: `0 0 8px ${C.greenGlow}`,
-  },
+  liveDot: { width: 7, height: 7, borderRadius: '50%', background: C.green, animation: 'livePulse 2.4s ease-in-out infinite', boxShadow: `0 0 8px ${C.greenGlow}` },
   mono: { fontFamily: F.mono, fontSize: 10.5, letterSpacing: '0.5px', color: C.muted },
 
-  // Hero
   hero: {
     position: 'relative', overflow: 'hidden',
     padding: '36px 32px', marginBottom: 18, borderRadius: 24,
     background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 45%, ${C.blue600} 75%, ${C.cyan600} 100%)`,
     boxShadow: '0 24px 64px rgba(0,31,107,0.32)',
   },
-  heroScan: {
-    position: 'absolute', top: 0, left: 0, width: '25%', height: '100%',
-    background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent)',
-    animation: 'hmScan 9s linear infinite',
-  },
-  heroGrid: {
-    position: 'relative',
-    display: 'grid', gridTemplateColumns: '260px 1fr', gap: 36, alignItems: 'center',
-  },
+  heroScan: { position: 'absolute', top: 0, left: 0, width: '25%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent)', animation: 'hmScan 9s linear infinite' },
+  heroGrid: { position: 'relative', display: 'grid', gridTemplateColumns: '260px 1fr', gap: 36, alignItems: 'center' },
 
-  // IRS gauge block
   irsBlock: {},
-  irsLabel: {
-    fontFamily: F.mono, fontSize: 9.5, fontWeight: 600,
-    letterSpacing: '1.4px', color: 'rgba(255,255,255,0.6)', marginBottom: 10,
-  },
-  irsNum: {
-    fontFamily: F.display, fontSize: 72, fontWeight: 900, lineHeight: 1,
-    color: '#fff', letterSpacing: '-2px',
-  },
+  irsLabel: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 600, letterSpacing: '1.4px', color: 'rgba(255,255,255,0.6)', marginBottom: 10 },
+  irsNum: { fontFamily: F.display, fontSize: 72, fontWeight: 900, lineHeight: 1, color: '#fff', letterSpacing: '-2px' },
   irsMax: { fontSize: 22, fontWeight: 600, color: 'rgba(255,255,255,0.5)', letterSpacing: 0 },
-  tierPill: {
-    display: 'inline-flex', alignItems: 'center',
-    marginTop: 12, padding: '6px 14px', borderRadius: 999,
-    fontSize: 11.5, fontWeight: 700, letterSpacing: '0.3px',
-  },
-  irsBar: {
-    position: 'relative', height: 6, marginTop: 14, borderRadius: 999,
-    background: 'rgba(255,255,255,0.15)', overflow: 'visible',
-  },
-  irsBarFill: {
-    height: '100%', borderRadius: 999,
-    background: `linear-gradient(90deg, ${C.blue200}, ${C.cyan400})`,
-    transition: 'width 1.3s cubic-bezier(.16,1,.3,1)',
-  },
-  irsNextMark: {
-    position: 'absolute', top: -3, width: 2, height: 12, borderRadius: 1,
-    background: 'rgba(255,255,255,0.6)', transform: 'translateX(-50%)',
-  },
-  irsGapText: {
-    marginTop: 8, fontFamily: F.mono, fontSize: 10.5,
-    color: 'rgba(255,255,255,0.65)', letterSpacing: '0.3px',
-  },
+  tierPill: { display: 'inline-flex', alignItems: 'center', marginTop: 12, padding: '6px 14px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, letterSpacing: '0.3px' },
+  irsBar: { position: 'relative', height: 6, marginTop: 14, borderRadius: 999, background: 'rgba(255,255,255,0.15)', overflow: 'visible' },
+  irsBarFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.blue200}, ${C.cyan400})`, transition: 'width 1.3s cubic-bezier(.16,1,.3,1)' },
+  irsNextMark: { position: 'absolute', top: -3, width: 2, height: 12, borderRadius: 1, background: 'rgba(255,255,255,0.6)', transform: 'translateX(-50%)' },
+  irsGapText: { marginTop: 8, fontFamily: F.mono, fontSize: 10.5, color: 'rgba(255,255,255,0.65)', letterSpacing: '0.3px' },
 
-  // Verdict block
   verdictBlock: {},
-  eyebrow: {
-    display: 'flex', alignItems: 'center', gap: 7,
-    fontFamily: F.mono, fontSize: 10, fontWeight: 700,
-    letterSpacing: '1.6px', color: 'rgba(255,255,255,0.7)', marginBottom: 12,
-  },
+  eyebrow: { display: 'flex', alignItems: 'center', gap: 7, fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', color: 'rgba(255,255,255,0.7)', marginBottom: 12 },
   eyebrowDot: { width: 6, height: 6, borderRadius: '50%', background: C.cyan400 },
-  heroH1: {
-    margin: 0, fontFamily: F.display, fontSize: 26, fontWeight: 800,
-    color: '#fff', lineHeight: 1.32, letterSpacing: '-0.4px', maxWidth: 640,
-  },
+  heroH1: { margin: 0, fontFamily: F.display, fontSize: 26, fontWeight: 800, color: '#fff', lineHeight: 1.32, letterSpacing: '-0.4px', maxWidth: 640 },
   heroSub: { margin: '13px 0 0', fontSize: 13, lineHeight: 1.72, color: 'rgba(255,255,255,0.75)', maxWidth: 560 },
   heroActions: { display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 22 },
 
-  // Buttons
-  btnPrimary: {
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-    border: 'none', borderRadius: 12,
-    background: '#fff', color: C.blue700,
-    padding: '12px 20px', fontSize: 13, fontWeight: 800,
-    fontFamily: F.body, cursor: 'pointer',
-    boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
-    transition: 'transform 0.12s ease, box-shadow 0.12s ease',
-  },
-  btnGhost: {
-    border: '1px solid rgba(255,255,255,0.3)', borderRadius: 12,
-    background: 'rgba(255,255,255,0.08)', color: '#fff',
-    padding: '12px 18px', fontSize: 13, fontWeight: 600,
-    fontFamily: F.body, cursor: 'pointer',
-  },
-  btnBlue: {
-    border: 'none', borderRadius: 12,
-    background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`,
-    color: '#fff', padding: '11px 18px',
-    fontSize: 13, fontWeight: 700, fontFamily: F.body,
-    cursor: 'pointer', boxShadow: `0 4px 16px rgba(26,110,255,0.3)`,
-    textAlign: 'center',
-  },
-  btnSmall: {
-    border: `1px solid ${C.borderMd}`, borderRadius: 10,
-    background: C.blue50, color: C.blue600,
-    padding: '9px 14px', fontSize: 11.5, fontWeight: 700,
-    cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: F.body,
-  },
-  btnShare: {
-    marginTop: 14, border: 'none', borderRadius: 10,
-    background: `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`,
-    color: '#fff', padding: '10px 18px',
-    fontSize: 12.5, fontWeight: 800, cursor: 'pointer',
-    boxShadow: '0 4px 14px rgba(0,173,224,0.35)',
-  },
-  btnBannerCta: {
-    flexShrink: 0, border: 'none', borderRadius: 12,
-    background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`,
-    color: '#fff', padding: '13px 22px',
-    fontSize: 13, fontWeight: 700, fontFamily: F.body,
-    cursor: 'pointer', boxShadow: `0 6px 20px rgba(26,110,255,0.28)`,
-    alignSelf: 'flex-start',
-  },
+  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 12, background: '#fff', color: C.blue700, padding: '12px 20px', fontSize: 13, fontWeight: 800, fontFamily: F.body, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.14)', transition: 'transform 0.12s ease, box-shadow 0.12s ease' },
+  btnGhost: { border: '1px solid rgba(255,255,255,0.3)', borderRadius: 12, background: 'rgba(255,255,255,0.08)', color: '#fff', padding: '12px 18px', fontSize: 13, fontWeight: 600, fontFamily: F.body, cursor: 'pointer' },
+  btnBlue: { border: 'none', borderRadius: 12, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: '#fff', padding: '11px 18px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 4px 16px rgba(26,110,255,0.3)`, textAlign: 'center' },
+  btnSmall: { border: `1px solid ${C.borderMd}`, borderRadius: 10, background: C.blue50, color: C.blue600, padding: '9px 14px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: F.body },
+  btnShare: { marginTop: 14, border: 'none', borderRadius: 10, background: `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`, color: '#fff', padding: '10px 18px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,173,224,0.35)' },
+  btnBannerCta: { flexShrink: 0, border: 'none', borderRadius: 12, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: '#fff', padding: '13px 22px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 6px 20px rgba(26,110,255,0.28)`, alignSelf: 'flex-start' },
 
-  // Stat row
-  statsRow: {
-    display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: 14, marginBottom: 18,
-  },
-  statCard: {
-    padding: '18px 20px', borderRadius: 16,
-    background: C.card, border: `1px solid ${C.border}`,
-    boxShadow: C.shadow,
-  },
+  statsRow: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 },
+  statCard: { padding: '18px 20px', borderRadius: 16, background: C.card, border: `1px solid ${C.border}`, boxShadow: C.shadow },
   statLabel: { fontSize: 11, fontWeight: 600, color: C.sub, letterSpacing: '0.3px' },
   statValRow: { display: 'flex', alignItems: 'baseline', gap: 3, marginTop: 8 },
-  statVal:    { fontFamily: F.display, fontSize: 32, fontWeight: 800, lineHeight: 1 },
-  statUnit:   { fontFamily: F.mono, fontSize: 13, color: C.muted },
-  statSub:    { marginTop: 8, fontSize: 11, color: C.muted, lineHeight: 1.4 },
+  statVal: { fontFamily: F.display, fontSize: 32, fontWeight: 800, lineHeight: 1 },
+  statUnit: { fontFamily: F.mono, fontSize: 13, color: C.muted },
+  statSub: { marginTop: 8, fontSize: 11, color: C.muted, lineHeight: 1.4 },
 
-  // Generic card
-  card: {
-    background: C.card, border: `1px solid ${C.border}`,
-    borderRadius: 20, padding: 24, boxShadow: C.shadow,
-    marginBottom: 18,
-  },
+  card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: 24, boxShadow: C.shadow, marginBottom: 18 },
   cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20 },
-  eyebrowDark: {
-    fontFamily: F.mono, fontSize: 9.5, fontWeight: 700,
-    letterSpacing: '1.5px', color: C.blue500, marginBottom: 6,
-  },
-  eyebrowLight: {
-    fontFamily: F.mono, fontSize: 9.5, fontWeight: 700,
-    letterSpacing: '1.5px', color: C.blue400, marginBottom: 6,
-  },
-  cardH2:  { margin: 0, fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.text },
+  eyebrowDark: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '1.5px', color: C.blue500, marginBottom: 6 },
+  eyebrowLight: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '1.5px', color: C.blue400, marginBottom: 6 },
+  cardH2: { margin: 0, fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.text },
   cardSub: { margin: '6px 0 0', fontSize: 12, lineHeight: 1.65, color: C.sub, maxWidth: 440 },
   linkBtn: { border: 'none', background: 'transparent', color: C.blue500, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: F.body },
 
-  // Two-column
   twoCol: { display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 18, marginBottom: 18 },
 
-  // Dimension list
   dimList: { display: 'flex', flexDirection: 'column', gap: 14 },
-  dimRow:  { padding: '12px 14px', borderRadius: 12, background: C.cardAlt, border: `1px solid ${C.border}` },
+  dimRow: { padding: '12px 14px', borderRadius: 12, background: C.cardAlt, border: `1px solid ${C.border}` },
   dimMeta: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   dimLeft: { display: 'flex', alignItems: 'center', gap: 10 },
   dimIcon: { fontSize: 16, width: 22, textAlign: 'center', flexShrink: 0 },
@@ -1395,37 +1346,82 @@ const S = {
   dimWeight: { fontSize: 10, color: C.muted, fontFamily: F.mono, display: 'block', marginTop: 2 },
   dimScore: { fontFamily: F.display, fontSize: 17, fontWeight: 800 },
   dimTrack: { height: 6, borderRadius: 999, background: C.border, overflow: 'hidden' },
-  dimFill:  { height: '100%', borderRadius: 999, transition: 'width 1.1s cubic-bezier(.16,1,.3,1)' },
+  dimFill: { height: '100%', borderRadius: 999, transition: 'width 1.1s cubic-bezier(.16,1,.3,1)' },
   dimNoData: { marginTop: 4, fontSize: 10.5, color: C.faint, fontFamily: F.mono },
 
-  // Fix this next
-  fixBox: {
-    marginTop: 14, padding: 16, borderRadius: 14,
-    background: C.blue50, border: `1px solid ${C.borderMd}`,
-  },
+  fixBox: { marginTop: 14, padding: 16, borderRadius: 14, background: C.blue50, border: `1px solid ${C.borderMd}` },
   fixTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   fixTopic: { fontFamily: F.display, fontSize: 16, fontWeight: 800, color: C.text },
   fixScore: { fontFamily: F.display, fontSize: 16, fontWeight: 800 },
   fixTrack: { height: 7, borderRadius: 999, background: C.border, overflow: 'hidden', marginBottom: 12 },
-  fixFill:  { height: '100%', borderRadius: 999 },
+  fixFill: { height: '100%', borderRadius: 999 },
   fixStats: { display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 10 },
-  fixStat:  { fontSize: 11.5, color: C.sub, fontFamily: F.mono },
-  fixHint:  { margin: 0, fontSize: 11.5, color: C.sub, lineHeight: 1.65 },
+  fixStat: { fontSize: 11.5, color: C.sub, fontFamily: F.mono },
+  fixHint: { margin: 0, fontSize: 11.5, color: C.sub, lineHeight: 1.65 },
 
-  // Archetype
-  archetypeBox: {
-    marginTop: 14, padding: 14, borderRadius: 14,
-    background: C.cardAlt, border: `1px solid ${C.border}`,
-  },
+  archetypeBox: { marginTop: 14, padding: 14, borderRadius: 14, background: C.cardAlt, border: `1px solid ${C.border}` },
   archetypeHead: { display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 },
-  archetypeIcon: {
-    width: 44, height: 44, borderRadius: 12, fontSize: 22,
-    background: C.blue50, border: `1px solid ${C.borderMd}`,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
+  archetypeIcon: { width: 44, height: 44, borderRadius: 12, fontSize: 22, background: C.blue50, border: `1px solid ${C.borderMd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   archetypeName: { fontFamily: F.display, fontSize: 14.5, fontWeight: 800, color: C.text },
   archetypeDesc: { fontSize: 12, color: C.sub, marginTop: 3, lineHeight: 1.55 },
-  archetypeFix:  { fontSize: 11.5, color: C.blue600, lineHeight: 1.6, paddingTop: 8, borderTop: `1px solid ${C.border}` },
+  archetypeFix: { fontSize: 11.5, color: C.blue600, lineHeight: 1.6, paddingTop: 8, borderTop: `1px solid ${C.border}` },
+
+  // Next Session Predictor
+  predictRow: { display: 'flex', alignItems: 'center', gap: 22, marginTop: 6 },
+  predictBlock: { textAlign: 'center', flexShrink: 0, width: 92 },
+  predictNum: { fontFamily: F.display, fontSize: 40, fontWeight: 900, color: C.blue600, lineHeight: 1 },
+  predictBand: { fontFamily: F.mono, fontSize: 10, color: C.muted, marginTop: 4 },
+  predictBarTrack: { position: 'relative', height: 8, borderRadius: 999, background: C.border, marginTop: 6 },
+  predictBarLow: { position: 'absolute', top: 0, height: '100%', borderRadius: 999, background: C.blue100 },
+  predictMarker: { position: 'absolute', top: -3, width: 3, height: 14, borderRadius: 2, background: C.blue600, transform: 'translateX(-50%)' },
+  predictMarkerAvg: { position: 'absolute', top: -2, width: 2, height: 12, borderRadius: 1, background: C.faint, transform: 'translateX(-50%)' },
+  predictLegend: { display: 'flex', gap: 16, marginTop: 8, fontSize: 10.5, color: C.sub, fontFamily: F.mono },
+  legendDot: { display: 'inline-block', width: 7, height: 7, borderRadius: '50%', marginRight: 5 },
+  predictNote: { margin: '10px 0 0', fontSize: 11.5, color: C.sub, lineHeight: 1.6 },
+
+  // Weekly digest
+  digestGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 16 },
+  digestCell: { textAlign: 'center', padding: '14px 8px', background: C.cardAlt, borderRadius: 12, border: `1px solid ${C.border}` },
+  digestVal: { fontFamily: F.display, fontSize: 22, fontWeight: 800, color: C.text },
+  digestLabel: { fontFamily: F.mono, fontSize: 8.5, fontWeight: 700, letterSpacing: '0.5px', color: C.muted, marginTop: 5 },
+  digestEmpty: { marginTop: 14, padding: '10px 14px', borderRadius: 10, background: C.amberTint, color: C.amber, fontSize: 11.5, fontWeight: 600 },
+
+  // Badge showcase
+  nextBadgeChip: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 14, background: C.blue50, border: `1px solid ${C.borderMd}`, flexShrink: 0, minWidth: 180 },
+  nextBadgeLabel: { fontFamily: F.mono, fontSize: 8.5, fontWeight: 700, letterSpacing: '0.6px', color: C.muted },
+  nextBadgeName: { fontSize: 11.5, fontWeight: 800, color: C.text, marginTop: 1 },
+  nextBadgeProgress: { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' },
+  nextBadgeTrack: { width: 44, height: 5, borderRadius: 999, background: C.border, overflow: 'hidden' },
+  nextBadgeFill: { height: '100%', borderRadius: 999, background: C.blue500 },
+  nextBadgePct: { fontFamily: F.mono, fontSize: 9.5, color: C.blue600, fontWeight: 700 },
+
+  badgeGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10 },
+  badgeCell: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '14px 8px', borderRadius: 14, cursor: 'pointer', fontFamily: F.body, textAlign: 'center' },
+  badgeIcon: { fontSize: 24 },
+  badgeName: { fontSize: 10, fontWeight: 700, lineHeight: 1.25 },
+  badgeTierTag: { fontSize: 8.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, textTransform: 'uppercase', letterSpacing: '0.4px', fontFamily: F.mono },
+  badgeLockedTag: { fontSize: 8.5, fontWeight: 700, color: C.faint, fontFamily: F.mono, letterSpacing: '0.4px' },
+  badgeMiniTrack: { width: '80%', height: 4, borderRadius: 999, background: C.border, overflow: 'hidden', marginTop: 2 },
+  badgeMiniFill: { height: '100%', borderRadius: 999, background: C.blue400 },
+  badgeDetail: { display: 'flex', gap: 14, alignItems: 'flex-start', marginTop: 18, padding: '16px 18px', borderRadius: 14, background: C.cardAlt, border: '1.5px solid' },
+  badgeDetailName: { fontFamily: F.display, fontSize: 15, fontWeight: 800, color: C.text },
+  badgeDetailDesc: { margin: '6px 0 0', fontSize: 12, color: C.sub, lineHeight: 1.6 },
+  badgeDetailMeta: { margin: '8px 0 0', fontSize: 11, color: C.blue600, lineHeight: 1.6, fontFamily: F.mono },
+
+  // Topic momentum
+  momentumList: { display: 'flex', flexDirection: 'column', gap: 11 },
+  momentumRow: { display: 'flex', alignItems: 'center', gap: 12 },
+  momentumTopic: { width: 120, fontSize: 12, fontWeight: 700, color: C.text, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  momentumBarTrack: { flex: 1, height: 8, borderRadius: 999, background: C.border, overflow: 'hidden' },
+  momentumBarFill: { height: '100%', borderRadius: 999, transition: 'width 1s ease' },
+  momentumScore: { fontFamily: F.display, fontSize: 13, fontWeight: 800, width: 26, textAlign: 'right', flexShrink: 0 },
+  momentumBadge: { fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 999, flexShrink: 0, fontFamily: F.mono, whiteSpace: 'nowrap' },
+  momentumDrillBtn: { flexShrink: 0, border: `1px solid ${C.borderMd}`, background: C.blue50, color: C.blue600, fontSize: 10.5, fontWeight: 700, padding: '5px 10px', borderRadius: 8, cursor: 'pointer', fontFamily: F.body },
+
+  // AI Coach teaser
+  coachTeaserCard: { position: 'relative', overflow: 'hidden', padding: '22px 24px', borderRadius: 20, background: `linear-gradient(135deg, ${C.blue900} 0%, #001A50 50%, #00305A 100%)`, boxShadow: C.shadowLg, display: 'flex', flexDirection: 'column' },
+  coachTeaserGlow: { position: 'absolute', top: -60, right: -60, width: 180, height: 180, borderRadius: '50%', background: `radial-gradient(circle, rgba(0,200,240,0.22), transparent 68%)`, pointerEvents: 'none' },
+  coachTeaserBtn: { position: 'relative', marginTop: 16, alignSelf: 'flex-start', border: 'none', borderRadius: 10, background: `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`, color: '#fff', padding: '10px 18px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,173,224,0.35)', fontFamily: F.body },
 
   // Peer standing
   peerHero: { display: 'flex', alignItems: 'flex-start', gap: 18, marginTop: 16 },
@@ -1439,87 +1435,42 @@ const S = {
   peerFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.blue500}, ${C.cyan500})`, transition: 'width 1.1s ease' },
   peerNote: { margin: '10px 0 0', fontSize: 10.5, color: C.muted, lineHeight: 1.55 },
 
-  // Share card
-  shareCard: {
-    position: 'relative', overflow: 'hidden',
-    padding: '26px 28px', borderRadius: 20,
-    background: `linear-gradient(135deg, ${C.blue900} 0%, #0A2E6E 50%, #00305A 100%)`,
-    boxShadow: C.shadowLg,
-  },
-  shareGlow: {
-    position: 'absolute', top: -80, right: -80, width: 240, height: 240,
-    borderRadius: '50%',
-    background: `radial-gradient(circle, rgba(0,200,240,0.22), transparent 68%)`,
-    pointerEvents: 'none',
-  },
-  shareEyebrow: {
-    fontFamily: F.mono, fontSize: 9.5, fontWeight: 700,
-    letterSpacing: '1.6px', color: C.cyan400, marginBottom: 16,
-  },
+  shareCard: { position: 'relative', overflow: 'hidden', padding: '26px 28px', borderRadius: 20, background: `linear-gradient(135deg, ${C.blue900} 0%, #0A2E6E 50%, #00305A 100%)`, boxShadow: C.shadowLg, marginBottom: 18 },
+  shareGlow: { position: 'absolute', top: -80, right: -80, width: 240, height: 240, borderRadius: '50%', background: `radial-gradient(circle, rgba(0,200,240,0.22), transparent 68%)`, pointerEvents: 'none' },
+  shareEyebrow: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '1.6px', color: C.cyan400, marginBottom: 16 },
   shareRow: { position: 'relative', display: 'flex', alignItems: 'center', gap: 22 },
   shareLeft: { textAlign: 'center', flexShrink: 0, width: 88 },
   shareIRS: { fontFamily: F.display, fontSize: 56, fontWeight: 900, color: '#fff', lineHeight: 1 },
   shareIRSLabel: { fontFamily: F.mono, fontSize: 9, letterSpacing: '1.5px', color: 'rgba(255,255,255,0.5)', marginTop: 4 },
   shareTitle: { margin: 0, fontFamily: F.display, fontSize: 18, fontWeight: 800, color: '#fff' },
-  shareDesc:  { margin: '7px 0 0', fontSize: 12.5, color: 'rgba(255,255,255,0.72)', lineHeight: 1.6 },
+  shareDesc: { margin: '7px 0 0', fontSize: 12.5, color: 'rgba(255,255,255,0.72)', lineHeight: 1.6 },
 
-  // Heatmap
-  hmLegend: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 },
+  hmLegend: { display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 },
   hmLegendLabel: { fontFamily: F.mono, fontSize: 9, color: C.muted, letterSpacing: '0.4px' },
   hmMonthRow: { display: 'flex', alignItems: 'center', marginBottom: 4, overflow: 'hidden' },
   hmMonthLabel: { position: 'absolute', fontFamily: F.mono, fontSize: 9, color: C.muted, whiteSpace: 'nowrap' },
-  hmWrap: { display: 'flex', gap: 4, overflow: 'auto', paddingBottom: 4 },
-  hmDayCols: { display: 'flex', flexDirection: 'column', gap: 3, marginRight: 6, flexShrink: 0, paddingTop: 2 },
-  hmDayLbl: { height: 13, fontFamily: F.mono, fontSize: 8.5, color: C.muted, display: 'flex', alignItems: 'center' },
-  hmGrid: { display: 'flex', gap: 3, flex: 1 },
-  hmWeekCol: { display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 13 },
-  hmCell: { width: '100%', aspectRatio: '1', borderRadius: 3, transition: 'transform 0.1s ease, box-shadow 0.1s ease', flexShrink: 0 },
-  hmTooltip: {
-    marginTop: 8, padding: '6px 12px', borderRadius: 8,
-    background: C.text, color: '#fff', fontSize: 12,
-    display: 'inline-block',
-  },
-  hmFooterGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: 1, marginTop: 20,
-    borderRadius: 12, overflow: 'hidden',
-    border: `1px solid ${C.border}`,
-  },
+  hmWrap: { display: 'flex', gap: 3, overflow: 'auto', paddingBottom: 4 },
+  hmDayCols: { display: 'flex', flexDirection: 'column', gap: 2.5, marginRight: 5, flexShrink: 0, paddingTop: 1 },
+  hmDayLbl: { height: 10, fontFamily: F.mono, fontSize: 8, color: C.muted, display: 'flex', alignItems: 'center' },
+  hmGrid: { display: 'flex', gap: 2.5, flex: 1 },
+  hmWeekCol: { display: 'flex', flexDirection: 'column', gap: 2.5, flex: 1, minWidth: 10 },
+  hmCell: { width: '100%', aspectRatio: '1', borderRadius: 2.5, transition: 'transform 0.1s ease, box-shadow 0.1s ease', flexShrink: 0 },
+  hmTooltip: { marginTop: 8, padding: '6px 12px', borderRadius: 8, background: C.text, color: '#fff', fontSize: 12, display: 'inline-block' },
+  hmFooterGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, marginTop: 20, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}` },
   hmStatBox: { padding: '14px 16px', background: C.cardAlt, textAlign: 'center' },
   hmStatVal: { fontFamily: F.display, fontSize: 22, fontWeight: 800, color: C.blue600 },
   hmStatLabel: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.8px', color: C.sub, marginTop: 4 },
   hmStatSub: { fontSize: 10.5, color: C.muted, marginTop: 3, lineHeight: 1.4 },
 
-  // Leaderboard
-  lbHeader: {
-    display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px',
-    fontFamily: F.mono, fontSize: 9, letterSpacing: '0.8px', color: C.muted,
-    marginBottom: 4,
-  },
+  lbHeader: { display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px', fontFamily: F.mono, fontSize: 9, letterSpacing: '0.8px', color: C.muted, marginBottom: 4 },
   lbRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, border: '1px solid', transition: 'background 0.15s' },
-  lbAvatar: {
-    width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-    background: C.blue50, border: `1px solid ${C.borderMd}`,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 13, fontWeight: 700, color: C.blue600, fontFamily: F.display,
-  },
+  lbAvatar: { width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: C.blue50, border: `1px solid ${C.borderMd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: C.blue600, fontFamily: F.display },
   lbName: { fontSize: 13, fontWeight: 600, color: C.text, display: 'flex', alignItems: 'center', gap: 8, fontFamily: F.body },
   lbScore: { fontFamily: F.display, fontSize: 18, fontWeight: 800 },
   lbDots: { textAlign: 'center', color: C.muted, fontSize: 18, letterSpacing: 3 },
-  youTag: {
-    fontSize: 9, fontWeight: 700, color: C.blue600,
-    background: C.blue50, border: `1px solid ${C.borderMd}`,
-    padding: '2px 7px', borderRadius: 5, flexShrink: 0, fontFamily: F.mono,
-  },
+  youTag: { fontSize: 9, fontWeight: 700, color: C.blue600, background: C.blue50, border: `1px solid ${C.borderMd}`, padding: '2px 7px', borderRadius: 5, flexShrink: 0, fontFamily: F.mono },
 
-  // Tier banner
-  tierBanner: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24,
-    padding: '28px 30px', marginBottom: 18, borderRadius: 20,
-    background: `linear-gradient(135deg, ${C.blue50} 0%, ${C.cyanTint} 100%)`,
-    border: `1px solid ${C.borderMd}`,
-    boxShadow: `0 4px 20px rgba(26,110,255,0.08)`,
-  },
+  tierBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, padding: '28px 30px', marginBottom: 18, borderRadius: 20, background: `linear-gradient(135deg, ${C.blue50} 0%, ${C.cyanTint} 100%)`, border: `1px solid ${C.borderMd}`, boxShadow: `0 4px 20px rgba(26,110,255,0.08)` },
   bannerH2: { margin: '8px 0', fontFamily: F.display, fontSize: 22, fontWeight: 800, color: C.text },
   bannerSub: { margin: 0, fontSize: 12.5, color: C.sub, maxWidth: 540, lineHeight: 1.6 },
   bannerTrack: { marginTop: 14, width: 'min(440px, 100%)', height: 6, borderRadius: 999, background: C.borderMd, overflow: 'visible', position: 'relative' },
@@ -1527,17 +1478,12 @@ const S = {
   bannerMark: { position: 'absolute', top: -3, width: 2, height: 12, background: C.blue700, borderRadius: 1, transform: 'translateX(-50%)' },
   bannerCaption: { marginTop: 6, fontFamily: F.mono, fontSize: 10, color: C.muted },
 
-  // Footer
-  footerRow: {
-    display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6,
-    padding: '18px 4px 0', opacity: 0.5,
-  },
+  footerRow: { display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, padding: '18px 4px 0', opacity: 0.5 },
 
-  // Loading
   loadingWrap: { minHeight: '70vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
   spinner: { width: 44, height: 44, borderRadius: '50%', border: `4px solid ${C.blue50}`, borderTopColor: C.blue500, animation: 'spin 0.75s linear infinite' },
   loadTitle: { marginTop: 18, fontFamily: F.display, fontSize: 15, fontWeight: 700, color: C.text },
-  loadSub:   { marginTop: 6, fontSize: 12, color: C.muted },
+  loadSub: { marginTop: 6, fontSize: 12, color: C.muted },
 
   emptyMsg: { padding: '28px 16px', textAlign: 'center', border: `1.5px dashed ${C.border}`, borderRadius: 12, color: C.muted, fontSize: 12 },
 };

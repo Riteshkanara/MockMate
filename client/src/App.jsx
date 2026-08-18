@@ -22,9 +22,8 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} /> 
 
+        <Route path="/p/:slug" element={<PublicProfile />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
-
-        <Route path="/p/:slug" element={<PublicProfile />} /> 
 
         <Route path="/onboarding" element={
           <ProtectedRoute>

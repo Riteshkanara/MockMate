@@ -12,7 +12,7 @@ const getDashboardStats = async (req, res) => {
     );
 
     // Fetch last 10 completed sessions for chart
-const sessions = await Session.find({ userId, status: 'completed' })
+const sessions = await Session.find({ $or: [{ user: userId }, { userId }], status: 'completed' })
       .sort({ createdAt: -1 })
       .limit(10)
       .select('totalScore mode company topic createdAt questions');
@@ -40,17 +40,17 @@ const sessions = await Session.find({ userId, status: 'completed' })
     const topicMap = {};
     sessions.forEach(session => {
       session.questions.forEach(q => {
-        if (!q.topic || !q.aiFeedback?.score) return;
+        if (!q.topic || typeof q.score !== 'number') return;
         const t = q.topic.toUpperCase();
         if (!topicMap[t]) topicMap[t] = { total: 0, count: 0 };
-        topicMap[t].total += q.aiFeedback.score;
+        topicMap[t].total += q.score;
         topicMap[t].count += 1;
       });
     });
 
     const topicBreakdown = Object.entries(topicMap).map(([topic, val]) => ({
       topic,
-      avg: Math.round((val.total / val.count) * 10) // scale to /100
+      avg: Math.round(val.total / val.count)  
     }));
 
     // Recent sessions list (last 5 for history card)

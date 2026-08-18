@@ -59,8 +59,6 @@ export const AuthProvider = ({ children }) => {
 
     if (token) {
       await fetchUser(token, setUser, setIsLoading);
-    } else {
-      setIsLoading(false);
     }
   };
 

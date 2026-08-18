@@ -12,14 +12,14 @@ const getDashboardStats = async (req, res) => {
     );
 
     // Fetch last 10 completed sessions for chart
-const sessions = await Session.find({ $or: [{ user: userId }, { userId }], status: 'completed' })
+const sessions = await Session.find({ userId, status: 'completed' })
       .sort({ createdAt: -1 })
       .limit(10)
-      .select('totalScore mode company t    opic createdAt questions');
+      .select('totalScore mode company topic createdAt questions');
 
     // Best score
     const bestScore = sessions.length
-      ? Math.max(...sessions.map(s => s.averageScore ?? 0))
+      ? Math.max(...sessions.map(s => s.totalScore ?? 0))
       : 0;
 
     // Score trend for line chart (reverse so oldest → newest)
@@ -28,7 +28,7 @@ const sessions = await Session.find({ $or: [{ user: userId }, { userId }], statu
       .reverse()
       .map((s, i) => ({
         session: `S${i + 1}`,
-        score: s.averageScore ?? 0,
+        score: s.totalScore ?? 0,
         mode: s.mode,
         date: new Date(s.createdAt).toLocaleDateString('en-IN', {
           day: 'numeric',
@@ -40,17 +40,17 @@ const sessions = await Session.find({ $or: [{ user: userId }, { userId }], statu
     const topicMap = {};
     sessions.forEach(session => {
       session.questions.forEach(q => {
-        if (!q.topic || typeof q.score !== 'number') return;
+        if (!q.topic || !q.aiFeedback?.score) return;
         const t = q.topic.toUpperCase();
         if (!topicMap[t]) topicMap[t] = { total: 0, count: 0 };
-        topicMap[t].total += q.score;
+        topicMap[t].total += q.aiFeedback.score;
         topicMap[t].count += 1;
       });
     });
 
     const topicBreakdown = Object.entries(topicMap).map(([topic, val]) => ({
       topic,
-      avg: Math.round(val.total / val.count) // already 0–100
+      avg: Math.round((val.total / val.count) * 10) // scale to /100
     }));
 
     // Recent sessions list (last 5 for history card)

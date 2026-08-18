@@ -15,18 +15,27 @@ const getWeekStart = () => {
 // GET /leaderboard
 const getLeaderboard = async (req, res) => {
   try {
-    const userId = req.user._id;
+    
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     const weekStart = getWeekStart();
 
     // Get current user's college
     const currentUser = await User.findById(userId).select('college name');
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
     // Aggregate weekly sessions per user
     const weeklyStats = await Session.aggregate([
       {
   $match: {
-    status: 'completed'
-  }
+    status: 'completed',
+    createdAt: { $gte: weekStart },
+  },
 },
 {
   $addFields: {

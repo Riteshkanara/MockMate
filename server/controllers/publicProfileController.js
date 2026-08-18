@@ -156,8 +156,8 @@ exports.getPublicProfileBySlug = async (req, res) => {
     sessions.forEach(session => {
       session.questions?.forEach(q => {
         const topic = q.topic || 'General';
-        const score = typeof q.score === 'number' ? q.score : null;
-        if (score === null) return;
+        const score = q.aiFeedback?.score;
+        if (typeof score !== 'number') return;
         if (!topicStats[topic]) topicStats[topic] = { topic, totalScore: 0, count: 0 };
         topicStats[topic].totalScore += score;
         topicStats[topic].count += 1;
@@ -165,7 +165,7 @@ exports.getPublicProfileBySlug = async (req, res) => {
     });
     const topicPerformance = Object.values(topicStats).map(t => ({
       topic: t.topic,
-      averageScore: Math.round(t.totalScore / t.count), // already 0–100
+      averageScore: Math.round((t.totalScore / t.count) * 10),
     }));
 
     const topicMap = {};

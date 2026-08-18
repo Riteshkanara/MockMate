@@ -54,7 +54,7 @@ const userSchema = new mongoose.Schema({
     current: { type: Number, default: 0 },
     longest: { type: Number, default: 0 },
     lastActive: { type: Date },
-    lastPracticeDate: { type: Date }
+
   },
   badges: [{ type: String }]
 }, { timestamps: true });

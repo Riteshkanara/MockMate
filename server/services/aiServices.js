@@ -1703,50 +1703,73 @@ const evaluateAnswer = async ({
     };
   };
 
+
 const generateCoachAdvice = async ({
-    profile = {},
-    totalSessions = 0,
-    averageScore = 0,
-    bestScore = 0,
-    streak = 0,
-    weakest = [],
-    strongest = 'N/A',
-    topicPerformance = [],
-  }) => {
-    const prompt = `
+  profile = {},
+  totalSessions = 0,
+  averageScore = 0,
+  bestScore = 0,
+  streak = 0,
+  weakest = [],
+  strongest = 'N/A',
+  topicPerformance = [],
+ 
+  // NEW — authoritative readiness data, same numbers the dashboard shows
+  irs = null,
+  currentTierLabel = null,
+  nextTierLabel = null,
+  nextTierReadinessPct = null,
+  primaryBlockerLabel = null,
+  primaryBlockerGap = null,
+  sessionsToUnlockNextTier = null,
+}) => {
+  const readinessBlock = irs !== null
+    ? `
+Verified readiness data (this is the SAME number shown on the student's dashboard — your analysis must agree with it, not contradict it):
+- Interview Readiness Score (IRS): ${irs}/100
+- Current package tier: ${currentTierLabel || 'Not yet determined'}
+- Next tier target: ${nextTierLabel || 'Already at the highest tracked tier'}
+${nextTierReadinessPct !== null ? `- Readiness toward next tier: ${nextTierReadinessPct}%` : ''}
+${primaryBlockerLabel ? `- Primary blocking dimension: ${primaryBlockerLabel} (${primaryBlockerGap} points short of the bar for the next tier)` : ''}
+${sessionsToUnlockNextTier !== null ? `- At current pace, estimated sessions to unlock next tier: ${sessionsToUnlockNextTier}` : '- Not enough per-dimension history yet to project a reliable sessions-to-unlock estimate — say so honestly rather than inventing a number.'}
+`
+    : '';
+ 
+  const prompt = `
 You are MockMate's AI placement coach for
 an Indian engineering student preparing for
 campus placements.
-
+ 
 Student profile:
-- College: ${
-      profile.college || 'Not provided'
-    }
-- Branch: ${
-      profile.branch || 'Not provided'
-    }
-- Semester: ${
-      profile.semester || 'Not provided'
-    }
+- College: ${profile.college || 'Not provided'}
+- Branch: ${profile.branch || 'Not provided'}
+- Semester: ${profile.semester || 'Not provided'}
 - Interviews completed: ${totalSessions}
 - Average score: ${averageScore}/100
 - Best score: ${bestScore}/100
 - Current streak: ${streak} days
 - Strongest topic: ${strongest}
-- Weakest topics: ${
-      weakest.length
-        ? weakest.join(', ')
-        : 'Not enough data'
-    }
-
+- Weakest topics: ${weakest.length ? weakest.join(', ') : 'Not enough data'}
+${readinessBlock}
 Topic performance:
 ${JSON.stringify(topicPerformance)}
-
+ 
 Give a concise but highly personalised
 placement-preparation analysis.
-
+ 
+CRITICAL RULES:
+- Your verdict and battle plan MUST be consistent with the verified readiness
+  data above — do not state a different tier, percentage, or blocker than
+  what's given. If readiness data is missing, say the student needs more
+  sessions before a tier estimate is reliable, rather than guessing one.
+- If a sessions-to-unlock estimate was provided, mention it in the battle
+  plan as a concrete milestone. If it was explicitly marked unavailable,
+  do not invent one — instead say what kind of practice would let MockMate
+  start projecting an ETA (e.g. "a few more sessions focused on X").
+- Do not invent achievements, scores, or numbers not given above.
+ 
 Return ONLY JSON with:
-
+ 
 {
   "verdict": "...",
   "criticalGaps": "...",
@@ -1754,65 +1777,39 @@ Return ONLY JSON with:
   "battlePlan": "...",
   "mindset": "..."
 }
-
-Be specific.
-Reference the student's actual performance.
-Do not invent achievements or scores.
+ 
+Be specific. Reference the student's actual performance and the verified
+readiness numbers above.
 `;
-
-    const result =
-      await generateWithRetry({
-        model: MODEL,
-        contents: prompt,
-
-        config: {
-          responseMimeType:
-            'application/json',
-
-          responseJsonSchema: {
-            type: 'object',
-
-            properties: {
-              verdict: {
-                type: 'string',
-              },
-
-              criticalGaps: {
-                type: 'string',
-              },
-
-              strengths: {
-                type: 'string',
-              },
-
-              battlePlan: {
-                type: 'string',
-              },
-
-              mindset: {
-                type: 'string',
-              },
-            },
-
-            required: [
-              'verdict',
-              'criticalGaps',
-              'strengths',
-              'battlePlan',
-              'mindset',
-            ],
-          },
+ 
+  const result = await generateWithRetry({
+    model: MODEL,
+    contents: prompt,
+ 
+    config: {
+      responseMimeType: 'application/json',
+ 
+      responseJsonSchema: {
+        type: 'object',
+ 
+        properties: {
+          verdict: { type: 'string' },
+          criticalGaps: { type: 'string' },
+          strengths: { type: 'string' },
+          battlePlan: { type: 'string' },
+          mindset: { type: 'string' },
         },
-      });
+ 
+        required: ['verdict', 'criticalGaps', 'strengths', 'battlePlan', 'mindset'],
+      },
+    },
+  });
+ 
+  return parseJsonResponse(result.text);
+};
+ 
 
-    return parseJsonResponse(
-      result.text
-    );
-  };
-
-// ---------------------------------------------------------
-// Exports
-// ---------------------------------------------------------
+ 
 
 module.exports = {
   generateQuestions,

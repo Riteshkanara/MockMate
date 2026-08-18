@@ -1,6 +1,16 @@
 const Session = require('../models/Session');
 const User = require('../models/User');
 const { evaluateBadges } = require('../utils/badgeEngine');
+  const {
+      buildDimensionProfile,
+      computeIRS,
+      tierForScore,
+      TIERS,
+      computeTierReadiness,
+      findBlockingDimension,
+      buildDimensionTimeSeries,
+      projectSessionsToUnlock,
+    } = require('../utils/scoringModel');
 
 const {
   generateQuestions,
@@ -1031,391 +1041,284 @@ const getAnalytics = async (req, res) => {
 
 
 const getPerformanceAnalytics = async (req, res) => {
-    try {
-      const userId = getUserId(req);
- 
-      const sessions =
-        await Session.find({
-          $or: [
-            { user: userId },
-            { userId: userId },
-          ],
-          status: 'completed',
-        })
-          .sort({
-            createdAt: -1,
-          })
-          .lean();
- 
-      if (!sessions.length) {
-        return res.json({
-          totalInterviews: 0,
-          totalSessions: 0,
-          averageScore: 0,
-          bestScore: 0,
-          scoreTrend: [],
-          topicPerformance: [],
-          weakTopics: [],
-          badges: [],
-        });
-      }
- 
-      const scores = sessions.map(
-        session =>
-          getNormalizedSessionScore(
-            session
-          )
-      );
- 
-      const averageScore =
-        Math.round(
-          scores.reduce(
-            (sum, score) =>
-              sum + score,
-            0
-          ) / scores.length
-        );
- 
-      const bestScore =
-        Math.max(...scores);
- 
-      const scoreTrend = [
-        ...sessions,
-      ]
-        .reverse()
-        .map(
-          (session, index) => ({
-            interview:
-              index + 1,
- 
-            score:
-              getNormalizedSessionScore(
-                session
-              ),
- 
-            date:
-              session.createdAt,
-          })
-        );
- 
-      const topicStats = {};
- 
-      sessions.forEach(
-        session => {
-          (
-            session.questions ||
-            []
-          ).forEach(
-            question => {
-              if (
-                !question.userAnswer ||
-                question.userAnswer ===
-                  'Skipped'
-              ) {
-                return;
-              }
- 
-              const topic =
-                question.topic ||
-                'General';
- 
-              const score =
-                getNormalizedQuestionScore(
-                  question
-                );
- 
-              if (
-                !topicStats[topic]
-              ) {
-                topicStats[
-                  topic
-                ] = {
-                  topic,
-                  totalScore: 0,
-                  count: 0,
-                };
-              }
- 
-              topicStats[
-                topic
-              ].totalScore +=
-                score;
- 
-              topicStats[
-                topic
-              ].count += 1;
-            }
-          );
-        }
-      );
- 
-      const topicPerformance =
-        Object.values(
-          topicStats
-        )
-          .map(item => ({
-            topic: item.topic,
- 
-            averageScore:
-              Math.round(
-                item.totalScore /
-                  item.count
-              ),
- 
-            attempts:
-              item.count,
-          }))
-          .sort(
-            (a, b) =>
-              b.averageScore -
-              a.averageScore
-          );
- 
-      const weakTopics =
-        topicPerformance
-          .filter(
-            topic =>
-              topic.averageScore <
-              70
-          )
-          .sort(
-            (a, b) =>
-              a.averageScore -
-              b.averageScore
-          )
-          .slice(0, 3)
-          .map(
-            topic =>
-              topic.topic
-          );
- 
-      // ── NEW: compute badges from real session history ──────────────
-      const user = await User.findById(userId).lean();
-      const chronological = [...sessions].reverse();
-      const badges = evaluateBadges({ user, sessions: chronological });
-      // ─────────────────────────────────────────────────────────────
- 
+  try {
+    const userId = getUserId(req);
+
+    const sessions = await Session.find({
+      $or: [{ user: userId }, { userId: userId }],
+      status: 'completed',
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!sessions.length) {
       return res.json({
-        totalInterviews:
-          sessions.length,
- 
-        totalSessions:
-          sessions.length,
- 
-        averageScore,
- 
-        bestScore,
- 
-        scoreTrend,
- 
-        topicPerformance,
- 
-        weakTopics,
- 
-        badges,
-      });
-    } catch (error) {
-      console.error(
-        'getPerformanceAnalytics error:',
-        error
-      );
- 
-      return res.status(500).json({
-        error:
-          'Failed to load performance analytics.',
+        totalInterviews: 0,
+        totalSessions: 0,
+        averageScore: 0,
+        bestScore: 0,
+        scoreTrend: [],
+        topicPerformance: [],
+        weakTopics: [],
+        badges: [],
+        // NEW — always present, even when empty, so the frontend never
+        // has to special-case a missing field
+        irs: 0,
+        currentTier: null,
+        tiers: [],
+        dimensionProfile: [],
+        unmappedTopics: [],
       });
     }
-  };
- 
+
+    const scores = sessions.map((session) => getNormalizedSessionScore(session));
+
+    const averageScore = Math.round(
+      scores.reduce((sum, score) => sum + score, 0) / scores.length
+    );
+
+    const bestScore = Math.max(...scores);
+
+    // chronological (oldest -> newest) for trend/slope/badge logic
+    const chronological = [...sessions].reverse();
+
+    const scoreTrend = chronological.map((session, index) => ({
+      interview: index + 1,
+      score: getNormalizedSessionScore(session),
+      date: session.createdAt,
+    }));
+
+    // ── topicPerformance (unchanged from before — raw topic strings,
+    //    exactly as stored) ──────────────────────────────────────────
+    const topicStats = {};
+
+    sessions.forEach((session) => {
+      (session.questions || []).forEach((question) => {
+        if (!question.userAnswer || question.userAnswer === 'Skipped') return;
+
+        const topic = question.topic || 'General';
+        const score = getNormalizedQuestionScore(question);
+
+        if (!topicStats[topic]) {
+          topicStats[topic] = { topic, totalScore: 0, count: 0 };
+        }
+
+        topicStats[topic].totalScore += score;
+        topicStats[topic].count += 1;
+      });
+    });
+
+    const topicPerformance = Object.values(topicStats)
+      .map((item) => ({
+        topic: item.topic,
+        averageScore: Math.round(item.totalScore / item.count),
+        attempts: item.count,
+      }))
+      .sort((a, b) => b.averageScore - a.averageScore);
+
+    const weakTopics = topicPerformance
+      .filter((topic) => topic.averageScore < 70)
+      .sort((a, b) => a.averageScore - b.averageScore)
+      .slice(0, 3)
+      .map((topic) => topic.topic);
+
+    // ── NEW: real dimension profile, IRS, tier readiness ──────────────
+    const { profile: dimensionProfile, unmapped: unmappedTopics } =
+      buildDimensionProfile(topicPerformance);
+
+    const irs = computeIRS({
+      dimensionProfile,
+      scoreTrend,
+      topicPerformance,
+      averageScore,
+    });
+
+    const currentTierRaw = tierForScore(irs);
+
+    // per-dimension time series, needed for honest ETA projection —
+    // built from raw sessions (questions[].topic/score/skipped), not
+    // from the lifetime topicPerformance averages above
+    const dimensionTimeSeries = buildDimensionTimeSeries(chronological);
+
+    // compute readiness against ALL 4 tiers at once (not just "next tier") —
+    // this is the "how far to every milestone" view, cheap to compute since
+    // it's the same function looped
+    const tiers = TIERS.map((tier) => {
+      const readiness = computeTierReadiness(dimensionProfile, tier, sessions.length);
+      const blocker = findBlockingDimension(readiness);
+      const eta = projectSessionsToUnlock(blocker, dimensionTimeSeries);
+
+      return {
+        label: tier.label,
+        color: tier.color,
+        desc: tier.desc,
+        advice: tier.advice,
+        minIRS: tier.minIRS,
+        isCurrentTier: tier.label === currentTierRaw.label,
+        isUnlocked: irs >= tier.minIRS,
+        readinessPct: readiness.readinessPct,
+        confidenceGate: readiness.confidenceGate,
+        minSessionsRequired: tier.minSessions,
+        perDimension: readiness.perDimension,
+        blockingDimensions: readiness.blockingDimensions,
+        provisionalDimensions: readiness.provisionalDimensions,
+        primaryBlocker: blocker
+          ? { key: blocker.key, label: blocker.label, userScore: blocker.userScore, requiredMin: blocker.requiredMin, gap: blocker.gap }
+          : null,
+        eta, // { estimable, sessionsNeeded, slope, gap, dimension } OR { estimable:false, reason }
+      };
+    });
+
+    // ── badges (unchanged) ──────────────────────────────────────────
+    const user = await User.findById(userId).lean();
+    const badges = evaluateBadges({ user, sessions: chronological });
+
+    return res.json({
+      totalInterviews: sessions.length,
+      totalSessions: sessions.length,
+      averageScore,
+      bestScore,
+      scoreTrend,
+      topicPerformance,
+      weakTopics,
+      badges,
+
+      // NEW fields — additive, nothing above this line changed shape
+      irs,
+      currentTier: currentTierRaw.label,
+      tiers,
+      dimensionProfile,
+      unmappedTopics, // watch this in logs/response — non-empty means new topic drift appeared
+    });
+  } catch (error) {
+    console.error('getPerformanceAnalytics error:', error);
+
+    return res.status(500).json({
+      error: 'Failed to load performance analytics.',
+    });
+  }
+};
+
 const getAICoach = async (req, res) => {
-    try {
-      const userId = getUserId(req);
+  try {
+    const userId = getUserId(req);
 
-      const user =
-        await User.findById(userId).lean();
+    const user = await User.findById(userId).lean();
 
-      if (!user) {
-        return res.status(404).json({
-          error: 'User not found.',
-        });
-      }
-
-      const sessions =
-        await Session.find({
-          $or: [
-            { user: userId },
-            { userId: userId },
-          ],
-          status: 'completed',
-        })
-          .sort({
-            createdAt: -1,
-          })
-          .limit(30)
-          .lean();
-
-      const scores = sessions.map(
-        session =>
-          getNormalizedSessionScore(
-            session
-          )
-      );
-
-      const averageScore =
-        scores.length
-          ? Math.round(
-              scores.reduce(
-                (sum, score) =>
-                  sum + score,
-                0
-              ) / scores.length
-            )
-          : 0;
-
-      const bestScore =
-        scores.length
-          ? Math.max(...scores)
-          : 0;
-
-      const topicStats = {};
-
-      sessions.forEach(
-        session => {
-          (
-            session.questions ||
-            []
-          ).forEach(
-            question => {
-              if (
-                !question.userAnswer ||
-                question.userAnswer ===
-                  'Skipped'
-              ) {
-                return;
-              }
-
-              const topic =
-                question.topic ||
-                'General';
-
-              const score =
-                getNormalizedQuestionScore(
-                  question
-                );
-
-              if (
-                !topicStats[topic]
-              ) {
-                topicStats[
-                  topic
-                ] = {
-                  topic,
-                  totalScore: 0,
-                  count: 0,
-                };
-              }
-
-              topicStats[
-                topic
-              ].totalScore +=
-                score;
-
-              topicStats[
-                topic
-              ].count += 1;
-            }
-          );
-        }
-      );
-
-      const topicPerformance =
-        Object.values(
-          topicStats
-        )
-          .map(item => ({
-            topic: item.topic,
-
-            averageScore:
-              Math.round(
-                item.totalScore /
-                  item.count
-              ),
-
-            attempts:
-              item.count,
-          }))
-          .sort(
-            (a, b) =>
-              b.averageScore -
-              a.averageScore
-          );
-
-      const weakest =
-        topicPerformance
-          .slice()
-          .sort(
-            (a, b) =>
-              a.averageScore -
-              b.averageScore
-          )
-          .slice(0, 3)
-          .map(
-            item => item.topic
-          );
-
-      const strongest =
-        topicPerformance[0]
-          ?.topic || 'N/A';
-
-      const {
-        generateCoachAdvice,
-      } = require('../services/aiServices');
-
-      const analysis =
-        await generateCoachAdvice({
-          profile: {
-            college:
-              user.college,
-            branch:
-              user.branch,
-            semester:
-              user.semester,
-          },
-
-          totalSessions:
-            sessions.length,
-
-          averageScore,
-
-          bestScore,
-
-          streak:
-            Number(
-              user.streak?.current || 0
-            ),
-
-          weakest,
-
-          strongest,
-
-          topicPerformance,
-        });
-
-      return res.json({
-        analysis,
-      });
-    } catch (error) {
-      console.error(
-        'getAICoach error:',
-        error
-      );
-
-      return res.status(500).json({
-        error:
-          'AI coach unavailable.',
-      });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
     }
-  };
+
+    const sessions = await Session.find({
+      $or: [{ user: userId }, { userId: userId }],
+      status: 'completed',
+    })
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .lean();
+
+    const scores = sessions.map((session) => getNormalizedSessionScore(session));
+
+    const averageScore = scores.length
+      ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
+      : 0;
+
+    const bestScore = scores.length ? Math.max(...scores) : 0;
+
+    const topicStats = {};
+
+    sessions.forEach((session) => {
+      (session.questions || []).forEach((question) => {
+        if (!question.userAnswer || question.userAnswer === 'Skipped') return;
+
+        const topic = question.topic || 'General';
+        const score = getNormalizedQuestionScore(question);
+
+        if (!topicStats[topic]) {
+          topicStats[topic] = { topic, totalScore: 0, count: 0 };
+        }
+
+        topicStats[topic].totalScore += score;
+        topicStats[topic].count += 1;
+      });
+    });
+
+    const topicPerformance = Object.values(topicStats)
+      .map((item) => ({
+        topic: item.topic,
+        averageScore: Math.round(item.totalScore / item.count),
+        attempts: item.count,
+      }))
+      .sort((a, b) => b.averageScore - a.averageScore);
+
+    const weakest = topicPerformance
+      .slice()
+      .sort((a, b) => a.averageScore - b.averageScore)
+      .slice(0, 3)
+      .map((item) => item.topic);
+
+    const strongest = topicPerformance[0]?.topic || 'N/A';
+
+    // ── NEW: real IRS + tier readiness, same engine getPerformanceAnalytics uses.
+    //    This is what fixes the "coach disagrees with the dashboard" bug —
+    //    the LLM now reasons over the SAME numbers the user sees on screen,
+    //    not raw topic averages it has to guess a verdict from. ─────────────
+    const chronological = [...sessions].reverse();
+
+    const { profile: dimensionProfile } = buildDimensionProfile(topicPerformance);
+
+    const scoreTrend = chronological.map((session, index) => ({
+      interview: index + 1,
+      score: getNormalizedSessionScore(session),
+      date: session.createdAt,
+    }));
+
+    const irs = computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
+    const currentTier = tierForScore(irs);
+    const nextTier = TIERS[TIERS.indexOf(currentTier) + 1] || null;
+
+    const dimensionTimeSeries = buildDimensionTimeSeries(chronological);
+    const nextTierReadiness = nextTier
+      ? computeTierReadiness(dimensionProfile, nextTier, sessions.length)
+      : null;
+    const blocker = nextTierReadiness ? findBlockingDimension(nextTierReadiness) : null;
+    const eta = blocker ? projectSessionsToUnlock(blocker, dimensionTimeSeries) : null;
+
+    const { generateCoachAdvice } = require('../services/aiServices');
+
+    const analysis = await generateCoachAdvice({
+      profile: {
+        college: user.college,
+        branch: user.branch,
+        semester: user.semester,
+      },
+      totalSessions: sessions.length,
+      averageScore,
+      bestScore,
+      streak: Number(user.streak?.current || 0),
+      weakest,
+      strongest,
+      topicPerformance,
+
+      // NEW — the coach now gets the real, authoritative readiness picture
+      irs,
+      currentTierLabel: currentTier.label,
+      nextTierLabel: nextTier?.label || null,
+      nextTierReadinessPct: nextTierReadiness?.readinessPct ?? null,
+      primaryBlockerLabel: blocker?.label || null,
+      primaryBlockerGap: blocker?.gap ?? null,
+      sessionsToUnlockNextTier: eta?.estimable ? eta.sessionsNeeded : null,
+    });
+
+    return res.json({ analysis });
+  } catch (error) {
+    console.error('getAICoach error:', error);
+
+    return res.status(500).json({ error: 'AI coach unavailable.' });
+  }
+};
+
+
 
 module.exports = {
   startInterview,

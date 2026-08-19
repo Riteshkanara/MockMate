@@ -71,25 +71,28 @@ const F = {
   mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
 };
 
-// ─── Dimension config — EXACT mirror of Dashboard DIMENSIONS ─────────────────
-const DIMENSIONS = [
-  { key: "technical",      label: "Technical Depth",   icon: "⚙",  topics: ["DSA","OOP","DBMS","OS","JavaScript","Web Development","System Design","Database"], weight: 0.28, tip: "Core CS fundamentals — the first thing technical screeners test." },
-  { key: "problemSolving", label: "Problem Solving",   icon: "🔍", topics: ["DSA","System Design","Algorithm"], weight: 0.22, tip: "How you break down unknowns — decisive in live coding rounds." },
-  { key: "communication",  label: "Communication",     icon: "💬", topics: ["Communication","HR","Behavioral"], weight: 0.18, tip: "Clarity of thought — interviewers notice it fast." },
-  { key: "behavioral",     label: "Behavioral",        icon: "🤝", topics: ["HR","Behavioral","Leadership"],    weight: 0.12, tip: "Situational judgment and self-awareness under HR scrutiny." },
-  { key: "design",         label: "System Design",     icon: "🏗",  topics: ["System Design","Architecture","OOP","Scalability"], weight: 0.10, tip: "Matters at ₹12 LPA+ — often the differentiator between tiers." },
-  { key: "fundamentals",   label: "CS Fundamentals",   icon: "📚", topics: ["DBMS","OS","OOP","Networking","JavaScript"], weight: 0.10, tip: "Breadth of core knowledge — separates prepared from lucky." },
+// ─── Dimension display metadata — icons, tips, weights for rendering only.
+// Scores, hasData, contributingTopics come from the API (scoringModel.js
+// with the real synonym resolver). This array is NEVER used to compute IRS.
+const DIMENSION_META = [
+  { key: "technical",      label: "Technical Depth", icon: "⚙",  weight: 0.28, tip: "Core CS fundamentals — the first thing technical screeners test." },
+  { key: "problemSolving", label: "Problem Solving", icon: "🔍", weight: 0.22, tip: "How you break down unknowns — decisive in live coding rounds." },
+  { key: "communication",  label: "Communication",   icon: "💬", weight: 0.18, tip: "Clarity of thought — interviewers notice it fast." },
+  { key: "behavioral",     label: "Behavioral",      icon: "🤝", weight: 0.12, tip: "Situational judgment and self-awareness under HR scrutiny." },
+  { key: "design",         label: "System Design",   icon: "🏗",  weight: 0.10, tip: "Matters at ₹12 LPA+ — often the differentiator between tiers." },
+  { key: "fundamentals",   label: "CS Fundamentals", icon: "📚", weight: 0.10, tip: "Breadth of core knowledge — separates prepared from lucky." },
 ];
 
-// ─── Tier thresholds — EXACT mirror of Dashboard TIERS ───────────────────────
-const TIERS = [
-  { label: "₹3–6 LPA",   minScore: 0,  color: "#7A8BAF", bg: C.blue50,    desc: "Service companies, off-campus starts",   advice: "Focus on DSA basics and communication fundamentals." },
-  { label: "₹6–12 LPA",  minScore: 38, color: C.amber,   bg: C.amberTint, desc: "Mid-tier product, IT MNCs, campus drives", advice: "Strengthen problem solving and topic breadth." },
-  { label: "₹12–20 LPA", minScore: 60, color: C.blue500, bg: C.blue50,    desc: "Top product companies, FAANG-adjacent",   advice: "Master system design and consistency under pressure." },
-  { label: "₹20 LPA+",   minScore: 80, color: C.cyan500, bg: C.cyanTint,  desc: "FAANG, unicorn startups, remote-first",   advice: "Achieve elite cross-dimension performance." },
-];
+// ─── Tier display metadata — colors/bg only. Thresholds + readiness logic
+// live in scoringModel.js (backend). Frontend reads computed values from API.
+const TIER_META = {
+  "₹3–6 LPA":   { color: "#7A8BAF", bg: C.blue50    },
+  "₹6–12 LPA":  { color: C.amber,   bg: C.amberTint },
+  "₹12–20 LPA": { color: C.blue500, bg: C.blue50    },
+  "₹20 LPA+":   { color: C.cyan500, bg: C.cyanTint  },
+};
 
-// ─── Archetypes — EXACT mirror of Dashboard ARCHETYPES ───────────────────────
+// ─── Archetypes ───────────────────────────────────────────────────────────────
 const ARCHETYPES = [
   { id: "inconsistentGenius", label: "Inconsistent Genius", icon: "🎲", desc: "High variance — brilliant when in flow, needs to build a floor.", fix: "Consistency drills: hold 65+ on every session before chasing 90+." },
   { id: "consistentClimber",  label: "Consistent Climber",  icon: "📈", desc: "Steady, reliable improvement — the archetype that wins campus placements.", fix: "Keep the streak; add harder topic rotations to keep growing." },
@@ -98,10 +101,8 @@ const ARCHETYPES = [
   { id: "pressureCooker",     label: "Pressure Cooker",     icon: "🔥", desc: "Scores improve under timed, competitive conditions.", fix: "Channel this by joining live contest platforms weekly." },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SHARED MATHS — identical to Dashboard so IRS never disagrees between pages
-// ═══════════════════════════════════════════════════════════════════════════
-
+// ─── Shared maths helpers (read-only — used only for archetype derivation
+//     and chart annotations, NOT for IRS/tier computation) ──────────────────
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(v || 0)));
 
 const ewma = (values, alpha = 0.35) => {
@@ -126,33 +127,6 @@ const trendSlope = (values) => {
   return den ? num / den : 0;
 };
 
-/**
- * computeIRS — identical 4-component formula to Dashboard.
- * Components: weighted dimension avg (40%) + EWMA trend (25%)
- *           + topic breadth (15%) + consistency/inverse-CV (20%)
- */
-const computeIRS = ({ dimensionProfile, scoreTrend, topicPerformance, averageScore }) => {
-  const dimScore = dimensionProfile.reduce((acc, d) => {
-    const cfg = DIMENSIONS.find(x => x.key === d.key);
-    return acc + (d.score * (cfg?.weight ?? 1 / DIMENSIONS.length));
-  }, 0);
-  const dimComponent = clamp(dimScore) * 0.40;
-
-  const recentScores  = scoreTrend.slice(-12).map(s => s.score || 0);
-  const ewmaScore     = recentScores.length ? ewma(recentScores) : averageScore;
-  const ewmaComponent = clamp(ewmaScore) * 0.25;
-
-  const breadthComponent = Math.min(topicPerformance.length / 8, 1) * 100 * 0.15;
-
-  const scores = scoreTrend.map(s => s.score || 0);
-  const sd     = stdDev(scores);
-  const mean   = scores.length ? scores.reduce((a, v) => a + v, 0) / scores.length : 0;
-  const cv     = mean > 0 ? sd / mean : 1;
-  const consistencyComponent = Math.max(0, (1 - Math.min(cv, 1)) * 100) * 0.20;
-
-  return clamp(dimComponent + ewmaComponent + breadthComponent + consistencyComponent);
-};
-
 const deriveArchetype = (scoreTrend, avgTimePerQ, avgScore) => {
   const scores = scoreTrend.map(s => s.score || 0);
   if (scores.length < 2) return ARCHETYPES[1];
@@ -165,16 +139,14 @@ const deriveArchetype = (scoreTrend, avgTimePerQ, avgScore) => {
   return ARCHETYPES[4];
 };
 
-const tierForScore = (irs) => {
-  const reached = TIERS.filter(t => irs >= t.minScore);
-  return reached[reached.length - 1] || TIERS[0];
-};
-
-/** Topic ROI = dimension weight × gap — same as Dashboard bestFixTarget */
-const topicROI = (topic, topicMap) => {
-  const dim = DIMENSIONS.find(d => d.topics.map(t => t.toLowerCase()).includes(topic.toLowerCase()));
-  const w   = dim?.weight ?? 0.1;
-  const score = topicMap[topic.toLowerCase()] ?? 0;
+/** Topic ROI — uses DIMENSION_META weights (display only, consistent with API weights) */
+const topicROI = (topic, dimensionProfile) => {
+  // find which dimension this topic contributes to via the API's contributingTopics field
+  const dim = dimensionProfile.find(d =>
+    (d.contributingTopics || []).some(ct => ct.toLowerCase() === topic.toLowerCase())
+  );
+  const w = dim?.weight ?? 0.1;
+  const score = dim ? (dimensionProfile.find(d => d.key === dim.key)?.score ?? 0) : 0;
   return w * (100 - score);
 };
 
@@ -829,36 +801,48 @@ const Analytics = () => {
   // ── Derived state ───────────────────────────────────────────────────────
   const topicPerformance = useMemo(() => data?.topicPerformance ?? [], [data]);
   const scoreTrend       = useMemo(() => data?.scoreTrend ?? [],       [data]);
+  const averageScore     = data?.averageScore ?? 0;
+  const totalSessions    = data?.totalSessions ?? 0;
+  const avgTimePerQ      = data?.timePerformance?.averageTimePerQuestion ?? null;
+  const highestScore     = data?.highestScore ?? data?.bestScore ?? Math.max(0, ...scoreTrend.map(s => s.score || 0));
 
-  const topicMap = useMemo(() => {
-    const m = {};
-    topicPerformance.forEach(t => { m[t.topic?.toLowerCase()] = t.averageScore || 0; });
-    return m;
-  }, [topicPerformance]);
+  // ── IRS + tier — always read from backend (scoringModel.js).
+  // The backend uses a real synonym resolver that handles 65+ Gemini topic
+  // phrasings. The old frontend DIMENSIONS exact-match silently dropped ~20%
+  // of real answered questions from dimension scores — that code is gone.
+  const irs = data?.irs ?? 0;
+  const currentTierLabel = data?.currentTier ?? "₹3–6 LPA";
+  const currentTierMeta  = TIER_META[currentTierLabel] ?? TIER_META["₹3–6 LPA"];
+  const currentTier      = { label: currentTierLabel, ...currentTierMeta };
 
-  const dimensionProfile = useMemo(() => DIMENSIONS.map(dim => {
-    const vals = dim.topics
-      .map(t => topicMap[t.toLowerCase()])
-      .filter(v => typeof v === "number" && v > 0);
-    const score = vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0;
-    return { ...dim, score: clamp(score), hasData: vals.length > 0 };
-  }), [topicMap]);
+  const apiTiers   = data?.tiers ?? [];
+  const nextTierApi = apiTiers.find(t => !t.isUnlocked && t.label !== currentTierLabel) ?? null;
+  const nextTier    = nextTierApi
+    ? { label: nextTierApi.label, minScore: nextTierApi.minIRS, color: TIER_META[nextTierApi.label]?.color ?? C.blue500, advice: nextTierApi.advice, desc: nextTierApi.desc }
+    : null;
 
-  const averageScore   = data?.averageScore ?? 0;
-  const totalSessions  = data?.totalSessions ?? 0;
-  const avgTimePerQ    = data?.timePerformance?.averageTimePerQuestion ?? null;
-  const highestScore   = data?.highestScore ?? data?.bestScore ?? Math.max(0, ...scoreTrend.map(s => s.score || 0));
+  // ── Six-dimension profile — from backend (synonym-resolved).
+  // Merge DIMENSION_META display fields onto API shape.
+  const dimensionProfile = useMemo(() => {
+    const apiProfile = data?.dimensionProfile ?? [];
+    return DIMENSION_META.map(meta => {
+      const apiDim = apiProfile.find(d => d.key === meta.key);
+      return {
+        ...meta,
+        score:              apiDim?.score ?? 0,
+        hasData:            apiDim?.hasData ?? false,
+        isProvisional:      apiDim?.isProvisional ?? false,
+        answeredCount:      apiDim?.answeredCount ?? 0,
+        contributingTopics: apiDim?.contributingTopics ?? [],
+      };
+    });
+  }, [data]);
 
-  // IRS — identical formula to Dashboard
-  const irs = useMemo(() => {
-    if (!totalSessions) return 0;
-    return computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
-  }, [dimensionProfile, scoreTrend, topicPerformance, averageScore, totalSessions]);
-
-  // IRS sub-components for the breakdown panel
+  // IRS sub-components for the breakdown panel — derived from backend values
+  // so they are always consistent with the headline IRS number.
   const irsComponents = useMemo(() => {
     if (!totalSessions) return {};
-    const dimScore     = dimensionProfile.reduce((acc, d) => { const cfg = DIMENSIONS.find(x => x.key === d.key); return acc + d.score * (cfg?.weight ?? 1/6); }, 0);
+    const dimScore     = dimensionProfile.reduce((acc, d) => acc + d.score * d.weight, 0);
     const recentScores = scoreTrend.slice(-12).map(s => s.score || 0);
     const ewmaScore    = recentScores.length ? ewma(recentScores) : averageScore;
     const scores       = scoreTrend.map(s => s.score || 0);
@@ -870,20 +854,20 @@ const Analytics = () => {
     return { dimScore: clamp(dimScore), ewmaScore: clamp(ewmaScore), consistency: clamp(consistency), breadth: clamp(breadth) };
   }, [dimensionProfile, scoreTrend, topicPerformance, averageScore, totalSessions]);
 
-  const currentTier = useMemo(() => tierForScore(irs), [irs]);
-  const nextTier    = useMemo(() => { const idx = TIERS.indexOf(currentTier); return TIERS[idx + 1] || null; }, [currentTier]);
+  const unmappedTopics = data?.unmappedTopics ?? [];
 
   const strongestDim = useMemo(() => [...dimensionProfile].filter(d => d.hasData).sort((a, b) => b.score - a.score)[0], [dimensionProfile]);
   const weakestDim   = useMemo(() => [...dimensionProfile].filter(d => d.hasData).sort((a, b) => a.score - b.score)[0],  [dimensionProfile]);
 
   const archetype = useMemo(() => deriveArchetype(scoreTrend, avgTimePerQ, averageScore), [scoreTrend, avgTimePerQ, averageScore]);
 
-  // Topic ranking by ROI (same formula as Dashboard)
+  // Topic ranking by ROI — uses backend-resolved dimension profile so the
+  // weight used for each topic matches the IRS formula, not the old exact-match lookup.
   const topicROIRanking = useMemo(() =>
     [...topicPerformance]
-      .map(t => ({ ...t, roi: topicROI(t.topic, topicMap) }))
+      .map(t => ({ ...t, roi: topicROI(t.topic, dimensionProfile) }))
       .sort((a, b) => b.roi - a.roi),
-  [topicPerformance, topicMap]);
+  [topicPerformance, dimensionProfile]);
 
   // Chart data
   const chartData = useMemo(() =>
@@ -992,7 +976,7 @@ const Analytics = () => {
               <div style={{ marginTop: 12, width: "100%", padding: "10px 14px", borderRadius: 12, background: `${currentTier.color}15`, border: `1px solid ${currentTier.color}40`, display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ textAlign: "left", flex: 1 }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: currentTier.color, fontFamily: F.display }}>{currentTier.label} eligible</div>
-                  <div style={{ fontSize: 10.5, color: C.sub, marginTop: 2 }}>{currentTier.desc}</div>
+                  {nextTierApi?.desc && <div style={{ fontSize: 10.5, color: C.sub, marginTop: 2 }}>{nextTierApi.desc}</div>}
                 </div>
               </div>
               {nextTier && (
@@ -1064,27 +1048,28 @@ const Analytics = () => {
           <h2 style={S.cardH2}>Where you stand in the placement food chain</h2>
           <p style={{ ...S.cardSub, marginBottom: 20 }}>IRS thresholds map directly to real Indian placement market data.</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }} className="an-tiers">
-            {TIERS.map((tier) => {
-              const reached   = irs >= tier.minScore;
-              const isCurrent = tier === currentTier;
-              const pct       = Math.min(100, tier.minScore === 0 ? 100 : (irs / tier.minScore) * 100);
+            {apiTiers.map((tier) => {
+              const meta      = TIER_META[tier.label] ?? { color: C.blue500, bg: C.blue50 };
+              const reached   = tier.isUnlocked;
+              const isCurrent = tier.label === currentTierLabel;
+              const pct       = Math.min(100, tier.minIRS === 0 ? 100 : (irs / tier.minIRS) * 100);
               return (
                 <div key={tier.label} style={{
                   padding: "16px 15px", borderRadius: 16,
-                  border: `2px solid ${isCurrent ? tier.color : C.border}`,
-                  background: isCurrent ? `${tier.color}12` : C.cardAlt,
+                  border: `2px solid ${isCurrent ? meta.color : C.border}`,
+                  background: isCurrent ? `${meta.color}12` : C.cardAlt,
                   position: "relative", transition: "all 0.2s",
                 }}>
                   {isCurrent && (
-                    <div style={{ position: "absolute", top: 9, right: 9, fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: tier.color, color: "#fff", fontFamily: F.mono, letterSpacing: "0.5px" }}>CURRENT</div>
+                    <div style={{ position: "absolute", top: 9, right: 9, fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: meta.color, color: "#fff", fontFamily: F.mono, letterSpacing: "0.5px" }}>CURRENT</div>
                   )}
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: reached ? tier.color : C.muted, fontFamily: F.display, marginBottom: 4 }}>{tier.label}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: reached ? meta.color : C.muted, fontFamily: F.display, marginBottom: 4 }}>{tier.label}</div>
                   <div style={{ fontSize: 10.5, color: C.sub, lineHeight: 1.45, marginBottom: 10 }}>{tier.desc}</div>
                   <div style={{ height: 6, borderRadius: 999, background: C.border, overflow: "hidden" }}>
-                    <div style={{ height: "100%", borderRadius: 999, width: `${mounted ? pct : 0}%`, background: reached ? tier.color : C.muted, transition: "width 1.1s cubic-bezier(.16,1,.3,1)" }} />
+                    <div style={{ height: "100%", borderRadius: 999, width: `${mounted ? pct : 0}%`, background: reached ? meta.color : C.muted, transition: "width 1.1s cubic-bezier(.16,1,.3,1)" }} />
                   </div>
                   <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted, marginTop: 5 }}>
-                    {tier.minScore === 0 ? "✓ Always eligible" : reached ? `✓ Unlocked at IRS ${tier.minScore}` : `Need ${tier.minScore - irs} more IRS pts`}
+                    {tier.minIRS === 0 ? "✓ Always eligible" : reached ? `✓ Unlocked at IRS ${tier.minIRS}` : `Need ${tier.minIRS - irs} more IRS pts`}
                   </div>
                 </div>
               );
@@ -1219,7 +1204,10 @@ const Analytics = () => {
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
               {topicROIRanking.slice(0, 5).map((t, i) => {
                 const score = t.averageScore || 0;
-                const dim   = DIMENSIONS.find(d => d.topics.map(x => x.toLowerCase()).includes(t.topic.toLowerCase()));
+                // Use contributingTopics from API profile — synonym-resolved, not exact-match
+                const dim   = dimensionProfile.find(d =>
+                  (d.contributingTopics ?? []).some(ct => ct.toLowerCase() === t.topic.toLowerCase())
+                );
                 return (
                   <div key={t.topic} style={{ display: "flex", alignItems: "center", gap: 11 }}>
                     <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, background: i === 0 ? C.redTint : C.blue50, color: i === 0 ? C.red : C.blue600, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, fontFamily: F.mono }}>
@@ -1284,7 +1272,7 @@ const Analytics = () => {
                       {!dim.hasData ? "No data yet" : dim.score >= 80 ? "✓ Strong" : dim.score >= 60 ? "→ Developing" : "↑ Focus needed"}
                     </span>
                     <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>
-                      {Math.round((DIMENSIONS.find(d => d.key === dim.key)?.weight ?? 0) * 100)}% weight
+                      {Math.round((dim.weight ?? 0) * 100)}% weight
                     </span>
                   </div>
                 </div>
@@ -1350,9 +1338,9 @@ const Analytics = () => {
             <h2 style={S.cardH2}>
               {nextTier ? <>{nextTier.minScore - irs} points to <span style={{ color: nextTier.color }}>{nextTier.label}</span></> : "You've reached the highest tracked tier."}
             </h2>
-            <p style={{ ...S.cardSub, marginBottom: 16 }}>{nextTier ? nextTier.advice : "Maintain your streak to protect this position."}</p>
+            <p style={{ ...S.cardSub, marginBottom: 16 }}>{nextTier ? (nextTier.advice ?? "") : "Maintain your streak to protect this position."}</p>
 
-            {nextTier && (
+            {nextTier && nextTier.minScore > 0 && (
               <>
                 <div style={{ position: "relative", height: 10, borderRadius: 999, background: C.borderMd, overflow: "hidden", marginBottom: 6 }}>
                   <div style={{ height: "100%", width: `${mounted ? Math.min(100, (irs / nextTier.minScore) * 100) : 0}%`, background: `linear-gradient(90deg, ${C.blue500}, ${C.cyan500})`, borderRadius: 999, transition: "width 1.3s cubic-bezier(.16,1,.3,1)" }} />

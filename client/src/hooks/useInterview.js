@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 import API_BASE from '../config/api.js';
+import useAuth from './useAuth.js';
 
 import {
   startInterview,
@@ -60,6 +61,7 @@ const normalizeQuestion = question => ({
 
 export const useInterview = () => {
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
 
   const [sessionId, setSessionId] =
     useState(null);
@@ -500,6 +502,9 @@ export const useInterview = () => {
             await completeInterview(
               sessionId
             );
+
+          // Refresh auth context so Navbar IRS/AVG update immediately
+          refreshUser().catch(() => {});
 
           toast.dismiss(toastId);
 

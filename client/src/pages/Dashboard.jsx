@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import { getPerformanceAnalytics, startInterview, getAICoach } from '../Services/interviewService';
+import { getShareLink } from '../Services/profileServices';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE — READINESS CONSOLE v5
@@ -97,22 +98,27 @@ const TIER_STYLE = {
   platinum: { color: C.platinum, tint: C.platinumTint, ring: 'rgba(93,108,224,0.32)' },
 };
 
-// ─── Package tier benchmarks (Indian fresher / junior market, 2024–25) ───────
-const TIERS = [
-  { label: '₹3–6 LPA',   minScore: 0,  color: '#7A8BAF', bg: '#F0F4FF',   desc: 'Service companies, off-campus starts',      advice: 'Focus on DSA basics and communication fundamentals.' },
-  { label: '₹6–12 LPA',  minScore: 38, color: C.amber,   bg: C.amberTint, desc: 'Mid-tier product, IT MNCs, campus drives',  advice: 'Strengthen problem solving and topic breadth.' },
-  { label: '₹12–20 LPA', minScore: 60, color: C.blue500, bg: C.blue50,    desc: 'Top product companies, FAANG-adjacent',     advice: 'Master system design and consistency under pressure.' },
-  { label: '₹20 LPA+',   minScore: 80, color: C.cyan500, bg: C.cyanTint,  desc: 'FAANG, unicorn startups, remote-first',     advice: 'Achieve elite cross-dimension performance.' },
-];
+// ─── Package tier benchmarks — UI metadata only (colors/bg/desc).
+// IRS thresholds and readiness logic are owned by scoringModel.js on the
+// backend. The frontend reads these values from the API response and only
+// uses this local map for colors and bg tints that the backend doesn't need.
+const TIER_META = {
+  '₹3–6 LPA':   { color: '#7A8BAF', bg: '#F0F4FF' },
+  '₹6–12 LPA':  { color: C.amber,   bg: C.amberTint },
+  '₹12–20 LPA': { color: C.blue500, bg: C.blue50 },
+  '₹20 LPA+':   { color: C.cyan500, bg: C.cyanTint },
+};
 
-// ─── Dimension model — same keys used on Analytics page ─────────────────────
-const DIMENSIONS = [
-  { key: 'technical',      label: 'Technical Depth', icon: '⚙',  topics: ['DSA', 'OOP', 'DBMS', 'OS', 'JavaScript', 'Web Development', 'System Design', 'Database'], weight: 0.28, tip: 'Core CS fundamentals — the first thing technical screeners test.' },
-  { key: 'problemSolving', label: 'Problem Solving', icon: '🔍', topics: ['DSA', 'System Design', 'Algorithm'], weight: 0.22, tip: 'How you break down unknowns — decisive in live coding rounds.' },
-  { key: 'communication',  label: 'Communication',   icon: '💬', topics: ['Communication', 'HR', 'Behavioral'], weight: 0.18, tip: 'Clarity of thought, not just English — interviewers notice it fast.' },
-  { key: 'behavioral',     label: 'Behavioral',      icon: '🤝', topics: ['HR', 'Behavioral', 'Leadership'], weight: 0.12, tip: 'Situational judgment and self-awareness under HR scrutiny.' },
-  { key: 'design',         label: 'System Design',   icon: '🏗', topics: ['System Design', 'Architecture', 'OOP', 'Scalability'], weight: 0.10, tip: 'Matters at ₹12 LPA+ — often the differentiator between tiers.' },
-  { key: 'fundamentals',   label: 'CS Fundamentals', icon: '📚', topics: ['DBMS', 'OS', 'OOP', 'Networking', 'JavaScript'], weight: 0.10, tip: 'Breadth of core knowledge — separates prepared from lucky.' },
+// ─── Dimension display metadata — icons, tips, weights for rendering bars.
+// Scores and hasData come from the API (computed by scoringModel.js with
+// the proper synonym resolver). This local array is only for display fields.
+const DIMENSION_META = [
+  { key: 'technical',      label: 'Technical Depth', icon: '⚙',  weight: 0.28, tip: 'Core CS fundamentals — the first thing technical screeners test.' },
+  { key: 'problemSolving', label: 'Problem Solving', icon: '🔍', weight: 0.22, tip: 'How you break down unknowns — decisive in live coding rounds.' },
+  { key: 'communication',  label: 'Communication',   icon: '💬', weight: 0.18, tip: 'Clarity of thought, not just English — interviewers notice it fast.' },
+  { key: 'behavioral',     label: 'Behavioral',      icon: '🤝', weight: 0.12, tip: 'Situational judgment and self-awareness under HR scrutiny.' },
+  { key: 'design',         label: 'System Design',   icon: '🏗', weight: 0.10, tip: 'Matters at ₹12 LPA+ — often the differentiator between tiers.' },
+  { key: 'fundamentals',   label: 'CS Fundamentals', icon: '📚', weight: 0.10, tip: 'Breadth of core knowledge — separates prepared from lucky.' },
 ];
 
 // ─── Personality archetypes ──────────────────────────────────────────────────
@@ -178,42 +184,6 @@ const deriveArchetype = (scoreTrend, avgTimePerQ, avgScore) => {
   if (avgTimePerQ != null && avgTimePerQ < 22) return ARCHETYPES[2];
   if (avgTimePerQ != null && avgTimePerQ > 52) return ARCHETYPES[3];
   return ARCHETYPES[4];
-};
-
-const computeIRS = ({ dimensionProfile, scoreTrend, topicPerformance, averageScore }) => {
-  const dimScore = dimensionProfile.reduce((acc, d) => {
-    const cfg = DIMENSIONS.find(x => x.key === d.key);
-    return acc + (d.score * (cfg?.weight ?? 1 / DIMENSIONS.length));
-  }, 0);
-  const dimComponent = clamp(dimScore) * 0.40;
-
-  const recentScores = scoreTrend.slice(-12).map(s => s.score || 0);
-  const ewmaScore = recentScores.length ? ewma(recentScores) : averageScore;
-  const ewmaComponent = clamp(ewmaScore) * 0.25;
-
-  const uniqueTopics = topicPerformance.length;
-  const breadthComponent = Math.min(uniqueTopics / 8, 1) * 100 * 0.15;
-
-  const scores = scoreTrend.map(s => s.score || 0);
-  const sd = stdDev(scores);
-  const mean = scores.length ? scores.reduce((a, v) => a + v, 0) / scores.length : 0;
-  const cv = mean > 0 ? sd / mean : 1;
-  const consistencyScore = Math.max(0, (1 - Math.min(cv, 1)) * 100);
-  const consistencyComponent = consistencyScore * 0.20;
-
-  return clamp(dimComponent + ewmaComponent + breadthComponent + consistencyComponent);
-};
-
-const tierForScore = (irs) => {
-  const reached = TIERS.filter(t => irs >= t.minScore);
-  return reached[reached.length - 1] || TIERS[0];
-};
-
-const pointsToNext = (irs) => {
-  const tier = tierForScore(irs);
-  const idx = TIERS.indexOf(tier);
-  const next = TIERS[idx + 1];
-  return next ? Math.max(0, next.minScore - irs) : 0;
 };
 
 /** Predicts next-session score using EWMA + trend slope, clamped to plausible range. */
@@ -284,7 +254,7 @@ const bestFixTarget = (topicPerformance, dimensionProfile) => {
   if (!topicPerformance.length) return null;
   return topicPerformance
     .map(t => {
-      const dim = DIMENSIONS.find(d => d.topics.includes(t.topic)) ?? {};
+      const dim = DIMENSION_META.find(d => d.key === (dimensionProfile.find(dp => dp.contributingTopics?.includes(t.topic))?.key)) ?? {};
       const dimWeight = dim.weight ?? 0.1;
       const roi = dimWeight * (100 - (t.averageScore || 0));
       return { ...t, roi };
@@ -336,6 +306,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const clock = useLiveClock();
 
+  const [dashStats, setDashStats] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [leaderboard, setLeaderboard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -348,12 +319,23 @@ const Dashboard = () => {
     (async () => {
       try {
         const token = localStorage.getItem('token');
+        // /dashboard/stats is a fast query (10 sessions) — it resolves first
+        // and populates the header strip immediately while the heavier
+        // /performance call (all sessions + scoringModel) is still in flight.
+        const statsPromise = fetch(`${API_BASE}/dashboard/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then(r => r.json());
+
         const [analyticsData, lbRes] = await Promise.all([
           getPerformanceAnalytics(),
           fetch(`${API_BASE}/leaderboard`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
+
+        // Stats may resolve before or after — whichever lands, set it
+        statsPromise.then(s => setDashStats(s)).catch(() => {});
+
         setAnalytics(analyticsData);
         setLeaderboard(await lbRes.json());
       } catch (e) {
@@ -398,16 +380,56 @@ const Dashboard = () => {
     }
   };
 
+  // Fix-badges — recomputes badge state server-side against all completed
+  // sessions, then re-fetches analytics so the badge showcase reflects the
+  // corrected state. Shows a toast so the user knows something happened.
+  const [fixingBadges, setFixingBadges] = useState(false);
+  const handleFixBadges = useCallback(async () => {
+    setFixingBadges(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/auth/fix-badges`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Fix failed');
+      // Re-fetch analytics so badge counts update in the UI
+      const fresh = await getPerformanceAnalytics();
+      setAnalytics(fresh);
+      const gained = data.newBadges?.length ?? 0;
+      // Simple inline toast via a temporary DOM element (avoids adding a dep)
+      const msg = gained > 0
+        ? `✓ ${gained} badge${gained > 1 ? 's' : ''} unlocked`
+        : '✓ Badges are up to date';
+      const el = document.createElement('div');
+      el.textContent = msg;
+      Object.assign(el.style, {
+        position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+        background: '#1A6EFF', color: '#fff', padding: '10px 20px', borderRadius: '12px',
+        fontWeight: 700, fontSize: '13px', zIndex: 9999, pointerEvents: 'none',
+      });
+      document.body.appendChild(el);
+      setTimeout(() => document.body.removeChild(el), 2800);
+    } catch (e) {
+      console.error('Fix badges failed:', e);
+    } finally {
+      setFixingBadges(false);
+    }
+  }, []);
+
   // ── Derived raw fields ────────────────────────────────────────────────────
   const totalInterviews = analytics?.totalInterviews ?? analytics?.totalSessions ?? 0;
   const averageScore = analytics?.averageScore ?? 0;
-  const bestScore = analytics?.bestScore ?? analytics?.highestScore ?? 0;
+  // bestScore: prefer /performance (all sessions) → fall back to /dashboard/stats (last 10)
+  const bestScore = analytics?.bestScore ?? analytics?.highestScore ?? dashStats?.stats?.bestScore ?? 0;
   const scoreTrend = analytics?.scoreTrend ?? [];
   const topicPerformance = useMemo(() => analytics?.topicPerformance ?? [], [analytics]);
   const badgesRaw = useMemo(() => analytics?.badges ?? [], [analytics]);
   const leaderboardUsers = useMemo(() => leaderboard?.global ?? [], [leaderboard]);
   const currentUser = leaderboard?.currentUser ?? null;
-  const streakDays = user?.streak?.current ?? 0;
+  // Streak: prefer live user object → /dashboard/stats (updated after each session)
+  const streakDays = user?.streak?.current ?? dashStats?.stats?.currentStreak ?? 0;
   const avgTimePerQ = analytics?.timePerformance?.averageTimePerQuestion ?? null;
   const hasData = totalInterviews > 0;
 
@@ -415,30 +437,40 @@ const Dashboard = () => {
   const prevScore = scoreTrend.at(-2)?.score ?? latestScore;
   const delta = latestScore - prevScore;
 
-  // ── Six-dimension profile ─────────────────────────────────────────────────
-  const topicMap = useMemo(() => {
-    const m = {};
-    topicPerformance.forEach(t => { m[t.topic?.toLowerCase()] = t.averageScore || 0; });
-    return m;
-  }, [topicPerformance]);
+  // ── IRS + tier — read from backend (scoringModel.js), never recompute here ──
+  // The backend uses a real topic synonym resolver; frontend exact-string
+  // matching silently drops ~20% of answered questions from dimension scores.
+  const irs = analytics?.irs ?? 0;
 
-  const dimensionProfile = useMemo(() => DIMENSIONS.map(dim => {
-    const vals = dim.topics.map(t => topicMap[t.toLowerCase()]).filter(v => typeof v === 'number' && v > 0);
-    const score = vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0;
-    return { ...dim, score: clamp(score), hasData: vals.length > 0 };
-  }), [topicMap]);
+  // currentTier: API returns the label string; resolve display metadata locally
+  const currentTierLabel = analytics?.currentTier ?? '₹3–6 LPA';
+  const currentTierMeta = TIER_META[currentTierLabel] ?? TIER_META['₹3–6 LPA'];
+  const currentTier = { label: currentTierLabel, ...currentTierMeta };
 
-  const irs = useMemo(() => {
-    if (!hasData) return 0;
-    return computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
-  }, [dimensionProfile, scoreTrend, topicPerformance, averageScore, hasData]);
+  // nextTier: first tier from the backend tiers array that isn't yet unlocked
+  const apiTiers = analytics?.tiers ?? [];
+  const nextTierApi = apiTiers.find(t => !t.isUnlocked && t.label !== currentTierLabel) ?? null;
+  const nextTier = nextTierApi
+    ? { label: nextTierApi.label, minScore: nextTierApi.minIRS, color: TIER_META[nextTierApi.label]?.color ?? C.blue500, advice: nextTierApi.advice }
+    : null;
+  const irsGap = nextTier ? Math.max(0, nextTier.minScore - irs) : 0;
 
-  const currentTier = useMemo(() => tierForScore(irs), [irs]);
-  const nextTier = useMemo(() => {
-    const idx = TIERS.indexOf(currentTier);
-    return TIERS[idx + 1] || null;
-  }, [currentTier]);
-  const irsGap = pointsToNext(irs);
+  // ── Six-dimension profile — from backend (synonym-resolved) ──────────────
+  // Merge display metadata (icon, tip, weight) onto the API shape.
+  const dimensionProfile = useMemo(() => {
+    const apiProfile = analytics?.dimensionProfile ?? [];
+    return DIMENSION_META.map(meta => {
+      const apiDim = apiProfile.find(d => d.key === meta.key);
+      return {
+        ...meta,
+        score: apiDim?.score ?? 0,
+        hasData: apiDim?.hasData ?? false,
+        isProvisional: apiDim?.isProvisional ?? false,
+        answeredCount: apiDim?.answeredCount ?? 0,
+        contributingTopics: apiDim?.contributingTopics ?? [],
+      };
+    });
+  }, [analytics]);
 
   const archetype = useMemo(
     () => deriveArchetype(scoreTrend, avgTimePerQ, averageScore),
@@ -602,7 +634,7 @@ const Dashboard = () => {
           {/* ── NEXT SESSION PREDICTOR + WEEKLY DIGEST ──────────────────── */}
           <section style={S.twoCol} className="mm-two-col">
             <PredictorCard prediction={nextPrediction} lastScore={latestScore} averageScore={averageScore} onStart={() => startQuick()} starting={starting} />
-            <WeeklyDigestCard scoreTrend={scoreTrend} hmStats={hmStats} totalInterviews={totalInterviews} />
+            <WeeklyDigestCard scoreTrend={scoreTrend} hmStats={hmStats} totalInterviews={totalInterviews} longestStreak={dashStats?.stats?.longestStreak ?? hmStats.longestStreak} />
           </section>
 
           {/* ── IRS BREAKDOWN + FIX THIS NEXT ───────────────────────────── */}
@@ -621,19 +653,21 @@ const Dashboard = () => {
               </div>
               <div style={S.dimList}>
                 {dimensionProfile.map(d => {
-                  const cfg = DIMENSIONS.find(x => x.key === d.key);
                   const col = d.hasData ? scoreColor(d.score) : C.faint;
                   return (
-                    <div key={d.key} style={S.dimRow} title={cfg?.tip}>
+                    <div key={d.key} style={S.dimRow} title={d.tip}>
                       <div style={S.dimMeta}>
                         <div style={S.dimLeft}>
-                          <span style={S.dimIcon}>{cfg?.icon}</span>
+                          <span style={S.dimIcon}>{d.icon}</span>
                           <div>
                             <span style={S.dimName}>{d.label}</span>
-                            <span style={S.dimWeight}>{Math.round((cfg?.weight ?? 0) * 100)}% weight</span>
+                            <span style={S.dimWeight}>{Math.round((d.weight ?? 0) * 100)}% weight</span>
                           </div>
                         </div>
-                        <span style={{ ...S.dimScore, color: d.hasData ? col : C.faint }}>{d.hasData ? d.score : '—'}</span>
+                        <span style={{ ...S.dimScore, color: d.hasData ? col : C.faint }}>
+                          {d.hasData ? d.score : '—'}
+                          {d.isProvisional && d.hasData && <span title="Provisional — more sessions needed" style={{ fontSize: 9, marginLeft: 3, color: C.amber, fontWeight: 700 }}>~</span>}
+                        </span>
                       </div>
                       <div style={S.dimTrack}>
                         <div style={{ ...S.dimFill, width: mounted && d.hasData ? `${d.score}%` : '0%', background: col, opacity: d.hasData ? 1 : 0.3 }} />
@@ -692,7 +726,10 @@ const Dashboard = () => {
           </section>
 
           {/* ── BADGE SHOWCASE ───────────────────────────────────────────── */}
-          <BadgeShowcase badges={badges} unlockedCount={unlockedCount} nextBadge={nextBadge} mounted={mounted} />
+          <BadgeShowcase badges={badges} unlockedCount={unlockedCount} nextBadge={nextBadge} mounted={mounted} onFixBadges={handleFixBadges} />
+
+          {/* ── RECENT SESSIONS — /dashboard/stats recentSessions ────────── */}
+          <RecentSessionsCard sessions={dashStats?.recentSessions} mounted={mounted} />
 
           {/* ── TOPIC MOMENTUM (sparkline-style rows) ───────────────────── */}
           <TopicMomentumCard topics={topicsWithMomentum} mounted={mounted} onDrill={startQuick} starting={starting} />
@@ -715,7 +752,12 @@ const Dashboard = () => {
           />
 
           {/* ── ACTIVITY HEATMAP ─────────────────────────────────────────── */}
-          <ActivityHeatmap heatmap={heatmap} stats={hmStats} total={totalInterviews} mounted={mounted} />
+          <ActivityHeatmap
+            heatmap={heatmap}
+            stats={{ ...hmStats, longestStreak: dashStats?.stats?.longestStreak ?? hmStats.longestStreak }}
+            total={totalInterviews}
+            mounted={mounted}
+          />
 
           {/* ── LEADERBOARD ──────────────────────────────────────────────── */}
           <LeaderboardCard users={leaderboardUsers} currentUser={currentUser} onChallenge={() => startQuick()} starting={starting} />
@@ -732,7 +774,7 @@ const Dashboard = () => {
                   {nextTier.advice} {weakestDim && `Focus on ${weakestDim.label} — it's your largest open gap.`}
                 </p>
                 <div style={S.bannerTrack}>
-                  <div style={{ ...S.bannerFill, width: mounted ? `${Math.min(100, (irs / nextTier.minScore) * 100)}%` : '0%' }} />
+                  <div style={{ ...S.bannerFill, width: mounted ? `${Math.min(100, nextTier.minScore > 0 ? (irs / nextTier.minScore) * 100 : 100)}%` : '0%' }} />
                   <div style={{ ...S.bannerMark, left: '100%' }} title={`${nextTier.label} threshold`} />
                 </div>
                 <div style={S.bannerCaption}>{irs}/{nextTier.minScore} IRS needed</div>
@@ -818,8 +860,67 @@ const PredictorCard = ({ prediction, lastScore, averageScore, onStart, starting 
   );
 };
 
+// ─── Recent Sessions — powered by /dashboard/stats recentSessions field ───────
+// This is the only place in the app that surfaces that data. Clicking a row
+// navigates to the full result page via /result/:id (same as History).
+const RecentSessionsCard = ({ sessions, mounted }) => {
+  const navigate = useNavigate();
+  if (!sessions?.length) return null;
+
+  const modeIcon = m => ({ technical: '💻', hr: '🤝', behavioral: '🤝', mixed: '🎲', company: '🏢' })[m?.toLowerCase()] ?? '📋';
+  const scoreCol = s => s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.red;
+
+  return (
+    <div style={S.card}>
+      <div style={S.cardHeader}>
+        <div>
+          <div style={S.eyebrowDark}>RECENT SESSIONS</div>
+          <h2 style={S.cardH2}>Last 5 completed interviews</h2>
+        </div>
+        <button style={S.btnOutline} onClick={() => navigate('/history')}>Full history →</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+        {sessions.map((s, i) => (
+          <div
+            key={s.id}
+            onClick={() => navigate(`/result/${s.id}`)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '10px 14px', borderRadius: 12,
+              border: `1px solid ${C.border}`, background: C.cardAlt,
+              cursor: 'pointer', transition: 'background 0.15s',
+              opacity: mounted ? 1 : 0,
+              transform: mounted ? 'none' : 'translateY(8px)',
+              transition: `opacity 0.3s ${i * 0.06}s, transform 0.3s ${i * 0.06}s, background 0.15s`,
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = C.blue50}
+            onMouseLeave={e => e.currentTarget.style.background = C.cardAlt}
+          >
+            <div style={{ fontSize: 18, flexShrink: 0 }}>{modeIcon(s.mode)}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, fontFamily: F.body, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {s.company ? `${s.company} — ` : ''}{s.topic || s.mode || 'Interview'}
+              </div>
+              <div style={{ fontSize: 10.5, color: C.muted, fontFamily: F.mono, marginTop: 2 }}>
+                {s.questionCount} Qs · {s.date}
+              </div>
+            </div>
+            <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 800, color: scoreCol(s.totalScore), flexShrink: 0 }}>
+              {s.totalScore ?? '—'}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // ─── Weekly Digest — condensed 7-day summary, distinct from the heatmap below ─
-const WeeklyDigestCard = ({ scoreTrend, hmStats, totalInterviews }) => {
+const WeeklyDigestCard = ({ scoreTrend, hmStats, totalInterviews, longestStreak }) => {
+  // longestStreak: prefer /dashboard/stats (stored in DB, updated after each session)
+  // → fall back to heatmap derivation (heatmap only covers the last 12 weeks of sessions
+  //   so it will undercount for users with a long history)
+  const displayLongestStreak = longestStreak ?? hmStats.longestStreak;
   const now = new Date();
   const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(now.getDate() - 7);
   const fourteenDaysAgo = new Date(now); fourteenDaysAgo.setDate(now.getDate() - 14);
@@ -852,7 +953,7 @@ const WeeklyDigestCard = ({ scoreTrend, hmStats, totalInterviews }) => {
           <div style={S.digestLabel}>VS LAST WEEK</div>
         </div>
         <div style={S.digestCell}>
-          <div style={S.digestVal}>{hmStats.longestStreak}d</div>
+          <div style={S.digestVal}>{displayLongestStreak}d</div>
           <div style={S.digestLabel}>LONGEST STREAK</div>
         </div>
       </div>
@@ -864,8 +965,15 @@ const WeeklyDigestCard = ({ scoreTrend, hmStats, totalInterviews }) => {
 };
 
 // ─── Badge Showcase — real earned badges, tiered treatment ───────────────────
-const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted }) => {
+const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted, onFixBadges }) => {
   const [selected, setSelected] = useState(null);
+  const [fixing, setFixing] = useState(false);
+
+  const handleFix = async () => {
+    setFixing(true);
+    try { await onFixBadges?.(); } finally { setFixing(false); }
+  };
+
   return (
     <section style={{ ...S.card, marginBottom: 18 }}>
       <div style={S.cardHeader}>
@@ -874,21 +982,35 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted }) => {
           <h2 style={S.cardH2}>{unlockedCount}/{badges.length} badges earned</h2>
           <p style={S.cardSub}>Every badge here is computed from real session patterns — comebacks, streaks, speed-vs-accuracy — not just session counts.</p>
         </div>
-        {nextBadge && (
-          <div style={S.nextBadgeChip}>
-            <span style={{ fontSize: 15 }}>{nextBadge.icon}</span>
-            <div>
-              <div style={S.nextBadgeLabel}>NEXT UP</div>
-              <div style={S.nextBadgeName}>{nextBadge.label}</div>
-            </div>
-            <div style={S.nextBadgeProgress}>
-              <div style={S.nextBadgeTrack}>
-                <div style={{ ...S.nextBadgeFill, width: `${Math.round((nextBadge.progress || 0) * 100)}%` }} />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+          {nextBadge && (
+            <div style={S.nextBadgeChip}>
+              <span style={{ fontSize: 15 }}>{nextBadge.icon}</span>
+              <div>
+                <div style={S.nextBadgeLabel}>NEXT UP</div>
+                <div style={S.nextBadgeName}>{nextBadge.label}</div>
               </div>
-              <span style={S.nextBadgePct}>{Math.round((nextBadge.progress || 0) * 100)}%</span>
+              <div style={S.nextBadgeProgress}>
+                <div style={S.nextBadgeTrack}>
+                  <div style={{ ...S.nextBadgeFill, width: `${Math.round((nextBadge.progress || 0) * 100)}%` }} />
+                </div>
+                <span style={S.nextBadgePct}>{Math.round((nextBadge.progress || 0) * 100)}%</span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+          <button
+            onClick={handleFix}
+            disabled={fixing}
+            title="Recompute badges against all your completed sessions — use this if a badge looks wrong"
+            style={{
+              border: `1px solid ${C.border}`, borderRadius: 9, background: C.card,
+              padding: '6px 12px', color: C.sub, cursor: fixing ? 'default' : 'pointer',
+              fontSize: 11, fontWeight: 700, opacity: fixing ? 0.6 : 1,
+            }}
+          >
+            {fixing ? 'Rechecking…' : '🔄 Recheck badges'}
+          </button>
+        </div>
       </div>
 
       <div style={S.badgeGrid} className="mm-badge-grid">
@@ -1135,6 +1257,9 @@ const PeerCard = ({ percentile, currentUser, leaderboardUsers, mounted, onChalle
 // ─── Share card ────────────────────────────────────────────────────────────────
 const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions }) => {
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkError, setLinkError] = useState(false);
 
   const handleShare = async () => {
     const text = `${name}'s MockMate readiness: IRS ${irs}/100 — ${tier.label} eligible. Strongest in ${strongest?.label ?? '—'}${percentile ? `, top ${100 - percentile + 1}%` : ''}. Style: ${archetype.label}. ${sessions} sessions logged.`;
@@ -1147,6 +1272,27 @@ const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions
         setTimeout(() => setCopied(false), 2200);
       }
     } catch { /* user cancelled */ }
+  };
+
+  // Fetches (or lazily creates, per the backend) this user's public profile
+  // slug and copies the shareable /p/:slug URL — the getShareLink endpoint
+  // existed on the backend with no UI entry point anywhere in the app.
+  const handleCopyProfileLink = async () => {
+    setLinkLoading(true);
+    setLinkError(false);
+    try {
+      const { slug } = await getShareLink();
+      const url = `${window.location.origin}/p/${slug}`;
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2200);
+    } catch (err) {
+      console.error('Copy profile link failed:', err);
+      setLinkError(true);
+      setTimeout(() => setLinkError(false), 2200);
+    } finally {
+      setLinkLoading(false);
+    }
   };
 
   return (
@@ -1165,7 +1311,12 @@ const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions
             {percentile ? <> · Top <strong style={{ color: C.cyan400 }}>{100 - percentile + 1}%</strong></> : null}
             {' '}· {archetype.icon} {archetype.label}
           </p>
-          <button style={S.btnShare} onClick={handleShare}>{copied ? '✓ Copied to clipboard' : '📤 Share your score'}</button>
+          <div>
+            <button style={S.btnShare} onClick={handleShare}>{copied ? '✓ Copied to clipboard' : '📤 Share your score'}</button>
+            <button style={S.btnShareLink} onClick={handleCopyProfileLink} disabled={linkLoading}>
+              {linkLoading ? 'Generating link…' : linkError ? 'Couldn\u2019t copy — try again' : linkCopied ? '✓ Link copied' : '🔗 Copy public profile link'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1317,6 +1468,7 @@ const S = {
   btnBlue: { border: 'none', borderRadius: 12, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: '#fff', padding: '11px 18px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 4px 16px rgba(26,110,255,0.3)`, textAlign: 'center' },
   btnSmall: { border: `1px solid ${C.borderMd}`, borderRadius: 10, background: C.blue50, color: C.blue600, padding: '9px 14px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: F.body },
   btnShare: { marginTop: 14, border: 'none', borderRadius: 10, background: `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`, color: '#fff', padding: '10px 18px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,173,224,0.35)' },
+  btnShareLink: { marginTop: 14, marginLeft: 10, border: '1px solid rgba(255,255,255,0.28)', borderRadius: 10, background: 'rgba(255,255,255,0.06)', color: '#fff', padding: '10px 18px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
   btnBannerCta: { flexShrink: 0, border: 'none', borderRadius: 12, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: '#fff', padding: '13px 22px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 6px 20px rgba(26,110,255,0.28)`, alignSelf: 'flex-start' },
 
   statsRow: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 },

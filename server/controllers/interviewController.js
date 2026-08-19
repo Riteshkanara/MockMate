@@ -303,13 +303,28 @@ const startInterview = async (req, res) => {
 
     const count = getQuestionCount(mode);
 
-    const questions = await generateQuestions({
-      mode,
-      company,
-      topic,
-      difficulty,
-      count,
-    });
+    // Fetch last 5 sessions' question texts to pass as exclusion list
+const recentSessions = await Session.find(
+  { user: req.user._id, status: 'completed' },
+  { 'questions.text': 1 },
+  { sort: { createdAt: -1 }, limit: 5 }
+);
+
+const previousQuestions = recentSessions
+  .flatMap(s => s.questions || [])
+  .map(q => q.text)
+  .filter(Boolean)
+  .slice(0, 40); // cap at 40 so prompt doesn't bloat
+
+const questions = await generateQuestions({
+  mode,
+  company,
+  topic,
+  weakAreas,
+  difficulty,
+  count,
+  previousQuestions,
+});
 
     const session = await Session.create({
       user: userId,

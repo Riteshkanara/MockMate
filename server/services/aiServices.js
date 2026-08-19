@@ -1082,6 +1082,7 @@ const generateQuestions = async ({
     weakAreas = [],
     difficulty = 'mixed',
     count = 10,
+    previousQuestions = [],
   }) => {
     const safeCount =
       Math.max(
@@ -1105,10 +1106,15 @@ const generateQuestions = async ({
         ? mode
         : 'quick';
 
-    const prompt = `
+    const exclusionBlock = previousQuestions.length > 0
+  ? `\nPREVIOUSLY SEEN QUESTIONS (do NOT repeat or closely paraphrase any of these):\n${previousQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n`
+  : '';
+
+const prompt = `
 You are an expert interviewer and assessment designer.
 
 Generate exactly ${safeCount} questions for an Indian engineering student preparing for placements.
+${exclusionBlock}
 
 INTERVIEW CONFIGURATION
 
@@ -1165,7 +1171,8 @@ Combine:
 
 QUALITY RULES
 
-- Do not repeat questions.
+- CRITICAL: Do not repeat or closely paraphrase any question from the PREVIOUSLY SEEN list above.
+- Each question must test a clearly different concept, angle, or sub-topic from the others.
 - Match requested difficulty.
 - Prioritize weak areas.
 - Use company context where appropriate.

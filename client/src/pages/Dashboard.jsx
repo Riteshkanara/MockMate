@@ -569,6 +569,11 @@ const Dashboard = () => {
                   <div style={{ ...S.tierPill, background: `${currentTier.color}22`, color: currentTier.color, border: `1px solid ${currentTier.color}55` }}>
                     {currentTier.label} eligible
                   </div>
+                  {analytics?.currentTierIsGated && (
+                    <div style={{ fontSize: 11, color: C.muted, marginTop: 4, lineHeight: 1.5 }}>
+                      Math already tracks toward {analytics.currentTierRaw} — {analytics.sessionsNeededForRawTier} more session{analytics.sessionsNeededForRawTier === 1 ? '' : 's'} to confirm it.
+                    </div>
+                  )}
                   <div style={S.irsBar}>
                     <div style={{ ...S.irsBarFill, width: mounted ? `${irs}%` : '0%' }} />
                     {nextTier && (

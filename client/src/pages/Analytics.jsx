@@ -838,21 +838,41 @@ const Analytics = () => {
     });
   }, [data]);
 
-  // IRS sub-components for the breakdown panel — derived from backend values
-  // so they are always consistent with the headline IRS number.
+  // IRS sub-components for the breakdown panel — read straight from the
+  // backend's computeIRSBreakdown() (server/utils/scoringModel.js), NOT
+  // re-derived here. The old version re-implemented the V1 formula
+  // client-side (different weights, no maturity gate, no rigor component),
+  // which meant this panel could show numbers that didn't add up to the
+  // headline IRS anymore once the backend model changed. Single source of
+  // truth now lives on the server; this just renders it.
+  const irsBreakdown  = data?.irsBreakdown ?? null;
   const irsComponents = useMemo(() => {
-    if (!totalSessions) return {};
-    const dimScore     = dimensionProfile.reduce((acc, d) => acc + d.score * d.weight, 0);
-    const recentScores = scoreTrend.slice(-12).map(s => s.score || 0);
-    const ewmaScore    = recentScores.length ? ewma(recentScores) : averageScore;
-    const scores       = scoreTrend.map(s => s.score || 0);
-    const sd           = stdDev(scores);
-    const mean         = scores.length ? scores.reduce((a, v) => a + v, 0) / scores.length : 0;
-    const cv           = mean > 0 ? sd / mean : 1;
-    const consistency  = Math.max(0, (1 - Math.min(cv, 1)) * 100);
-    const breadth      = Math.min(topicPerformance.length / 8, 1) * 100;
-    return { dimScore: clamp(dimScore), ewmaScore: clamp(ewmaScore), consistency: clamp(consistency), breadth: clamp(breadth) };
-  }, [dimensionProfile, scoreTrend, topicPerformance, averageScore, totalSessions]);
+    if (!irsBreakdown) return {};
+    const c = irsBreakdown.components;
+    return {
+      dimScore:    c.dimension.score,
+      ewmaScore:   c.ewma.score,
+      breadth:     c.breadth.score,
+      consistency: c.consistency.score,
+      rigor:       c.rigor.score,
+    };
+  }, [irsBreakdown]);
+
+  // Maturity multiplier — how much the evidence volume (answered questions)
+  // is currently suppressing the composite score. 1.0 = full trust, lower =
+  // "the math says X, but you don't have enough logged history yet to fully
+  // trust that number." Shown so the score doesn't feel arbitrary.
+  const irsMaturity = irsBreakdown?.maturity ?? null;
+  const irsRawComposite = irsBreakdown?.rawComposite ?? null;
+
+  // Gated vs raw tier — currentTier (above) is already the evidence-gated
+  // one from the backend. currentTierIsGated tells us the raw IRS math
+  // actually points to a HIGHER tier than what's being shown, in which case
+  // we say "on track for X, N more sessions to confirm it" instead of
+  // silently downgrading with no explanation.
+  const currentTierIsGated     = data?.currentTierIsGated ?? false;
+  const currentTierRawLabel    = data?.currentTierRaw ?? currentTierLabel;
+  const sessionsNeededForRaw   = data?.sessionsNeededForRawTier ?? 0;
 
   const unmappedTopics = data?.unmappedTopics ?? [];
 
@@ -1011,26 +1031,42 @@ const Analytics = () => {
             <div>
               <div style={S.eyebrow}>IRS BREAKDOWN</div>
               <h2 style={S.cardH2}>How your {irs}/100 is computed</h2>
-              <p style={S.cardSub}>Four real statistical components — not a single average that can be gamed by drilling one topic.</p>
+              <p style={S.cardSub}>Five statistical components, Bayesian-shrunk toward a neutral baseline until you've logged enough evidence — not a single average that can be gamed by drilling one topic or one lucky session.</p>
             </div>
             <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, lineHeight: 1.7, maxWidth: 340 }}>
               Weighted dim avg × 40%<br/>
-              EWMA trend (α=0.35) × 25%<br/>
-              Topic breadth (÷8 topics) × 15%<br/>
-              Consistency (1 − CV) × 20%
+              EWMA trend (shrunk) × 22%<br/>
+              Topic breadth & depth × 13%<br/>
+              Consistency (1 − CV) × 15%<br/>
+              Difficulty-adjusted rigor × 10%
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px 32px" }}>
             <IRSComponentBar label="Dimension-weighted avg" value={irsComponents.dimScore} weight={0.40} color={C.blue500} />
-            <IRSComponentBar label="EWMA recent trend"      value={irsComponents.ewmaScore} weight={0.25} color={C.cyan500} />
-            <IRSComponentBar label="Topic breadth"          value={irsComponents.breadth} weight={0.15} color={C.amber} />
-            <IRSComponentBar label="Consistency (1−CV)"     value={irsComponents.consistency} weight={0.20} color={C.green} />
+            <IRSComponentBar label="EWMA recent trend"      value={irsComponents.ewmaScore} weight={0.22} color={C.cyan500} />
+            <IRSComponentBar label="Topic breadth & depth"  value={irsComponents.breadth} weight={0.13} color={C.amber} />
+            <IRSComponentBar label="Consistency (1−CV)"     value={irsComponents.consistency} weight={0.15} color={C.green} />
+            <IRSComponentBar label="Difficulty-adjusted rigor" value={irsComponents.rigor} weight={0.10} color={C.sub} />
           </div>
+
+          {irsMaturity != null && irsMaturity < 0.97 && (
+            <div style={{ marginTop: 14, padding: "12px 16px", borderRadius: 12, background: "#FFF7E8", border: `1px solid #F0D8A8`, fontSize: 12, color: "#8A6414", lineHeight: 1.6 }}>
+              <strong>Evidence gate active:</strong> the raw weighted composite above is {irsRawComposite}/100, but with only {data?.totalAnsweredQuestions ?? 0} answered questions logged so far your trusted IRS is scaled to <strong>{Math.round(irsMaturity * 100)}%</strong> confidence — <strong>{irs}/100</strong>. Keep practicing; this multiplier climbs toward 100% as you log more sessions, and stops artificially inflating your score off a small sample.
+            </div>
+          )}
+
+          {currentTierIsGated && (
+            <div style={{ marginTop: 10, padding: "12px 16px", borderRadius: 12, background: C.blue50, border: `1px solid ${C.borderMd}`, fontSize: 12, color: C.blue700 ?? C.sub, lineHeight: 1.6 }}>
+              <strong>On track for {currentTierRawLabel}:</strong> your IRS math already crosses that band, but we don't show it as confirmed until you've logged a few more sessions ({sessionsNeededForRaw} more needed) — small sample sizes can be misleading, and we'd rather under-promise here.
+            </div>
+          )}
+
           <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 12, background: C.blue50, border: `1px solid ${C.borderMd}`, display: "flex", gap: 16, flexWrap: "wrap" }}>
             <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>SCORE STD-DEV</span><br /><strong style={{ color: C.text, fontSize: 14, fontFamily: F.display }}>{sd.toFixed(1)}</strong></div>
             <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>TREND SLOPE</span><br /><strong style={{ color: slope >= 0 ? C.green : C.orange, fontSize: 14, fontFamily: F.display }}>{slope >= 0 ? "+" : ""}{slope.toFixed(2)} pts/session</strong></div>
             <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>TOPICS COVERED</span><br /><strong style={{ color: C.text, fontSize: 14, fontFamily: F.display }}>{topicPerformance.length}/8+</strong></div>
             <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>SESSIONS</span><br /><strong style={{ color: C.text, fontSize: 14, fontFamily: F.display }}>{totalSessions}</strong></div>
+            <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>EVIDENCE CONFIDENCE</span><br /><strong style={{ color: C.text, fontSize: 14, fontFamily: F.display }}>{irsMaturity != null ? `${Math.round(irsMaturity * 100)}%` : "—"}</strong></div>
           </div>
         </section>
 

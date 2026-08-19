@@ -1,12 +1,15 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+
+import API_BASE from '../config/api.js';
 
 import {
   startInterview,
   submitAnswer,
   completeInterview,
   getInterviewSession,
+  abandonInterview,
 } from '../Services/interviewService';
 
 const parseFeedback = feedback => {
@@ -84,6 +87,9 @@ export const useInterview = () => {
 
   const [selectedAnswerIndex, setSelectedAnswerIndex] =
     useState(null);
+
+  const [isAbandoning, setIsAbandoning] =
+    useState(false);
 
   const getErrorMessage = (
     err,
@@ -550,6 +556,53 @@ export const useInterview = () => {
       );
     }, []);
 
+  // Tab-close / page-unload abandon — fires sendBeacon so the backend marks
+  // the session abandoned even if the user closes the tab without clicking Exit.
+  // sendBeacon can't set headers, so the token goes in the query string; the
+  // auth middleware accepts ?token= specifically for this route.
+  useEffect(() => {
+    const handleUnload = () => {
+      if (!sessionId || !sessionStarted) return;
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const url = `${API_BASE}/interview/${sessionId}/abandon?token=${encodeURIComponent(token)}`;
+      // sendBeacon makes a POST with no body — the controller only needs the
+      // sessionId from the URL and the userId from the decoded token.
+      navigator.sendBeacon(url);
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [sessionId, sessionStarted]);
+
+  // Marks the in-progress session as abandoned on the backend before
+  // navigating away, so it doesn't linger as a stale "in-progress" row
+  // that pollutes History/Analytics/streak calculations. Best-effort:
+  // if there's no active session, or the call fails, the caller still
+  // navigates — we never trap the user on this screen because a
+  // network call failed.
+  const handleAbandon = useCallback(
+    async (destination = '/dashboard') => {
+      if (!sessionId || sessionStarted === false) {
+        navigate(destination);
+        return;
+      }
+
+      setIsAbandoning(true);
+
+      try {
+        await abandonInterview(sessionId);
+      } catch (err) {
+        // Non-fatal — the exit shouldn't be blocked by this.
+        console.error('Abandon interview failed:', err);
+      } finally {
+        setIsAbandoning(false);
+        navigate(destination);
+      }
+    },
+    [sessionId, sessionStarted, navigate]
+  );
+
   return {
     sessionId,
     questions,
@@ -560,6 +613,7 @@ export const useInterview = () => {
     error,
     sessionStarted,
     selectedAnswerIndex,
+    isAbandoning,
 
     handleStart,
     hydrateSession,
@@ -568,6 +622,7 @@ export const useInterview = () => {
     handleTimeUp,
     handleNext,
     selectAnswer,
+    handleAbandon,
   };
 };
 

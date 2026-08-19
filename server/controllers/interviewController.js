@@ -760,7 +760,7 @@ const abandonInterview = async (req, res) => {
     const session = await Session.findOneAndUpdate(
       {
         _id: sessionId,
-        user: userId,
+        $or: [{ user: userId }, { userId: userId }],
         status: 'active',
       },
       {

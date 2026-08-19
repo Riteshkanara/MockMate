@@ -132,6 +132,7 @@ const Interview = () => {
     error,
     sessionStarted,
     selectedAnswerIndex,
+    isAbandoning,
 
     handleStart,
     hydrateSession,
@@ -140,7 +141,10 @@ const Interview = () => {
     handleTimeUp,
     handleNext,
     selectAnswer,
+    handleAbandon,
   } = useInterview();
+
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   const [selectedDifficulty, setSelectedDifficulty] = useState('mixed');
   const [selectedMode, setSelectedMode] = useState(location.state?.mode || 'quick');
@@ -538,9 +542,39 @@ const Interview = () => {
           <div style={S.roomActions}>
             <span style={S.mono}>{mode.label.toUpperCase()}</span>
             <span style={{ color: C.borderMd }}>·</span>
-            <button type="button" style={S.exitBtn} className="iv-exit-btn" onClick={() => navigate('/dashboard')}>Exit</button>
+            <button type="button" style={S.exitBtn} className="iv-exit-btn" onClick={() => setShowExitConfirm(true)}>Exit</button>
           </div>
         </header>
+
+        {showExitConfirm && (
+          <div style={S.exitOverlay} onClick={() => !isAbandoning && setShowExitConfirm(false)}>
+            <div style={S.exitModal} onClick={(e) => e.stopPropagation()}>
+              <div style={S.exitModalTitle}>Leave this interview?</div>
+              <div style={S.exitModalBody}>
+                Your progress on this session won't be scored. It'll be marked
+                as abandoned so it doesn't count toward your stats or streak.
+              </div>
+              <div style={S.exitModalRow}>
+                <button
+                  type="button"
+                  style={S.exitModalCancel}
+                  onClick={() => setShowExitConfirm(false)}
+                  disabled={isAbandoning}
+                >
+                  Keep going
+                </button>
+                <button
+                  type="button"
+                  style={{ ...S.exitModalConfirm, opacity: isAbandoning ? 0.7 : 1 }}
+                  onClick={() => handleAbandon('/dashboard')}
+                  disabled={isAbandoning}
+                >
+                  {isAbandoning ? 'Exiting…' : 'Exit interview'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Compact combined progress + timer bar */}
         <section style={S.consoleCard} className="iv-console-card">
@@ -1113,6 +1147,30 @@ const S = {
     border: `1px solid ${C.borderMd}`, background: C.card, borderRadius: 9,
     padding: '7px 12px', color: C.sub, cursor: 'pointer',
     fontSize: 11.5, fontWeight: 700, fontFamily: F.body,
+  },
+
+  exitOverlay: {
+    position: 'fixed', inset: 0, background: 'rgba(10,22,40,0.55)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 200, padding: 20,
+  },
+  exitModal: {
+    width: '100%', maxWidth: 380, background: C.card, borderRadius: 18,
+    border: `1px solid ${C.border}`, boxShadow: '0 24px 60px rgba(10,22,40,0.28)',
+    padding: '22px 22px 18px',
+  },
+  exitModalTitle: { fontSize: 16, fontWeight: 800, color: C.text, fontFamily: F.body, marginBottom: 6 },
+  exitModalBody: { fontSize: 13, color: C.sub, lineHeight: 1.5, marginBottom: 18 },
+  exitModalRow: { display: 'flex', gap: 10, justifyContent: 'flex-end' },
+  exitModalCancel: {
+    border: `1px solid ${C.border}`, background: C.card, borderRadius: 10,
+    padding: '9px 16px', color: C.sub, cursor: 'pointer',
+    fontSize: 12.5, fontWeight: 700, fontFamily: F.body,
+  },
+  exitModalConfirm: {
+    border: '1px solid transparent', background: C.red || '#E24C4C', borderRadius: 10,
+    padding: '9px 16px', color: '#fff', cursor: 'pointer',
+    fontSize: 12.5, fontWeight: 700, fontFamily: F.body,
   },
 
   consoleCard: {

@@ -121,6 +121,7 @@ const DIMENSION_KEYS = DIMENSIONS.map((d) => d.key);
 // ═══════════════════════════════════════════════════════════════════════════
 
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(v || 0)));
+const clampRaw = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v || 0)); // unrounded, for intermediate math
 
 const ewma = (values, alpha = 0.35) => {
   if (!values.length) return 0;
@@ -144,17 +145,73 @@ const trendSlope = (values) => {
   return den ? num / den : 0;
 };
 
+// ─────────────────────────────────────────────────────────────────────────
+// Bayesian shrinkage (empirical-Bayes-style blending toward a neutral prior)
+// A dimension backed by 1 answered question is almost pure noise; one backed
+// by 60 is almost pure signal. Rather than a hard on/off "isProvisional"
+// flag, every dimension score is PULLED toward a neutral prior (50) by an
+// amount that shrinks smoothly as evidence (n) accumulates. This is the
+// single biggest fix for "41 IRS off a handful of sessions" — thin evidence
+// can no longer produce an extreme score in either direction.
+//
+//   shrunkScore = prior + (n / (n + K)) * (rawScore - prior)
+//
+// K is the "evidence half-life": at n = K, the raw score is blended 50/50
+// with the prior. K=6 means you need ~6 answered questions on a topic
+// before it's trusted anywhere close to face value, ~18-20 before it's
+// trusted almost fully.
+// ─────────────────────────────────────────────────────────────────────────
+const SHRINKAGE_PRIOR = 50;
+const SHRINKAGE_K = 6;
+
+const shrinkToward = (rawScore, n, prior = SHRINKAGE_PRIOR, k = SHRINKAGE_K) => {
+  if (n <= 0) return prior;
+  const weight = n / (n + k);
+  return prior + weight * (rawScore - prior);
+};
+
+// Continuous confidence weight in [0,1] for a given evidence count — used
+// wherever we need "how much do we trust this" rather than a binary flag.
+const evidenceConfidence = (n, k = SHRINKAGE_K) => (n <= 0 ? 0 : n / (n + k));
+
+// ─────────────────────────────────────────────────────────────────────────
+// Difficulty weighting — a correct/strong answer on a 'hard' question is
+// worth materially more signal than the same raw score on an 'easy' one,
+// and vice versa a weak score on an 'easy' question is a stronger negative
+// signal than a weak score on a 'hard' one (hard questions are *expected*
+// to knock scores down some). We convert each question's raw score into a
+// difficulty-adjusted score before it ever reaches topic/dimension aggregation.
+// ─────────────────────────────────────────────────────────────────────────
+const DIFFICULTY_WEIGHT = { easy: 0.85, medium: 1.0, hard: 1.2 };
+// How much of a "curve" hard questions get (partial credit for attempting
+// hard content even when the raw score is middling) vs easy questions being
+// held to a stricter bar.
+const DIFFICULTY_CURVE = { easy: -4, medium: 0, hard: 6 };
+
+const difficultyAdjustedScore = (rawScore, difficulty = 'medium') => {
+  const d = String(difficulty || 'medium').toLowerCase();
+  const curve = DIFFICULTY_CURVE[d] ?? 0;
+  return clampRaw(rawScore + curve);
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 4. DIMENSION PROFILE BUILDER — replaces the frontend's exact-string topicMap
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MIN_ANSWERS_FOR_CONFIDENCE = 5; // per-topic answered-question count before a dimension counts as non-provisional
+const MIN_ANSWERS_FOR_CONFIDENCE = 8; // per-dimension answered-question count before a dimension counts as non-provisional
+// (raised from 5 → 8: 5 was letting single-session dimension coverage pass as "trustworthy")
 
 /**
  * @param {Array<{topic, averageScore, attempts}>} topicPerformance — from getAnalytics/getPerformanceAnalytics
  * @returns {{ profile: Array, unmapped: Array<{topic, attempts}> }}
- *   profile: DIMENSIONS shape + {score, hasData, isProvisional, contributingTopics}
+ *   profile: DIMENSIONS shape + {score, rawScore, hasData, isProvisional, confidence,
+ *            answeredCount, contributingTopics}
  *   unmapped: raw topics that matched no canonical bucket — SURFACE THESE, don't hide them
+ *
+ * IMPORTANT: `score` here is the SHRUNK (Bayesian-adjusted) score — the number
+ * every downstream consumer (IRS, tier readiness, blockers) should use. The
+ * unshrunk face-value average is still exposed as `rawScore` for transparency
+ * / debugging / UI tooltips ("your raw average vs. your trusted score").
  */
 const buildDimensionProfile = (topicPerformance = []) => {
   const unmapped = [];
@@ -194,13 +251,17 @@ const buildDimensionProfile = (topicPerformance = []) => {
       contributingTopics.push(...agg.rawTopics);
     });
 
-    const score = totalAttempts > 0 ? totalWeightedScore / totalAttempts : 0;
+    const rawScore = totalAttempts > 0 ? totalWeightedScore / totalAttempts : 0;
+    const confidence = evidenceConfidence(totalAttempts);
+    const shrunkScore = totalAttempts > 0 ? shrinkToward(rawScore, totalAttempts) : 0;
 
     return {
       ...dim,
-      score: clamp(score),
+      score: clamp(shrunkScore),
+      rawScore: clamp(rawScore),
       hasData: totalAttempts > 0,
       isProvisional: totalAttempts > 0 && totalAttempts < MIN_ANSWERS_FOR_CONFIDENCE,
+      confidence: Math.round(confidence * 100) / 100,
       answeredCount: totalAttempts,
       contributingTopics: [...new Set(contributingTopics)],
     };
@@ -210,28 +271,195 @@ const buildDimensionProfile = (topicPerformance = []) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 5. IRS — identical 4-component formula to the old frontend version,
-// now the ONLY place it's computed.
+// 5. IRS — Interview Readiness Score
+// ────────────────────────────────────────────────────────────────────────
+// V2 MODEL. Rebuilt because V1 had no concept of statistical confidence:
+// a user with 5 lucky answers and a user with 500 consistent answers could
+// land the same IRS, because none of the 4 components were sample-size
+// aware. That is the root cause of "IRS 41 after basically no practice."
+//
+// V2 is still a weighted blend of interpretable components (kept for UI
+// transparency — Analytics.jsx renders each bar) but two structural changes
+// fix the over-confidence problem:
+//
+//   1. Every component that touches per-dimension/per-topic averages uses
+//      the SHRUNK scores from buildDimensionProfile (Bayesian-shrunk toward
+//      a neutral 50 prior), not raw face-value averages. Thin evidence
+//      literally cannot produce an extreme number anymore.
+//
+//   2. A MATURITY MULTIPLIER is applied to the whole composite. This is the
+//      key addition: total evidence volume (answered questions across the
+//      whole account) gates how much of the computed composite the user is
+//      allowed to "cash in". At low n the multiplier suppresses the score
+//      toward a conservative floor; it only converges to 1.0 (full trust)
+//      once there's genuinely enough evidence to back a confident claim.
+//      This is what makes "6-12 LPA eligible after one session" structurally
+//      impossible — not just unlikely.
+//
+// Components (weights sum to 1.0, applied BEFORE the maturity multiplier):
+//   • Dimension-weighted mastery   40%  — shrunk per-dimension scores × global weights
+//   • Recent-performance (EWMA)    22%  — exponentially weighted recent session trend
+//   • Topic breadth & depth        13%  — rewards distinct topics *with real depth*,
+//                                          not just distinct topics touched once
+//   • Consistency (1 − CV)         15%  — variance-adjusted, itself confidence-gated
+//   • Difficulty-adjusted rigor    10%  — average difficulty level actually attempted,
+//                                          rewards tackling hard questions, not
+//                                          farming easy ones
 // ═══════════════════════════════════════════════════════════════════════════
 
-const computeIRS = ({ dimensionProfile, scoreTrend = [], topicPerformance = [], averageScore = 0 }) => {
+// Evidence unit for the maturity gate = total ANSWERED QUESTIONS across all
+// sessions (not session count) — a 10-question session provides more
+// evidence than a 5-question one, and question count is what the shrinkage
+// math above is already denominated in, so the gate stays consistent with it.
+const MATURITY_K = 40; // half-trust point: ~40 answered questions (≈4-6 full sessions)
+const MATURITY_FLOOR = 0.35; // even with almost no data, don't crush the score to near-zero —
+// floor keeps early scores informative-but-humble rather than punitive
+
+const maturityMultiplier = (totalAnsweredQuestions = 0) => {
+  const raw = totalAnsweredQuestions / (totalAnsweredQuestions + MATURITY_K);
+  return MATURITY_FLOOR + (1 - MATURITY_FLOOR) * raw;
+};
+
+/**
+ * @param {Array} dimensionProfile — from buildDimensionProfile (SHRUNK scores)
+ * @param {Array<{score,date,interview}>} scoreTrend — chronological session scores
+ * @param {Array<{topic,averageScore,attempts}>} topicPerformance
+ * @param {number} averageScore — fallback mean if scoreTrend is empty
+ * @param {number} totalAnsweredQuestions — evidence volume for the maturity gate.
+ *   Falls back to summing topicPerformance attempts if not passed explicitly,
+ *   so older call sites that don't pass it yet still degrade gracefully
+ *   rather than breaking (though callers SHOULD pass it — see interviewController).
+ * @param {Object<string, {easy,medium,hard}>|null} difficultyMix — counts of
+ *   answered questions by difficulty, used for the rigor component. Optional;
+ *   if omitted, the rigor component falls back to a neutral 60/100 (assumes
+ *   'medium'-only) rather than penalizing sessions that predate this field.
+ */
+const IRS_WEIGHTS = {
+  dimension: 0.40,
+  ewma: 0.22,
+  breadth: 0.13,
+  consistency: 0.15,
+  rigor: 0.10,
+};
+
+/**
+ * Full breakdown version — computes every component AND the maturity gate,
+ * returning all of it. computeIRS() below is a thin wrapper that just
+ * returns .finalScore, so there is exactly one implementation of the math;
+ * the frontend breakdown panel should render THIS function's output
+ * (via the API response) instead of re-deriving the formula client-side.
+ */
+const computeIRSBreakdown = ({
+  dimensionProfile,
+  scoreTrend = [],
+  topicPerformance = [],
+  averageScore = 0,
+  totalAnsweredQuestions = null,
+  difficultyMix = null,
+}) => {
+  // ── evidence volume (drives the maturity gate) ──────────────────────────
+  const answeredQuestionCount =
+    totalAnsweredQuestions != null
+      ? totalAnsweredQuestions
+      : topicPerformance.reduce((a, t) => a + (t.attempts || 0), 0);
+
+  // ── 1. Dimension-weighted mastery (40%) — uses SHRUNK scores already ────
   const dimScore = dimensionProfile.reduce((acc, d) => acc + d.score * d.weight, 0);
-  const dimComponent = clamp(dimScore) * 0.40;
+  const dimComponent = clampRaw(dimScore) * IRS_WEIGHTS.dimension;
 
+  // ── 2. Recent-performance EWMA (22%) ─────────────────────────────────────
   const recentScores = scoreTrend.slice(-12).map((s) => s.score || 0);
-  const ewmaScore = recentScores.length ? ewma(recentScores) : averageScore;
-  const ewmaComponent = clamp(ewmaScore) * 0.25;
+  const ewmaScoreRaw = recentScores.length ? ewma(recentScores) : averageScore;
+  // shrink the EWMA itself toward the prior too — a hot streak of 2-3
+  // sessions shouldn't swing this component to an extreme on its own
+  const ewmaScore = shrinkToward(ewmaScoreRaw, recentScores.length * 5); // *5 ≈ approx questions/session
+  const ewmaComponent = clampRaw(ewmaScore) * IRS_WEIGHTS.ewma;
 
-  const breadthComponent = Math.min(topicPerformance.length / 8, 1) * 100 * 0.15;
+  // ── 3. Topic breadth & depth (13%) — distinct dimensions with REAL depth,
+  //      not just distinct topics touched once. A dimension only counts
+  //      toward breadth once it clears MIN_ANSWERS_FOR_CONFIDENCE; partial
+  //      credit below that, scaled by its own confidence, so one shallow
+  //      topic can't fully count the same as a properly-practiced one.
+  const breadthCredit = dimensionProfile.reduce((acc, d) => {
+    if (!d.hasData) return acc;
+    return acc + Math.min(1, d.confidence); // 0..1 per dimension, confidence-scaled
+  }, 0);
+  const breadthPct = Math.min(breadthCredit / DIMENSION_KEYS.length, 1) * 100;
+  const breadthComponent = breadthPct * IRS_WEIGHTS.breadth;
 
+  // ── 4. Consistency / 1−CV (15%) — itself gated by sample size. With <4
+  //      sessions, variance is not a meaningful signal (could be one bad
+  //      day), so we shrink the consistency SCORE toward a neutral 65
+  //      (mildly-positive-but-unproven) rather than letting 2 data points
+  //      swing it to 0 or 100.
   const scores = scoreTrend.map((s) => s.score || 0);
   const sd = stdDev(scores);
   const mean = scores.length ? scores.reduce((a, v) => a + v, 0) / scores.length : 0;
   const cv = mean > 0 ? sd / mean : 1;
-  const consistencyComponent = Math.max(0, (1 - Math.min(cv, 1)) * 100) * 0.20;
+  const rawConsistencyScore = Math.max(0, (1 - Math.min(cv, 1)) * 100);
+  const consistencyScore = scores.length >= 2
+    ? shrinkToward(rawConsistencyScore, scores.length, 65, 4)
+    : 65;
+  const consistencyComponent = clampRaw(consistencyScore) * IRS_WEIGHTS.consistency;
 
-  return clamp(dimComponent + ewmaComponent + breadthComponent + consistencyComponent);
+  // ── 5. Difficulty-adjusted rigor (10%) — rewards attempting/handling
+  //      harder questions instead of farming easy ones for a high average.
+  //      Score = weighted mix of (a) how hard the attempted set skewed and
+  //      (b) performance held up on that mix, via DIFFICULTY_WEIGHT.
+  let rigorScore;
+  if (difficultyMix && (difficultyMix.easy + difficultyMix.medium + difficultyMix.hard) > 0) {
+    const { easy = 0, medium = 0, hard = 0 } = difficultyMix;
+    const total = easy + medium + hard;
+    const weightedDifficulty =
+      (easy * DIFFICULTY_WEIGHT.easy + medium * DIFFICULTY_WEIGHT.medium + hard * DIFFICULTY_WEIGHT.hard) / total;
+    // DIFFICULTY_WEIGHT ranges ~0.85–1.2 → normalize to a 0-100 rigor scale
+    const rigorRaw = ((weightedDifficulty - DIFFICULTY_WEIGHT.easy) /
+      (DIFFICULTY_WEIGHT.hard - DIFFICULTY_WEIGHT.easy)) * 100;
+    rigorScore = clampRaw(shrinkToward(clampRaw(rigorRaw), total, 55, 10));
+  } else {
+    rigorScore = 60; // neutral default — assume medium-only mix
+  }
+  const rigorComponent = rigorScore * IRS_WEIGHTS.rigor;
+
+  const rawComposite = dimComponent + ewmaComponent + breadthComponent + consistencyComponent + rigorComponent;
+
+  // ── Maturity gate — the structural fix. Applied last, to the composite. ──
+  const maturity = maturityMultiplier(answeredQuestionCount);
+  const finalScore = clamp(rawComposite * maturity);
+
+  return {
+    finalScore,
+    rawComposite: Math.round(rawComposite * 100) / 100,
+    maturity: Math.round(maturity * 100) / 100,
+    answeredQuestionCount,
+    components: {
+      dimension:   { score: clamp(dimScore),        weight: IRS_WEIGHTS.dimension,   contribution: Math.round(dimComponent * 100) / 100 },
+      ewma:        { score: clamp(ewmaScore),        weight: IRS_WEIGHTS.ewma,        contribution: Math.round(ewmaComponent * 100) / 100 },
+      breadth:     { score: clamp(breadthPct),       weight: IRS_WEIGHTS.breadth,     contribution: Math.round(breadthComponent * 100) / 100 },
+      consistency: { score: clamp(consistencyScore), weight: IRS_WEIGHTS.consistency, contribution: Math.round(consistencyComponent * 100) / 100 },
+      rigor:       { score: clamp(rigorScore),       weight: IRS_WEIGHTS.rigor,       contribution: Math.round(rigorComponent * 100) / 100 },
+    },
+  };
 };
+
+/**
+ * @param {Array} dimensionProfile — from buildDimensionProfile (SHRUNK scores)
+ * @param {Array<{score,date,interview}>} scoreTrend — chronological session scores
+ * @param {Array<{topic,averageScore,attempts}>} topicPerformance
+ * @param {number} averageScore — fallback mean if scoreTrend is empty
+ * @param {number} totalAnsweredQuestions — evidence volume for the maturity gate.
+ *   Falls back to summing topicPerformance attempts if not passed explicitly,
+ *   so older call sites that don't pass it yet still degrade gracefully
+ *   rather than breaking (though callers SHOULD pass it — see interviewController).
+ * @param {Object<string, {easy,medium,hard}>|null} difficultyMix — counts of
+ *   answered questions by difficulty, used for the rigor component. Optional;
+ *   if omitted, the rigor component falls back to a neutral 60/100 (assumes
+ *   'medium'-only) rather than penalizing sessions that predate this field.
+ * @returns {number} the final 0-100 IRS. For the full component breakdown
+ *   (used by the Analytics "how your IRS is computed" panel), call
+ *   computeIRSBreakdown() instead/as well.
+ */
+const computeIRS = (args) => computeIRSBreakdown(args).finalScore;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 6. PACKAGE TIERS — 4 bands (confirmed sufficient). Each tier now carries
@@ -290,9 +518,42 @@ const TIERS = [
   },
 ];
 
+// Pure-math tier lookup: which tier does this IRS number cross, ignoring
+// evidence volume entirely. Kept for internal/analytical use (e.g. computing
+// "how many more IRS points to the next band"), but NOT what should be
+// shown to the user as "you are eligible for X" — see tierForScoreGated.
 const tierForScore = (irs) => {
   const reached = TIERS.filter((t) => irs >= t.minIRS);
   return reached[reached.length - 1] || TIERS[0];
+};
+
+/**
+ * Confidence-gated tier lookup — the number that should actually be shown
+ * to the user as "you're eligible for X". Fixes the bug where a user with
+ * 1-2 sessions could cross an IRS threshold (because IRS is now maturity-
+ * gated but still *can* cross low thresholds early) and see "₹6-12 LPA
+ * eligible" with zero real evidence behind it.
+ *
+ * A tier is only awarded if BOTH:
+ *   (a) irs >= tier.minIRS (the math says you're there), AND
+ *   (b) totalSessions >= tier.minSessions (you've logged enough sessions
+ *       for that claim to mean anything for that tier's stakes)
+ *
+ * If (a) passes but (b) fails, the user is capped at the highest tier they
+ * both qualify for AND have enough sessions to back. This also returns
+ * whether the *raw* (ungated) tier differs, so the UI can show "on track
+ * for X once you've logged N more sessions" instead of silently downgrading.
+ */
+const tierForScoreGated = (irs, totalSessions = 0) => {
+  const rawTier = tierForScore(irs);
+  const eligible = TIERS.filter((t) => irs >= t.minIRS && totalSessions >= t.minSessions);
+  const gatedTier = eligible[eligible.length - 1] || TIERS[0];
+  return {
+    tier: gatedTier,
+    rawTier,
+    isGated: gatedTier.label !== rawTier.label,
+    sessionsNeededForRawTier: Math.max(0, rawTier.minSessions - totalSessions),
+  };
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -440,14 +701,21 @@ module.exports = {
   resolveCanonicalTopic,
   buildDimensionProfile,
   computeIRS,
+  computeIRSBreakdown,
   tierForScore,
+  tierForScoreGated,
   computeTierReadiness,
   findBlockingDimension,
   buildDimensionTimeSeries,
   projectSessionsToUnlock,
   // math helpers exported too — controller/badgeEngine may want them directly
   clamp,
+  clampRaw,
   ewma,
   stdDev,
   trendSlope,
+  shrinkToward,
+  evidenceConfidence,
+  difficultyAdjustedScore,
+  maturityMultiplier,
 };

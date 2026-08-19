@@ -4,7 +4,7 @@ const Session = require('../models/Session');
 const {
   buildDimensionProfile,
   computeIRS,
-  tierForScore,
+  tierForScoreGated,
   stdDev,
   trendSlope,
 } = require('../utils/scoringModel');
@@ -112,8 +112,30 @@ exports.getPublicProfileBySlug = async (req, res) => {
 
     const { profile: dimensionProfile } = buildDimensionProfile(topicPerfWithAttempts);
 
-    const irs = computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
-    const tier = tierForScore(irs);
+    // evidence for the maturity gate + difficulty mix, same extraction logic
+    // as interviewController.extractIRSEvidence — kept local since this
+    // controller doesn't share that module (public/unauthenticated route)
+    let totalAnsweredQuestions = 0;
+    const difficultyMix = { easy: 0, medium: 0, hard: 0 };
+    sessions.forEach((session) => {
+      (session.questions || []).forEach((q) => {
+        if (q.skipped || !q.userAnswer || q.userAnswer === 'Skipped') return;
+        totalAnsweredQuestions += 1;
+        const d = String(q.difficulty || 'medium').toLowerCase();
+        if (difficultyMix[d] != null) difficultyMix[d] += 1;
+        else difficultyMix.medium += 1;
+      });
+    });
+
+    const irs = computeIRS({
+      dimensionProfile,
+      scoreTrend,
+      topicPerformance,
+      averageScore,
+      totalAnsweredQuestions,
+      difficultyMix,
+    });
+    const { tier } = tierForScoreGated(irs, sessions.length);
 
     const answeredQuestions = sessions.flatMap(s => s.questions || [])
       .filter(q => q.userAnswer && q.userAnswer !== 'Skipped' && typeof q.timeTaken === 'number');

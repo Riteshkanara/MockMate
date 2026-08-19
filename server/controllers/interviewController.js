@@ -4,13 +4,39 @@ const { evaluateBadges } = require('../utils/badgeEngine');
   const {
       buildDimensionProfile,
       computeIRS,
+      computeIRSBreakdown,
       tierForScore,
+      tierForScoreGated,
       TIERS,
       computeTierReadiness,
       findBlockingDimension,
       buildDimensionTimeSeries,
       projectSessionsToUnlock,
     } = require('../utils/scoringModel');
+
+// ─── Shared evidence extractor ──────────────────────────────────────────────
+// Pulls the richer signals the V2 scoring model needs (total answered
+// question count + difficulty mix) out of a set of completed sessions.
+// Kept here so every call site (getPerformanceAnalytics, getAICoach,
+// computeUserIRS, getAnalytics) feeds computeIRS the SAME evidence inputs —
+// same failure mode as the old scoringModel duplication this file's header
+// comment warns about, just one level up.
+const extractIRSEvidence = (sessions) => {
+  let totalAnsweredQuestions = 0;
+  const difficultyMix = { easy: 0, medium: 0, hard: 0 };
+
+  sessions.forEach((session) => {
+    (session.questions || []).forEach((q) => {
+      if (q.skipped || !q.userAnswer) return;
+      totalAnsweredQuestions += 1;
+      const d = String(q.difficulty || 'medium').toLowerCase();
+      if (difficultyMix[d] != null) difficultyMix[d] += 1;
+      else difficultyMix.medium += 1; // unknown/legacy difficulty strings default to medium
+    });
+  });
+
+  return { totalAnsweredQuestions, difficultyMix };
+};
 
 const {
   generateQuestions,
@@ -876,10 +902,18 @@ const computeUserIRS = async (userId) => {
   }));
 
   const { profile: dimensionProfile } = buildDimensionProfile(topicPerformance);
-  const irs = computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
-  const tierLabel = tierForScore(irs).label;
+  const { totalAnsweredQuestions, difficultyMix } = extractIRSEvidence(chronological);
+  const irs = computeIRS({
+    dimensionProfile,
+    scoreTrend,
+    topicPerformance,
+    averageScore,
+    totalAnsweredQuestions,
+    difficultyMix,
+  });
+  const { tier: gatedTier } = tierForScoreGated(irs, sessions.length);
 
-  return { irs, averageScore, tierLabel };
+  return { irs, averageScore, tierLabel: gatedTier.label };
 };
 
 const getAnalytics = async (req, res) => {
@@ -1058,9 +1092,21 @@ const getAnalytics = async (req, res) => {
     const { profile: dimensionProfile, unmapped: unmappedTopics } =
       buildDimensionProfile(topicPerformance);
 
-    const irs = computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
+    const { totalAnsweredQuestions, difficultyMix } = extractIRSEvidence(sessions);
+
+    const irsBreakdown = computeIRSBreakdown({
+      dimensionProfile,
+      scoreTrend,
+      topicPerformance,
+      averageScore,
+      totalAnsweredQuestions,
+      difficultyMix,
+    });
+    const irs = irsBreakdown.finalScore;
 
     const currentTierRaw = tierForScore(irs);
+    const { tier: currentTierGated, isGated, sessionsNeededForRawTier } =
+      tierForScoreGated(irs, sessions.length);
 
     const dimensionTimeSeries = buildDimensionTimeSeries(sessions);
 
@@ -1074,8 +1120,8 @@ const getAnalytics = async (req, res) => {
         desc: tier.desc,
         advice: tier.advice,
         minIRS: tier.minIRS,
-        isCurrentTier: tier.label === currentTierRaw.label,
-        isUnlocked: irs >= tier.minIRS,
+        isCurrentTier: tier.label === currentTierGated.label,
+        isUnlocked: irs >= tier.minIRS && sessions.length >= tier.minSessions,
         readinessPct: readiness.readinessPct,
         confidenceGate: readiness.confidenceGate,
         minSessionsRequired: tier.minSessions,
@@ -1104,7 +1150,13 @@ const getAnalytics = async (req, res) => {
         totalTime,
       },
       irs,
-      currentTier: currentTierRaw.label,
+      irsBreakdown,
+      currentTier: currentTierGated.label,
+      currentTierIsGated: isGated,
+      currentTierRaw: currentTierRaw.label,
+      sessionsNeededForRawTier,
+      totalAnsweredQuestions,
+      difficultyMix,
       tiers,
       dimensionProfile,
       unmappedTopics,
@@ -1209,14 +1261,24 @@ const getPerformanceAnalytics = async (req, res) => {
     const { profile: dimensionProfile, unmapped: unmappedTopics } =
       buildDimensionProfile(topicPerformance);
 
-    const irs = computeIRS({
+    const { totalAnsweredQuestions, difficultyMix } = extractIRSEvidence(chronological);
+
+    const irsBreakdown = computeIRSBreakdown({
       dimensionProfile,
       scoreTrend,
       topicPerformance,
       averageScore,
+      totalAnsweredQuestions,
+      difficultyMix,
     });
+    const irs = irsBreakdown.finalScore;
 
+    // currentTierRaw = pure IRS-math tier (for "points to next band" math).
+    // currentTierGated = what should be SHOWN as "you're eligible for X" —
+    // requires enough logged sessions to back the claim, not just the number.
     const currentTierRaw = tierForScore(irs);
+    const { tier: currentTierGated, isGated, sessionsNeededForRawTier } =
+      tierForScoreGated(irs, sessions.length);
 
     // per-dimension time series, needed for honest ETA projection —
     // built from raw sessions (questions[].topic/score/skipped), not
@@ -1268,7 +1330,16 @@ const getPerformanceAnalytics = async (req, res) => {
 
       // NEW fields — additive, nothing above this line changed shape
       irs,
-      currentTier: currentTierRaw.label,
+      irsBreakdown,
+      // currentTier is now the EVIDENCE-GATED tier — this is the field the
+      // dashboard shows as "you're eligible for X", so it can no longer
+      // claim a package tier without enough logged sessions to back it.
+      currentTier: currentTierGated.label,
+      currentTierIsGated: isGated, // true if the raw IRS math actually points higher
+      currentTierRaw: currentTierRaw.label, // for transparency / "on track for" messaging
+      sessionsNeededForRawTier, // how many more sessions to unlock currentTierRaw's claim
+      totalAnsweredQuestions,
+      difficultyMix,
       tiers,
       dimensionProfile,
       unmappedTopics, // watch this in logs/response — non-empty means new topic drift appeared
@@ -1356,8 +1427,17 @@ const getAICoach = async (req, res) => {
       date: session.createdAt,
     }));
 
-    const irs = computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
-    const currentTier = tierForScore(irs);
+    const { totalAnsweredQuestions, difficultyMix } = extractIRSEvidence(chronological);
+
+    const irs = computeIRS({
+      dimensionProfile,
+      scoreTrend,
+      topicPerformance,
+      averageScore,
+      totalAnsweredQuestions,
+      difficultyMix,
+    });
+    const { tier: currentTier } = tierForScoreGated(irs, sessions.length);
     const nextTier = TIERS[TIERS.indexOf(currentTier) + 1] || null;
 
     const dimensionTimeSeries = buildDimensionTimeSeries(chronological);

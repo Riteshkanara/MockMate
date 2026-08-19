@@ -671,6 +671,7 @@ const getInterviewHistory = async (req, res) => {
         { user: userId },
         { userId: userId },
       ],
+      status: 'completed',
     })
       .sort({ createdAt: -1 })
       .limit(100)
@@ -836,6 +837,51 @@ const getBadges = async (req, res) => {
   }
 };
 
+// ─── Shared IRS computation ────────────────────────────────────────────────
+// Single source of truth used by /me (navbar) and getPerformanceAnalytics
+// (dashboard/analytics). Both call this so the number is always identical.
+const computeUserIRS = async (userId) => {
+  const sessions = await Session.find({
+    $or: [{ user: userId }, { userId }],
+    status: 'completed',
+  }).sort({ createdAt: 1 }).lean();
+
+  if (!sessions.length) return { irs: 0, averageScore: 0, tierLabel: '₹3–6 LPA' };
+
+  const chronological = sessions; // already sorted oldest→newest
+  const scores = chronological.map(s => getNormalizedSessionScore(s));
+  const averageScore = Math.round(scores.reduce((a, v) => a + v, 0) / scores.length);
+
+  const scoreTrend = chronological.map((s, i) => ({
+    interview: i + 1,
+    score: scores[i],
+    date: s.createdAt,
+  }));
+
+  const topicStats = {};
+  chronological.forEach(session => {
+    (session.questions || []).forEach(q => {
+      if (!q.userAnswer || q.userAnswer === 'Skipped') return;
+      const topic = q.topic || 'General';
+      const score = getNormalizedQuestionScore(q);
+      if (!topicStats[topic]) topicStats[topic] = { topic, totalScore: 0, count: 0 };
+      topicStats[topic].totalScore += score;
+      topicStats[topic].count += 1;
+    });
+  });
+  const topicPerformance = Object.values(topicStats).map(t => ({
+    topic: t.topic,
+    averageScore: Math.round(t.totalScore / t.count),
+    attempts: t.count,
+  }));
+
+  const { profile: dimensionProfile } = buildDimensionProfile(topicPerformance);
+  const irs = computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
+  const tierLabel = tierForScore(irs).label;
+
+  return { irs, averageScore, tierLabel };
+};
+
 const getAnalytics = async (req, res) => {
   try {
     const userId = getUserId(req);
@@ -865,6 +911,11 @@ const getAnalytics = async (req, res) => {
           averageTimePerQuestion: 0,
           totalTime: 0,
         },
+        irs: 0,
+        currentTier: null,
+        tiers: [],
+        dimensionProfile: [],
+        unmappedTopics: [],
       });
     }
 
@@ -1003,28 +1054,60 @@ const getAnalytics = async (req, res) => {
           )
         : 0;
 
+    // ── IRS + dimension profile — same engine as getPerformanceAnalytics
+    const { profile: dimensionProfile, unmapped: unmappedTopics } =
+      buildDimensionProfile(topicPerformance);
+
+    const irs = computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
+
+    const currentTierRaw = tierForScore(irs);
+
+    const dimensionTimeSeries = buildDimensionTimeSeries(sessions);
+
+    const tiers = TIERS.map((tier) => {
+      const readiness = computeTierReadiness(dimensionProfile, tier, sessions.length);
+      const blocker = findBlockingDimension(readiness);
+      const eta = projectSessionsToUnlock(blocker, dimensionTimeSeries);
+      return {
+        label: tier.label,
+        color: tier.color,
+        desc: tier.desc,
+        advice: tier.advice,
+        minIRS: tier.minIRS,
+        isCurrentTier: tier.label === currentTierRaw.label,
+        isUnlocked: irs >= tier.minIRS,
+        readinessPct: readiness.readinessPct,
+        confidenceGate: readiness.confidenceGate,
+        minSessionsRequired: tier.minSessions,
+        perDimension: readiness.perDimension,
+        blockingDimensions: readiness.blockingDimensions,
+        provisionalDimensions: readiness.provisionalDimensions,
+        primaryBlocker: blocker
+          ? { key: blocker.key, label: blocker.label, userScore: blocker.userScore, requiredMin: blocker.requiredMin, gap: blocker.gap }
+          : null,
+        eta,
+      };
+    });
+
     return res.json({
       totalSessions,
-      totalInterviews:
-        totalSessions,
-
+      totalInterviews: totalSessions,
       averageScore,
-
       highestScore,
       bestScore: highestScore,
-
       lowestScore,
-
       scoreTrend,
-
       topicPerformance,
-
       weakTopics,
-
       timePerformance: {
         averageTimePerQuestion,
         totalTime,
       },
+      irs,
+      currentTier: currentTierRaw.label,
+      tiers,
+      dimensionProfile,
+      unmappedTopics,
     });
   } catch (error) {
     console.error(
@@ -1332,4 +1415,5 @@ module.exports = {
   getAnalytics,
   getPerformanceAnalytics,
   getAICoach,
+  computeUserIRS,
 };

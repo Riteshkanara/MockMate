@@ -1,11 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const passport = require('../config/passport'); // adjust path if needed
+const passport = require('../config/passport');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/authMiddleware');
 const userController = require('../controllers/userController');
 const User = require('../models/User');
 const Session = require('../models/Session');
+const { buildDimensionProfile, computeIRS, tierForScore } = require('../utils/scoringModel');
+const { computeUserIRS } = require('../controllers/interviewController');
 
 // Step 1: Redirect user to Google
 router.get('/google', passport.authenticate('google', {
@@ -39,10 +41,14 @@ router.post('/onboarding', authMiddleware, userController.saveOnboarding);
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json({ user });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Use the exact same IRS pipeline as Dashboard/Analytics
+    const { irs, averageScore, tierLabel } = await computeUserIRS(user._id).catch(() => ({
+      irs: 0, averageScore: user.averageScore ?? 0, tierLabel: '₹3–6 LPA',
+    }));
+
+    res.json({ user: { ...user.toObject(), irs, averageScore, tierLabel } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch user' });
   }
@@ -54,8 +60,8 @@ router.post('/fix-badges', authMiddleware, async (req, res) => {
     const user = await User.findById(userId);
 
     const allSessions = await Session.find({
-      userId,
-      status: 'completed'
+      $or: [{ userId }, { user: userId }],
+      status: 'completed',
     });
 
     const BADGE_RULES = [

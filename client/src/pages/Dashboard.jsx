@@ -1336,7 +1336,7 @@ const LeaderboardCard = ({ users, currentUser, onChallenge, starting }) => {
         <div>
           <div style={S.eyebrowDark}>GLOBAL RANKING</div>
           <h2 style={S.cardH2}>Top performers</h2>
-          <p style={S.cardSub}>Ranked by average score across all completed sessions.</p>
+          <p style={S.cardSub}>Weekly rankings — resets every Monday.</p>
         </div>
         <button style={S.btnSmall} onClick={onChallenge} disabled={starting}>Climb ranks →</button>
       </div>
@@ -1373,8 +1373,8 @@ const LBRow = ({ user, rank, color, isMe }) => (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={S.lbName}>{user.name ?? 'Anonymous'}{isMe && <span style={S.youTag}>YOU</span>}</div>
     </div>
-    <div style={{ ...S.lbScore, color }}>{user.averageScore ?? 0}</div>
-    <div style={{ width: 52, textAlign: 'right', fontFamily: F.mono, fontSize: 11, color: C.muted }}>{user.totalInterviews ?? 0}</div>
+    <div style={{ ...S.lbScore, color }}>{user.weeklyAvgScore ?? user.averageScore ?? 0}</div>
+    <div style={{ width: 52, textAlign: 'right', fontFamily: F.mono, fontSize: 11, color: C.muted }}>{user.weeklySessionCount ?? user.totalInterviews ?? 0}</div>
   </div>
 );
 

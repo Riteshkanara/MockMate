@@ -45,7 +45,7 @@ const getLeaderboard = async (req, res) => {
 {
   $group: {
           _id: '$resolvedUser',
-          weeklyAvgScore: { $avg: '$totalScore' },
+          weeklyAvgScore: { $avg: '$averageScore' },
           weeklySessionCount: { $sum: 1 }
         }
       },

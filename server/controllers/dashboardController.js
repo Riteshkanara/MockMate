@@ -54,19 +54,31 @@ const sessions = await Session.find({ $or: [{ user: userId }, { userId }], statu
     }));
 
     // Recent sessions list (last 5 for history card)
-    const recentSessions = sessions.slice(0, 5).map(s => ({
-      id: s._id,
-      mode: s.mode,
-      company: s.company,
-      topic: s.topic,
-      totalScore: s.totalScore,
-      questionCount: s.questions.length,
-      date: new Date(s.createdAt).toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
-      })
-    }));
+    // Normalize score to 0–100 the same way History.jsx does
+    const recentSessions = sessions.slice(0, 5).map(s => {
+      let displayScore = 0;
+      if (typeof s.averageScore === 'number' && s.averageScore >= 0 && s.averageScore <= 100) {
+        displayScore = Math.round(s.averageScore);
+      } else if (typeof s.totalScore === 'number' && s.totalScore >= 0) {
+        const qCount = s.questions.length;
+        displayScore = qCount > 0 && s.totalScore > 100
+          ? Math.round(s.totalScore / qCount)
+          : Math.min(100, Math.round(s.totalScore));
+      }
+      return {
+        id: s._id,
+        mode: s.mode,
+        company: s.company,
+        topic: s.topic,
+        score: displayScore,
+        questionCount: s.questions.length,
+        date: new Date(s.createdAt).toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        })
+      };
+    });
 
     res.json({
       user,

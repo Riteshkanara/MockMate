@@ -123,18 +123,28 @@ const getRetryDelay = (
 // ---------------------------------------------------------
 
 
-const generateWithRetry = async request => {
+const generateWithRetry = async (request, options = {}) => {
     if (!ai) {
       throw new Error(
         'GEMINI_API_KEY is not configured.'
       );
     }
 
+    // Callers with a good local fallback (e.g. question generation, which
+    // falls back to getFallbackQuestions) can pass a lower maxRetries so a
+    // degraded Gemini API doesn't stall the whole interview-start flow for
+    // 6+ seconds. Callers where a fallback would be a worse user experience
+    // (e.g. scoring an actual submitted answer) keep the full retry budget.
+    const maxRetries =
+      Number.isInteger(options.maxRetries)
+        ? options.maxRetries
+        : MAX_RETRIES;
+
     let lastError = null;
 
     for (
       let attempt = 0;
-      attempt <= MAX_RETRIES;
+      attempt <= maxRetries;
       attempt++
     ) {
       try {
@@ -147,7 +157,7 @@ const generateWithRetry = async request => {
         console.error(
           `Gemini request failed. Attempt ${
             attempt + 1
-          }/${MAX_RETRIES + 1}:`,
+          }/${maxRetries + 1}:`,
           getErrorMessage(error)
         );
 
@@ -163,7 +173,7 @@ const generateWithRetry = async request => {
         }
 
         if (
-          attempt === MAX_RETRIES
+          attempt === maxRetries
         ) {
           break;
         }
@@ -272,7 +282,7 @@ const getDefaultTimeLimit = questionType => {
       return 60;
     }
 
-    return 120;
+    return 90; // 1 min 30 sec for open questions
   };
 
 const normalizeQuestion = (
@@ -410,7 +420,7 @@ const getFallbackOpenQuestions = (
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 120,
+      timeLimit: 90,
     },
 
     {
@@ -423,7 +433,7 @@ const getFallbackOpenQuestions = (
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 120,
+      timeLimit: 90,
     },
 
     {
@@ -436,7 +446,7 @@ const getFallbackOpenQuestions = (
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 120,
+      timeLimit: 90,
     },
 
     {
@@ -449,7 +459,7 @@ const getFallbackOpenQuestions = (
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 120,
+      timeLimit: 90,
     },
 
     {
@@ -462,7 +472,7 @@ const getFallbackOpenQuestions = (
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 120,
+      timeLimit: 90,
     },
 
     {
@@ -475,7 +485,7 @@ const getFallbackOpenQuestions = (
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 120,
+      timeLimit: 90,
     },
 
     {
@@ -488,7 +498,7 @@ const getFallbackOpenQuestions = (
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 120,
+      timeLimit: 90,
     },
 
     {
@@ -501,7 +511,7 @@ const getFallbackOpenQuestions = (
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 120,
+      timeLimit: 90,
     },
 
     {
@@ -514,7 +524,7 @@ const getFallbackOpenQuestions = (
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 120,
+      timeLimit: 90,
     },
 
     {
@@ -527,7 +537,7 @@ const getFallbackOpenQuestions = (
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 120,
+      timeLimit: 90,
     },
   ];
 
@@ -1285,12 +1295,11 @@ Return ONLY JSON.
               ],
             },
           },
-        });
+        }, { maxRetries: 0 }); // fail fast to getFallbackQuestions instead of stalling interview start for 6+s
 
-      const parsed =
-        parseJsonResponse(
-          result.text
-        );
+      const parsed = parseJsonResponse(
+        result.text
+      );
 
       if (
         !parsed.questions ||

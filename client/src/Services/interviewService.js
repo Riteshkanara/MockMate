@@ -96,6 +96,24 @@ export const completeInterview = async (sessionId) => {
 
 
 // --------------------------------------------------
+// RETRY QUESTION (re-evaluate an open answer)
+// --------------------------------------------------
+
+export const retryQuestion = async (sessionId, questionId) => {
+  try {
+    const response = await API.post(
+      `/${sessionId}/retry/${questionId}`
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error("Retry question failed:", error);
+    throw error;
+  }
+};
+
+
+// --------------------------------------------------
 // GET INTERVIEW HISTORY
 // --------------------------------------------------
 

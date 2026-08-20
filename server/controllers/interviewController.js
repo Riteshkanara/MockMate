@@ -303,28 +303,51 @@ const startInterview = async (req, res) => {
 
     const count = getQuestionCount(mode);
 
-    // Fetch last 5 sessions' question texts to pass as exclusion list
-const recentSessions = await Session.find(
-  { user: req.user._id, status: 'completed' },
-  { 'questions.text': 1 },
-  { sort: { createdAt: -1 }, limit: 5 }
-);
+    // Fetch last 10 completed sessions once — used for BOTH the
+    // previous-questions exclusion list AND the weak-areas signal below.
+    const recentSessions = await Session.find(
+      { user: userId, status: 'completed' },
+      { 'questions.text': 1, 'questions.topic': 1, 'questions.score': 1, 'questions.skipped': 1 },
+      { sort: { createdAt: -1 }, limit: 10 }
+    ).lean();
 
-const previousQuestions = recentSessions
-  .flatMap(s => s.questions || [])
-  .map(q => q.text)
-  .filter(Boolean)
-  .slice(0, 40); // cap at 40 so prompt doesn't bloat
+    const previousQuestions = recentSessions
+      .flatMap(s => s.questions || [])
+      .map(q => q.text)
+      .filter(Boolean)
+      .slice(0, 40); // cap at 40 so prompt doesn't bloat
 
-const questions = await generateQuestions({
-  mode,
-  company,
-  topic,
-  weakAreas,
-  difficulty,
-  count,
-  previousQuestions,
-});
+    // Build weakAreas from per-topic average scores across recent sessions.
+    // Topics averaging below 60 are treated as weak and prioritized by
+    // generateQuestions (see the "Prioritize weak areas" rule in aiServices.js).
+    const topicScores = {};
+    recentSessions.forEach(s => {
+      (s.questions || []).forEach(q => {
+        if (q.skipped || !q.score) return;
+        if (!topicScores[q.topic]) topicScores[q.topic] = [];
+        topicScores[q.topic].push(q.score);
+      });
+    });
+
+    const weakAreas = Object.entries(topicScores)
+      .map(([topic, scores]) => ({
+        topic,
+        avg: scores.reduce((a, b) => a + b, 0) / scores.length,
+      }))
+      .filter(t => t.avg < 60)
+      .sort((a, b) => a.avg - b.avg)
+      .slice(0, 3)
+      .map(t => t.topic);
+
+    const questions = await generateQuestions({
+      mode,
+      company,
+      topic,
+      weakAreas,
+      difficulty,
+      count,
+      previousQuestions,
+    });
 
     const session = await Session.create({
       user: userId,
@@ -486,8 +509,18 @@ const answerQuestion = async (req, res) => {
 
       if (skipped) {
         question.score = 0;
-        question.feedback =
-          'Question skipped. Try to answer every question when possible.';
+        // Must match the same JSON shape as a real AI evaluation, or the
+        // frontend's JSON.parse(feedback) throws and shows a misleading
+        // "AI evaluation failed" toast for what was actually just a skip.
+        question.feedback = JSON.stringify({
+          good: '',
+          missing: 'Question skipped. Try to answer every question when possible.',
+          idealHint: '',
+          tip: '',
+          sampleAnswer: '',
+          aiAvailable: true,
+          fallback: false,
+        });
       } else {
        const result = await evaluateOpenAnswer({
   question,
@@ -525,6 +558,7 @@ question.feedback = JSON.stringify({
       questionId,
       score: question.score,
       feedback: question.feedback,
+      skipped: Boolean(question.skipped),
       correct:
         ['mcq', 'aptitude'].includes(question.questionType)
           ? question.score === 100
@@ -698,6 +732,77 @@ const completeInterview = async (req, res) => {
 
     return res.status(500).json({
       message: 'Failed to complete interview.',
+      error: error.message,
+    });
+  }
+};
+
+// Re-evaluates an already-submitted open answer with a fresh AI call.
+// Useful when the first evaluation fell back due to AI being unavailable,
+// or the user just wants a second pass. Does not change the question order
+// or session progress — only the stored score/feedback for that question.
+const retryQuestion = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { sessionId, questionId } = req.params;
+
+    const session = await Session.findOne({
+      _id: sessionId,
+      user: userId,
+    });
+
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found.' });
+    }
+
+    const question = session.questions.find(q => q.id === questionId);
+
+    if (!question) {
+      return res.status(404).json({ message: 'Question not found.' });
+    }
+
+    if (['mcq', 'aptitude'].includes(question.questionType)) {
+      return res.status(400).json({
+        message: 'Only open-ended questions can be retried.',
+      });
+    }
+
+    if (!question.userAnswer) {
+      return res.status(400).json({
+        message: 'This question has no submitted answer to re-evaluate.',
+      });
+    }
+
+    const result = await evaluateOpenAnswer({
+      question,
+      answer: question.userAnswer,
+      topic: question.topic,
+    });
+
+    question.score = Number(result.score || 0);
+    question.feedback = JSON.stringify({
+      good: result.good || '',
+      missing: result.missing || '',
+      idealHint: result.idealHint || '',
+      tip: result.tip || '',
+      sampleAnswer: result.sampleAnswer || '',
+      aiAvailable: result.aiAvailable !== false,
+      fallback: result.fallback === true,
+    });
+
+    await session.save();
+
+    return res.json({
+      success: true,
+      questionId,
+      score: question.score,
+      feedback: question.feedback,
+    });
+  } catch (error) {
+    console.error('retryQuestion error:', error);
+
+    return res.status(500).json({
+      message: 'Failed to retry question.',
       error: error.message,
     });
   }
@@ -941,6 +1046,7 @@ const getAnalytics = async (req, res) => {
         { userId: userId },
       ],
       status: 'completed',
+      'questions.0': { $exists: true }, // exclude sessions with zero answered questions
     })
       .sort({ createdAt: 1 })
       .lean();
@@ -1197,6 +1303,7 @@ const getPerformanceAnalytics = async (req, res) => {
     const sessions = await Session.find({
       $or: [{ user: userId }, { userId: userId }],
       status: 'completed',
+      'questions.0': { $exists: true }, // exclude sessions with zero answered questions
     })
       .sort({ createdAt: -1 })
       .lean();
@@ -1503,6 +1610,7 @@ module.exports = {
   getInterviewSession,
   answerQuestion,
   completeInterview,
+  retryQuestion,
   getInterviewHistory,
   getInterviewResult,
   abandonInterview,

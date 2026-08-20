@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -11,6 +11,7 @@ import {
   completeInterview,
   getInterviewSession,
   abandonInterview,
+  retryQuestion as retryQuestionApi,
 } from '../Services/interviewService';
 
 const parseFeedback = feedback => {
@@ -51,7 +52,7 @@ const normalizeQuestion = question => ({
         ? 60
         : question?.questionType === 'mcq'
           ? 45
-          : 120,
+          : 90,
   questionType:
     question?.questionType || 'open',
   options: Array.isArray(question?.options)
@@ -92,6 +93,16 @@ export const useInterview = () => {
 
   const [isAbandoning, setIsAbandoning] =
     useState(false);
+
+  // Synchronous lock shared by EVERY path that can submit the current
+  // question — the "Submit answer" button, Enter key, Skip, AND the
+  // timer's time-up path. React state (isLoading/isSubmitted) only
+  // updates on the next render, so two calls fired in the same tick
+  // (e.g. user clicks Submit at the exact moment the timer hits zero)
+  // can both slip past an isLoading/isSubmitted check before either
+  // write commits. This ref can't be raced: it's set the instant a
+  // submit starts and cleared only in handleSubmit's finally.
+  const submitInFlightRef = useRef(false);
 
   const getErrorMessage = (
     err,
@@ -287,6 +298,16 @@ export const useInterview = () => {
         return null;
       }
 
+      // Hard, synchronous guard: only one submit can be in flight for the
+      // current question no matter how many callers race to trigger one —
+      // a manual click, Enter, and the timer's timeout path can all fire
+      // within the same tick. Whichever gets here first wins; every other
+      // caller (including the timer) is a no-op.
+      if (submitInFlightRef.current) {
+        return null;
+      }
+      submitInFlightRef.current = true;
+
       setIsLoading(true);
       setError('');
 
@@ -372,32 +393,30 @@ export const useInterview = () => {
 
         toast.dismiss(toastId);
 
-        if (
-          question.questionType !==
-            'open' &&
+        const wasSkipped = Boolean(data?.skipped);
+
+        if (wasSkipped) {
+          // Skipped — neutral grey toast, not a red error
+          toast('Question skipped.', { icon: '⏭️' });
+        } else if (
+          question.questionType !== 'open' &&
           data?.correct === true
         ) {
-          toast.success(
-            'Correct answer!'
-          );
+          toast.success('Correct answer!');
         } else if (
-          question.questionType !==
-            'open'
+          question.questionType !== 'open' &&
+          data?.correct === false
         ) {
-          toast.error(
-            'Answer recorded.'
-          );
+          // Wrong MCQ/aptitude answer — red but honest message
+          toast.error('Wrong answer.');
         } else if (
-          parsedFeedback.aiAvailable ===
-          false
+          parsedFeedback.aiAvailable === false
         ) {
           toast.error(
             'Answer saved. AI evaluation is temporarily unavailable.'
           );
         } else {
-          toast.success(
-            'Feedback ready!'
-          );
+          toast.success('Feedback ready!');
         }
 
         return data;
@@ -419,6 +438,7 @@ export const useInterview = () => {
         return null;
       } finally {
         setIsLoading(false);
+        submitInFlightRef.current = false;
       }
     },
     [
@@ -453,7 +473,8 @@ export const useInterview = () => {
       async timeTaken => {
         if (
           isSubmitted ||
-          isLoading
+          isLoading ||
+          submitInFlightRef.current
         ) {
           return;
         }
@@ -481,8 +502,16 @@ export const useInterview = () => {
   // NEXT
   // ─────────────────────────────────────────────────────────────
 
+  const advanceLockRef = useRef(false);
+
   const handleNext =
     useCallback(async () => {
+      // Guards against currentIndex being bumped twice for one user action
+      // (e.g. a double Next click, or an effect re-firing) — which used to
+      // silently skip over the next question with no answer recorded.
+      if (advanceLockRef.current) return null;
+      advanceLockRef.current = true;
+
       setError('');
 
       const isLast =
@@ -535,6 +564,7 @@ export const useInterview = () => {
           return null;
         } finally {
           setIsLoading(false);
+          advanceLockRef.current = false;
         }
       }
 
@@ -547,6 +577,7 @@ export const useInterview = () => {
         null
       );
       setIsSubmitted(false);
+      advanceLockRef.current = false;
     }, [
       currentIndex,
       questions.length,
@@ -560,6 +591,60 @@ export const useInterview = () => {
         index
       );
     }, []);
+
+  // ─────────────────────────────────────────────────────────────
+  // RETRY QUESTION — re-runs AI evaluation on an already-submitted
+  // open answer and merges the fresh score/feedback into state.
+  // ─────────────────────────────────────────────────────────────
+
+  const handleRetryQuestion = useCallback(
+    async questionId => {
+      if (!sessionId || !questionId) return null;
+
+      setIsLoading(true);
+
+      const toastId = toast.loading('Re-evaluating your answer...');
+
+      try {
+        const data = await retryQuestionApi(sessionId, questionId);
+
+        const parsedFeedback = parseFeedback(data?.feedback);
+
+        setFeedback(previous => ({
+          ...previous,
+          score: Number(data?.score) || 0,
+          aiAvailable: parsedFeedback.aiAvailable !== false,
+          fallback: parsedFeedback.fallback === true,
+          good: parsedFeedback.good || '',
+          missing: parsedFeedback.missing || '',
+          idealHint: parsedFeedback.idealHint || '',
+          tip: parsedFeedback.tip || '',
+          sampleAnswer: parsedFeedback.sampleAnswer || '',
+          raw: data?.feedback || '',
+        }));
+
+        toast.dismiss(toastId);
+        toast.success('Re-evaluated!');
+
+        return data;
+      } catch (err) {
+        toast.dismiss(toastId);
+
+        const message = getErrorMessage(
+          err,
+          'Unable to retry this question.'
+        );
+
+        setError(message);
+        toast.error(message);
+
+        return null;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [sessionId]
+  );
 
   // Tab-close / page-unload abandon — fires sendBeacon so the backend marks
   // the session abandoned even if the user closes the tab without clicking Exit.
@@ -628,6 +713,7 @@ export const useInterview = () => {
     handleNext,
     selectAnswer,
     handleAbandon,
+    handleRetryQuestion,
   };
 };
 

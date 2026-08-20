@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import ScoreCard from '../components/ScoreCard';
+import { retryQuestion } from '../Services/interviewService';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MOCKMATE — RESULT / POST-INTERVIEW DEBRIEF (v2)
@@ -475,7 +476,7 @@ const ScoreProgression = ({ questions }) => {
 
 const toneColor = tone => (tone === 'good' ? C.green : tone === 'bad' ? C.red : C.sub);
 
-const QuestionCard = ({ question, open, onToggle }) => {
+const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
   const index = question._index;
   const feedback = question.aiFeedback;
   const objective = ['mcq', 'aptitude'].includes(question.questionType);
@@ -483,6 +484,10 @@ const QuestionCard = ({ question, open, onToggle }) => {
   const score = isEvaluated && !objective ? feedback.score : null;
   const takeaway = useMemo(() => getTakeaway(question), [question]);
   const hasTime = Number(question.timeTaken) > 0;
+
+  // Retry only makes sense for open-ended questions that were actually
+  // answered — nothing to re-evaluate for MCQ/aptitude or skipped ones.
+  const canRetry = !objective && !question.skipped && question.userAnswer && question.userAnswer.trim() && question.id;
 
   const scoreBadgeColor = question.skipped
     ? C.muted
@@ -721,6 +726,30 @@ const QuestionCard = ({ question, open, onToggle }) => {
               )}
             </div>
           )}
+
+          {canRetry && onRetry && (
+            <div style={{ gridColumn: '1 / -1', marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => onRetry(question.id)}
+                disabled={retrying}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${C.lineStrong}`,
+                  background: retrying ? C.surfaceAlt : C.white,
+                  color: retrying ? C.muted : C.blue,
+                  fontFamily: F.mono,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  letterSpacing: '0.4px',
+                  cursor: retrying ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {retrying ? 'Re-evaluating…' : 'Retry AI evaluation'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -749,10 +778,53 @@ const Result = () => {
     return () => cancelAnimationFrame(id);
   }, [result, navigate]);
 
-  const { score = 0, questions = [], streak, newBadges = [] } = result || {};
+  const { score = 0, questions = [], streak, newBadges = [], sessionId } = result || {};
   const totalScore = clamp(score);
 
-  const normalizedQuestions = useMemo(() => questions.map((q, i) => normalizeQuestion(q, i)), [questions]);
+  const [normalizedQuestionsState, setNormalizedQuestionsState] = useState([]);
+  const [retryingId, setRetryingId] = useState(null);
+
+  const normalizedQuestions = useMemo(() => {
+    const base = questions.map((q, i) => normalizeQuestion(q, i));
+    // Merge in any locally-retried scores/feedback so re-evaluated cards
+    // reflect the fresh result without needing a full page reload.
+    if (!normalizedQuestionsState.length) return base;
+    return base.map(q => {
+      const override = normalizedQuestionsState.find(o => o.id === q.id);
+      return override ? { ...q, score: override.score, aiFeedback: override.aiFeedback } : q;
+    });
+  }, [questions, normalizedQuestionsState]);
+
+  const handleRetryQuestion = useCallback(
+    async questionId => {
+      if (!sessionId || !questionId || retryingId) return;
+
+      setRetryingId(questionId);
+
+      try {
+        const data = await retryQuestion(sessionId, questionId);
+
+        const parsedFeedback = normalizeFeedback({ feedback: data?.feedback, score: data?.score });
+
+        setNormalizedQuestionsState(previous => {
+          const withoutThis = previous.filter(q => q.id !== questionId);
+          return [
+            ...withoutThis,
+            {
+              id: questionId,
+              score: clamp(Number(data?.score) || 0),
+              aiFeedback: parsedFeedback,
+            },
+          ];
+        });
+      } catch (err) {
+        console.error('Retry question failed:', err);
+      } finally {
+        setRetryingId(null);
+      }
+    },
+    [sessionId, retryingId]
+  );
 
   const evaluatedQuestions = useMemo(
     () => normalizedQuestions.filter(q => !q.skipped && q.aiFeedback && q.aiFeedback.aiAvailable !== false && typeof q.aiFeedback.score === 'number'),
@@ -1167,7 +1239,14 @@ const Result = () => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
             {filteredQuestions.map(question => (
-              <QuestionCard key={question._index} question={question} open={Boolean(expanded[question._index])} onToggle={toggleExpand} />
+              <QuestionCard
+                key={question._index}
+                question={question}
+                open={Boolean(expanded[question._index])}
+                onToggle={toggleExpand}
+                onRetry={handleRetryQuestion}
+                retrying={retryingId === question.id}
+              />
             ))}
           </div>
         </section>

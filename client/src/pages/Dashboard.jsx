@@ -745,6 +745,17 @@ const Dashboard = () => {
             <AICoachTeaserCard onOpen={handleCoachTeaser} loading={coachLoading} teaser={coachTeaser} weakestDim={weakestDim} />
           </section>
 
+          {/* ── WEEKLY CHALLENGES + GROWTH VELOCITY ───────────────────────── */}
+          <section style={S.twoCol} className="mm-two-col">
+            <WeeklyChallenges
+              scoreTrend={scoreTrend}
+              topicPerformance={topicPerformance}
+              streakDays={streakDays}
+            />
+
+            <GrowthVelocityCard scoreTrend={scoreTrend} />
+          </section>
+
           {/* ── SHARE CARD ────────────────────────────────────────────────── */}
           <ShareCard
             name={user?.name?.split(' ')[0] || 'Candidate'}
@@ -1139,6 +1150,258 @@ const AICoachTeaserCard = ({ onOpen, loading, teaser, weakestDim }) => (
   </div>
 );
 
+// ─── Weekly Challenges ────────────────────────────────────────────────────────
+const WeeklyChallenges = ({ scoreTrend, topicPerformance, streakDays }) => {
+  const now = new Date();
+  const weekAgo = new Date(now);
+  weekAgo.setDate(now.getDate() - 7);
+
+  const thisWeek = scoreTrend.filter(
+    s => s.date && new Date(s.date) >= weekAgo
+  );
+
+  const strongSessions = thisWeek.filter(s => (s.score || 0) >= 75).length;
+
+  const topicsTouched = new Set(
+    topicPerformance
+      .filter(t => (t.attempts ?? 0) > 0)
+      .map(t => t.topic)
+  ).size;
+
+  const challenges = [
+    {
+      icon: '🎯',
+      title: 'Score 75+ in 3 sessions',
+      current: Math.min(strongSessions, 3),
+      target: 3,
+      helper: 'Build a reliable performance floor.',
+    },
+    {
+      icon: '🧠',
+      title: 'Cover 5 topics',
+      current: Math.min(topicsTouched, 5),
+      target: 5,
+      helper: 'Keep your preparation broad.',
+    },
+    {
+      icon: '🔥',
+      title: 'Hold a 7-day streak',
+      current: Math.min(streakDays, 7),
+      target: 7,
+      helper: 'Consistency compounds.',
+    },
+  ];
+
+  const completed = challenges.filter(
+    c => c.current >= c.target
+  ).length;
+
+  return (
+    <section style={S.card}>
+      <div style={S.cardHeader}>
+        <div>
+          <div style={S.eyebrowDark}>WEEKLY CHALLENGES</div>
+          <h2 style={S.cardH2}>Turn this week into progress</h2>
+          <p style={S.cardSub}>
+            Small targets designed to build consistency, breadth, and confidence.
+          </p>
+        </div>
+
+      <div style={S.challengeSummary}>
+  <div>
+    {completed}/{challenges.length}
+  </div>
+  <span style={S.challengeSummarySpan}>done</span>
+</div>
+
+      <div style={S.challengeList}>
+        {challenges.map(challenge => {
+          const progress = Math.min(
+            100,
+            Math.round((challenge.current / challenge.target) * 100)
+          );
+
+          const done = challenge.current >= challenge.target;
+
+          return (
+            <div key={challenge.title} style={S.challengeRow}>
+              <div style={S.challengeIcon}>{challenge.icon}</div>
+
+              <div style={S.challengeBody}>
+                <div style={S.challengeTop}>
+                  <div>
+                    <div style={S.challengeTitle}>
+                      {challenge.title}
+                    </div>
+                    <div style={S.challengeHelper}>
+                      {challenge.helper}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      ...S.challengeCount,
+                      color: done ? C.green : C.blue600,
+                    }}
+                  >
+                    {challenge.current}/{challenge.target}
+                  </div>
+                </div>
+
+                <div style={S.challengeTrack}>
+                  <div
+                    style={{
+                      ...S.challengeFill,
+                      width: `${progress}%`,
+                      background: done
+                        ? C.green
+                        : `linear-gradient(90deg, ${C.blue500}, ${C.cyan500})`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  ...S.challengeStatus,
+                  color: done ? C.green : C.muted,
+                }}
+              >
+                {done ? '✓' : `${progress}%`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      </div>
+    </section>
+  );
+};
+
+// ─── Growth Velocity — rolling 8-week average ────────────────────────────────
+const GrowthVelocityCard = ({ scoreTrend }) => {
+  const weekly = useMemo(() => {
+    const buckets = {};
+
+    scoreTrend.forEach(session => {
+      if (!session.date) return;
+
+      const date = new Date(session.date);
+      const weekStart = new Date(date);
+      const day = weekStart.getDay();
+
+      weekStart.setDate(weekStart.getDate() - day);
+      weekStart.setHours(0, 0, 0, 0);
+
+      const key = weekStart.toISOString().slice(0, 10);
+
+      if (!buckets[key]) buckets[key] = [];
+      buckets[key].push(session.score || 0);
+    });
+
+    return Object.entries(buckets)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-8)
+      .map(([date, scores]) => ({
+        date,
+        score: Math.round(
+          scores.reduce((sum, value) => sum + value, 0) / scores.length
+        ),
+      }));
+  }, [scoreTrend]);
+
+  if (weekly.length < 2) {
+    return (
+      <section style={S.card}>
+        <div style={S.eyebrowDark}>GROWTH VELOCITY</div>
+        <h2 style={S.cardH2}>Not enough weekly data yet</h2>
+        <p style={S.cardSub}>
+          Keep practising. Once MockMate has multiple weeks of sessions,
+          this chart will show whether your performance is compounding or
+          plateauing.
+        </p>
+      </section>
+    );
+  }
+
+  const latest = weekly.at(-1)?.score ?? 0;
+  const previous = weekly.at(-2)?.score ?? latest;
+  const delta = latest - previous;
+
+  const max = Math.max(...weekly.map(w => w.score), 100);
+
+  return (
+    <section style={S.card}>
+      <div style={S.cardHeader}>
+        <div>
+          <div style={S.eyebrowDark}>GROWTH VELOCITY</div>
+          <h2 style={S.cardH2}>Are you compounding?</h2>
+          <p style={S.cardSub}>
+            Rolling weekly averages make your long-term direction easier to
+            read than individual session scores.
+          </p>
+        </div>
+
+        <div
+  style={{
+    ...S.growthDelta,
+    color: delta >= 0 ? C.green : C.orange,
+  }}
+>
+  <div>
+    {delta >= 0 ? '+' : ''}
+    {delta}
+  </div>
+
+  <span style={S.growthDeltaSpan}>vs last week</span>
+</div>
+      </div>
+
+      <div style={S.velocityChart}>
+        {weekly.map((week, index) => {
+          const height = Math.max(
+            12,
+            Math.round((week.score / max) * 100)
+          );
+
+          return (
+            <div key={week.date} style={S.velocityColumn}>
+              <div style={S.velocityScore}>{week.score}</div>
+
+              <div style={S.velocityTrack}>
+                <div
+                  style={{
+                    ...S.velocityBar,
+                    height: `${height}%`,
+                  }}
+                />
+              </div>
+
+              <div style={S.velocityWeek}>
+                W{index + 1}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={S.velocityFooter}>
+        <span>
+          {delta > 3
+            ? '📈 Momentum is building.'
+            : delta < -3
+              ? '⚠️ You may be plateauing — change the drill.'
+              : '→ Your performance is holding steady.'}
+        </span>
+
+        <span>
+          {weekly.length} week{weekly.length !== 1 ? 's' : ''} tracked
+        </span>
+      </div>
+    </section>
+  );
+};
+
 // ─── Activity heatmap — redesigned: smaller cells, finer shade scale ────────
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -1169,7 +1432,7 @@ const ActivityHeatmap = ({ heatmap, stats, total, mounted }) => {
         <div style={S.hmLegend}>
           <span style={S.hmLegendLabel}>Low</span>
           {[10, 35, 52, 68, 82, 92].map(v => (
-            <div key={v} style={{ width: 11, height: 11, borderRadius: 3, background: heatColor(v, true), flexShrink: 0 }} title={`~${v}`} />
+            <div key={v} style={{ width: 11, height: 11, borderRadius: 2, background: heatColor(v, true), flexShrink: 0 }} title={`~${v}`} />
           ))}
           <span style={S.hmLegendLabel}>High</span>
         </div>
@@ -1201,7 +1464,7 @@ const ActivityHeatmap = ({ heatmap, stats, total, mounted }) => {
                     background: day.future ? 'transparent' : heatColor(day.score, day.hasData),
                     border: day.future ? `1.5px dashed ${C.border}` : day.hasData ? 'none' : `1px solid ${C.border}`,
                     cursor: day.hasData ? 'pointer' : 'default',
-                    transform: hovered?.date === day.date ? 'scale(1.35)' : 'scale(1)',
+                    transform: hovered?.date === day.date ? 'scale(1.6)' : 'scale(1)',
                     boxShadow: hovered?.date === day.date ? `0 0 0 2px ${C.blue400}, 0 2px 8px rgba(26,110,255,0.35)` : 'none',
                     zIndex: hovered?.date === day.date ? 2 : 1,
                   }}
@@ -1592,6 +1855,203 @@ const S = {
   peerFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.blue500}, ${C.cyan500})`, transition: 'width 1.1s ease' },
   peerNote: { margin: '10px 0 0', fontSize: 10.5, color: C.muted, lineHeight: 1.55 },
 
+    // Weekly challenges
+  challengeSummary: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 54,
+    height: 54,
+    borderRadius: 12,
+    background: C.blue50,
+    border: `1px solid ${C.borderMd}`,
+    color: C.blue600,
+    fontFamily: F.display,
+    fontSize: 18,
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+
+  challengeSummarySpan: {
+    marginTop: 4,
+    fontFamily: F.mono,
+    fontSize: 8,
+    color: C.muted,
+    textTransform: 'uppercase',
+    letterSpacing: '0.6px',
+  },
+
+  challengeList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+
+  challengeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 11,
+    padding: '11px 12px',
+    borderRadius: 12,
+    background: C.cardAlt,
+    border: `1px solid ${C.border}`,
+  },
+
+  challengeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    background: C.blue50,
+    border: `1px solid ${C.borderMd}`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 17,
+    flexShrink: 0,
+  },
+
+  challengeBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  challengeTop: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 7,
+  },
+
+  challengeTitle: {
+    fontSize: 11.5,
+    fontWeight: 800,
+    color: C.text,
+  },
+
+  challengeHelper: {
+    marginTop: 2,
+    fontSize: 10,
+    color: C.muted,
+  },
+
+  challengeCount: {
+    fontFamily: F.mono,
+    fontSize: 10,
+    fontWeight: 700,
+    flexShrink: 0,
+  },
+
+  challengeTrack: {
+    height: 5,
+    borderRadius: 999,
+    background: C.border,
+    overflow: 'hidden',
+  },
+
+  challengeFill: {
+    height: '100%',
+    borderRadius: 999,
+    transition: 'width 0.8s cubic-bezier(.16,1,.3,1)',
+  },
+
+  challengeStatus: {
+    width: 28,
+    textAlign: 'right',
+    fontFamily: F.mono,
+    fontSize: 9,
+    fontWeight: 700,
+    flexShrink: 0,
+  },
+
+  // Growth velocity
+  growthDelta: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    fontFamily: F.display,
+    fontSize: 20,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+
+  growthDeltaSpan: {
+    marginTop: 2,
+    fontFamily: F.mono,
+    fontSize: 8,
+    color: C.muted,
+    fontWeight: 500,
+  },
+
+  velocityChart: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 8,
+    height: 155,
+    marginTop: 8,
+    padding: '10px 4px 0',
+  },
+
+  velocityColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 5,
+    height: '100%',
+    flex: 1,
+    minWidth: 0,
+  },
+
+  velocityScore: {
+    fontFamily: F.mono,
+    fontSize: 8.5,
+    color: C.sub,
+    fontWeight: 700,
+  },
+
+  velocityTrack: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: 28,
+    height: 105,
+    display: 'flex',
+    alignItems: 'flex-end',
+    borderRadius: 7,
+    background: C.cardAlt,
+    border: `1px solid ${C.border}`,
+    overflow: 'hidden',
+  },
+
+  velocityBar: {
+    width: '100%',
+    minHeight: 6,
+    borderRadius: '6px 6px 0 0',
+    background: `linear-gradient(180deg, ${C.cyan500}, ${C.blue500})`,
+    transition: 'height 0.8s cubic-bezier(.16,1,.3,1)',
+  },
+
+  velocityWeek: {
+    fontFamily: F.mono,
+    fontSize: 8,
+    color: C.muted,
+  },
+
+  velocityFooter: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTop: `1px solid ${C.border}`,
+    fontFamily: F.mono,
+    fontSize: 9.5,
+    color: C.sub,
+  },
+
   shareCard: { position: 'relative', overflow: 'hidden', padding: '26px 28px', borderRadius: 20, background: `linear-gradient(135deg, ${C.blue900} 0%, #0A2E6E 50%, #00305A 100%)`, boxShadow: C.shadowLg, marginBottom: 18 },
   shareGlow: { position: 'absolute', top: -80, right: -80, width: 240, height: 240, borderRadius: '50%', background: `radial-gradient(circle, rgba(0,200,240,0.22), transparent 68%)`, pointerEvents: 'none' },
   shareEyebrow: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '1.6px', color: C.cyan400, marginBottom: 16 },
@@ -1602,22 +2062,139 @@ const S = {
   shareTitle: { margin: 0, fontFamily: F.display, fontSize: 18, fontWeight: 800, color: '#fff' },
   shareDesc: { margin: '7px 0 0', fontSize: 12.5, color: 'rgba(255,255,255,0.72)', lineHeight: 1.6 },
 
-  hmLegend: { display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 },
-  hmLegendLabel: { fontFamily: F.mono, fontSize: 9, color: C.muted, letterSpacing: '0.4px' },
-  hmMonthRow: { display: 'flex', alignItems: 'center', marginBottom: 4, overflow: 'hidden' },
-  hmMonthLabel: { position: 'absolute', fontFamily: F.mono, fontSize: 9, color: C.muted, whiteSpace: 'nowrap' },
-  hmWrap: { display: 'flex', gap: 3, overflow: 'auto', paddingBottom: 4 },
-  hmDayCols: { display: 'flex', flexDirection: 'column', gap: 2.5, marginRight: 5, flexShrink: 0, paddingTop: 1 },
-  hmDayLbl: { height: 10, fontFamily: F.mono, fontSize: 8, color: C.muted, display: 'flex', alignItems: 'center' },
-  hmGrid: { display: 'flex', gap: 2.5, flex: 1 },
-  hmWeekCol: { display: 'flex', flexDirection: 'column', gap: 2.5, flex: 1, minWidth: 10 },
-  hmCell: { width: '100%', aspectRatio: '1', borderRadius: 2.5, transition: 'transform 0.1s ease, box-shadow 0.1s ease', flexShrink: 0 },
-  hmTooltip: { marginTop: 8, padding: '6px 12px', borderRadius: 8, background: C.text, color: '#fff', fontSize: 12, display: 'inline-block' },
-  hmFooterGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, marginTop: 20, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}` },
-  hmStatBox: { padding: '14px 16px', background: C.cardAlt, textAlign: 'center' },
-  hmStatVal: { fontFamily: F.display, fontSize: 22, fontWeight: 800, color: C.blue600 },
-  hmStatLabel: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.8px', color: C.sub, marginTop: 4 },
-  hmStatSub: { fontSize: 10.5, color: C.muted, marginTop: 3, lineHeight: 1.4 },
+    hmLegend: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 5,
+    flexShrink: 0,
+  },
+
+  hmLegendLabel: {
+    fontFamily: F.mono,
+    fontSize: 9,
+    color: C.muted,
+    letterSpacing: '0.4px',
+  },
+
+  hmMonthRow: {
+    display: 'flex',
+    alignItems: 'center',
+    marginBottom: 4,
+    overflow: 'hidden',
+  },
+
+  hmMonthLabel: {
+    position: 'absolute',
+    fontFamily: F.mono,
+    fontSize: 9,
+    color: C.muted,
+    whiteSpace: 'nowrap',
+  },
+
+  hmWrap: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 5,
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    padding: '4px 2px 8px',
+    scrollbarWidth: 'thin',
+  },
+
+  hmDayCols: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+    marginRight: 4,
+    flexShrink: 0,
+    paddingTop: 1,
+  },
+
+  hmDayLbl: {
+    width: 11,
+    height: 11,
+    fontFamily: F.mono,
+    fontSize: 8,
+    color: C.muted,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Fixed GitHub-style grid — never stretches to fill the card.
+  hmGrid: {
+    display: 'flex',
+    gap: 3,
+    flexShrink: 0,
+    width: 'max-content',
+  },
+
+  hmWeekCol: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+    width: 11,
+    flex: '0 0 11px',
+  },
+
+  hmCell: {
+    width: 11,
+    height: 11,
+    minWidth: 11,
+    minHeight: 11,
+    borderRadius: 2,
+    transition: 'transform 0.1s ease, box-shadow 0.1s ease',
+    flexShrink: 0,
+  },
+
+  hmTooltip: {
+    marginTop: 8,
+    padding: '7px 12px',
+    borderRadius: 8,
+    background: C.text,
+    color: '#fff',
+    fontSize: 11.5,
+    display: 'inline-block',
+  },
+
+  hmFooterGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: 1,
+    marginTop: 20,
+    borderRadius: 12,
+    overflow: 'hidden',
+    border: `1px solid ${C.border}`,
+  },
+
+  hmStatBox: {
+    padding: '14px 16px',
+    background: C.cardAlt,
+    textAlign: 'center',
+  },
+
+  hmStatVal: {
+    fontFamily: F.display,
+    fontSize: 22,
+    fontWeight: 800,
+    color: C.blue600,
+  },
+
+  hmStatLabel: {
+    fontFamily: F.mono,
+    fontSize: 9.5,
+    fontWeight: 700,
+    letterSpacing: '0.8px',
+    color: C.sub,
+    marginTop: 4,
+  },
+
+  hmStatSub: {
+    fontSize: 10.5,
+    color: C.muted,
+    marginTop: 3,
+    lineHeight: 1.4,
+  },
 
   lbHeader: { display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px', fontFamily: F.mono, fontSize: 9, letterSpacing: '0.8px', color: C.muted, marginBottom: 4 },
   lbRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, border: '1px solid', transition: 'background 0.15s' },

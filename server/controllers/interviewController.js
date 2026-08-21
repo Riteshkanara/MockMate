@@ -315,7 +315,7 @@ const startInterview = async (req, res) => {
       .flatMap(s => s.questions || [])
       .map(q => q.text)
       .filter(Boolean)
-      .slice(0, 40); // cap at 40 so prompt doesn't bloat
+      .slice(0, 20); // cap at 40 so prompt doesn't bloat
 
     // Build weakAreas from per-topic average scores across recent sessions.
     // Topics averaging below 60 are treated as weak and prioritized by

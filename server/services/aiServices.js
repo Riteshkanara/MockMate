@@ -1295,7 +1295,7 @@ Return ONLY JSON.
               ],
             },
           },
-        }, { maxRetries: 0 }); // fail fast to getFallbackQuestions instead of stalling interview start for 6+s
+        }, { maxRetries: 1}); // fail fast to getFallbackQuestions instead of stalling interview start for 6+s
 
       const parsed = parseJsonResponse(
         result.text
@@ -1361,13 +1361,31 @@ Return ONLY JSON.
 
       return normalized;
     } catch (error) {
-      console.error(
-        'Gemini generateQuestions error:',
-        getErrorMessage(error)
-      );
+  console.error(
+    'Gemini generateQuestions error:',
+    getErrorMessage(error)
+  );
 
-      return getFallbackQuestions(
-        normalizedMode,
+  // On 503, try the lighter flash-8b model before falling back to static questions
+  if (error?.error?.code === 503 || error?.status === 503) {
+    try {
+      const retryResult = await generateWithRetry({
+        model: 'gemini-2.0-flash-lite',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' },
+      }, { maxRetries: 1 });
+
+      const retryParsed = parseJsonResponse(retryResult.text);
+      if (retryParsed.questions?.length >= safeCount) {
+        return retryParsed.questions.slice(0, safeCount).map((q, i) => normalizeQuestion(q, i, normalizedMode));
+      }
+    } catch (_) {
+      // fall through to static fallback below
+    }
+  }
+
+  return getFallbackQuestions(
+    normalizedMode,
         topic,
         safeCount
       );

@@ -650,14 +650,13 @@ export const useInterview = () => {
   // the session abandoned even if the user closes the tab without clicking Exit.
   // sendBeacon can't set headers, so the token goes in the query string; the
   // auth middleware accepts ?token= specifically for this route.
-  useEffect(() => {
+   useEffect(() => {
     const handleUnload = () => {
       if (!sessionId || !sessionStarted) return;
-      const token = localStorage.getItem('token');
-      if (!token) return;
-      const url = `${API_BASE}/interview/${sessionId}/abandon?token=${encodeURIComponent(token)}`;
-      // sendBeacon makes a POST with no body — the controller only needs the
-      // sessionId from the URL and the userId from the decoded token.
+      // sendBeacon can't send cookies or headers, so we can't auth this call.
+      // The abandon route on the server must NOT use authMiddleware —
+      // it should only use sessionId from the URL to mark the session abandoned.
+      const url = `${API_BASE}/interview/${sessionId}/abandon`;
       navigator.sendBeacon(url);
     };
 

@@ -3,24 +3,24 @@ import axios from "axios";
 
 const API = axios.create({
   baseURL: `${API_BASE}/interview`,
+  withCredentials: true,   // sends cookies on every request
 });
 
-API.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  return config;
-});
-
+// On 401 → try /auth/refresh → retry once → if still 401 → redirect to home
 API.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("token");
-      window.location.href = "/";
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retried) {
+      originalRequest._retried = true;
+
+      try {
+        await axios.post(`${API_BASE}/auth/refresh`, {}, { withCredentials: true });
+        return API(originalRequest);  // retry with new cookie
+      } catch (_) {
+        window.location.href = '/';
+      }
     }
 
     return Promise.reject(error);

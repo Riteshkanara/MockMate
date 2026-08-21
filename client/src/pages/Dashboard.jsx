@@ -323,13 +323,13 @@ const Dashboard = () => {
         // and populates the header strip immediately while the heavier
         // /performance call (all sessions + scoringModel) is still in flight.
         const statsPromise = fetch(`${API_BASE}/dashboard/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }).then(r => r.json());
+        credentials: 'include',
+      }).then(r => r.json());
 
         const [analyticsData, lbRes] = await Promise.all([
           getPerformanceAnalytics(),
           fetch(`${API_BASE}/leaderboard`, {
-            headers: { Authorization: `Bearer ${token}` },
+            credentials: 'include',
           }),
         ]);
 
@@ -390,7 +390,7 @@ const Dashboard = () => {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/auth/fix-badges`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Fix failed');

@@ -250,16 +250,14 @@ const Onboarding = () => {
     try {
       const token = localStorage.getItem('token');
 
-      await axios.post(
-        `${API_BASE}/auth/onboarding`,
-        profile,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await fetch(`${API_BASE}/auth/onboarding`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  credentials: 'include',
+  body: JSON.stringify(payload),
+});
 
-      localStorage.setItem(
-        'mockmate_preferences',
-        JSON.stringify({ ...preferences, selfRating })
-      );
+     
 
       toast.dismiss(toastId);
       toast.success('Your MockMate profile is ready.');

@@ -274,7 +274,7 @@
       const load = async () => {
         try {
           const token = localStorage.getItem('token');
- const res = await fetch(`${API_BASE}/leaderboard`, { headers: { Authorization: `Bearer ${token}` } });
+ const res = await fetch(`${API_BASE}/leaderboard`, { credentials: 'include' });
           const data  = await res.json();
           if (cancelled) return;
           setGlobalData(data.global);

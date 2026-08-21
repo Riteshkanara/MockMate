@@ -10,7 +10,7 @@ const interviewRoutes = require('./routes/interview');
 const dashboardRoutes = require('./routes/dashboard');
 const leaderboardRoutes = require('./routes/leaderboard');
 const profileRoutes = require('./routes/profile');
-
+const cookieParser = require('cookie-parser');
 
 
 
@@ -20,6 +20,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+app.use(cookieParser());
 app.use(passport.initialize());
 
 // MongoDB connection:

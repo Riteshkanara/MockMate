@@ -1,79 +1,91 @@
 /* eslint-disable react-refresh/only-export-components */
 import API_BASE from '../config/api.js';
-import { createContext, useState, useEffect } from 'react';  
+import { createContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 
 export const AuthContext = createContext(null);
 
+// All API calls go through this instead of plain fetch.
+// On 401 → tries /auth/refresh → retries original request once.
+// On second 401 → forces logout.
+export const authFetch = async (url, options = {}, onForceLogout) => {
+    const defaultOptions = {
+        ...options,
+        credentials: 'include',   // always send cookies
+    };
 
-const fetchUser = async (token, setUser, setIsLoading) => {
-  try {
-    const response = await fetch(`${API_BASE}/auth/me`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    let res = await fetch(url, defaultOptions);
 
-    const data = await response.json();
+    if (res.status === 401) {
+        // Try silent refresh
+        const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+            method: 'POST',
+            credentials: 'include',
+        });
 
-    if (response.ok) {
-      setUser(data.user);
-    } else {
-      localStorage.removeItem('token');
-      setUser(null);
+        if (refreshRes.ok) {
+            // Retry original request with new access token cookie
+            res = await fetch(url, defaultOptions);
+        } else {
+            // Refresh also failed → force logout
+            if (onForceLogout) onForceLogout();
+            return res;
+        }
     }
-  } catch (error) {
-    console.error('Failed to fetch user:', error);
-    setUser(null);
-  } finally {
-    setIsLoading(false);
-  }
+
+    return res;
+};
+
+const fetchUser = async (setUser, setIsLoading, onForceLogout) => {
+    try {
+        const response = await authFetch(`${API_BASE}/auth/me`, {}, onForceLogout);
+        const data = await response.json();
+
+        if (response.ok) {
+            setUser(data.user);
+        } else {
+            setUser(null);
+        }
+    } catch (error) {
+        console.error('Failed to fetch user:', error);
+        setUser(null);
+    } finally {
+        setIsLoading(false);
+    }
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+    const [user, setUser] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
+    const forceLogout = () => {
+        setUser(null);
+        window.location.href = '/';
+    };
 
-    if (!token) {
-      setTimeout(() => {
-        setIsLoading(false);
-      }, 0);
-      return;
-    }
+    useEffect(() => {
+        fetchUser(setUser, setIsLoading, forceLogout);
+    }, []);
 
-    fetchUser(token, setUser, setIsLoading);
-  }, []);
+    const logout = async () => {
+        try {
+            await fetch(`${API_BASE}/auth/logout`, {
+                method: 'POST',
+                credentials: 'include',
+            });
+        } catch (_) {}
+        toast.success('Logged out successfully');
+        setUser(null);
+        window.location.href = '/';
+    };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    toast.success('Logged out successfully');
-    setUser(null);
-    window.location.href = '/';
-  };
+    const refreshUser = async () => {
+        await fetchUser(setUser, setIsLoading, forceLogout);
+    };
 
-  const refreshUser = async () => {
-    const token = localStorage.getItem('token');
-
-    if (token) {
-      await fetchUser(token, setUser, setIsLoading);
-    }
-  };
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        setUser,
-        logout,
-        isLoading,
-        refreshUser,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+    return (
+        <AuthContext.Provider value={{ user, setUser, logout, isLoading, refreshUser, authFetch }}>
+            {children}
+        </AuthContext.Provider>
+    );
 };
-

@@ -21,17 +21,39 @@ router.get('/google/callback',
         session: false,
         failureRedirect: `${process.env.CLIENT_URL}/login?error=auth_failed`
     }),
-    (req, res) => {
-        // req.user = the user object returned by done(null, user) in passport.js
-        const token = jwt.sign(
-            { id: req.user._id },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+      async (req, res) => {
+        const accessToken = jwt.sign(
+        { id: req.user._id },
+        process.env.JWT_SECRET,
+        { expiresIn: '15m' }
+    );
 
-        // Send token to frontend via URL param
-        res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${token}`);
-    }
+    const refreshToken = jwt.sign(
+        { id: req.user._id },
+        process.env.REFRESH_TOKEN_SECRET,
+        { expiresIn: '7d' }
+    );
+
+    // Save refresh token to DB
+    req.user.refreshToken = refreshToken;
+    await req.user.save();    // passport's done(null, user) returns the full user doc
+
+    res.cookie('accessToken', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 15 * 60 * 1000,        // 15 minutes
+    });
+
+    res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days
+    });
+
+    res.redirect(`${process.env.CLIENT_URL}/auth/callback`);
+}
 );
 
 // Onboarding
@@ -132,6 +154,48 @@ router.post('/fix-badges', authMiddleware, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+router.post('/refresh', async (req, res) => {
+    const token = req.cookies?.refreshToken;
+
+    if (!token) return res.status(401).json({ error: 'No refresh token' });
+
+    try {
+        const decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+        const user = await User.findById(decoded.id);
+
+        if (!user || user.refreshToken !== token) {
+            return res.status(401).json({ error: 'Invalid refresh token' });
+        }
+
+        const newAccessToken = jwt.sign(
+            { id: user._id },
+            process.env.JWT_SECRET,
+            { expiresIn: '15m' }
+        );
+
+        res.cookie('accessToken', newAccessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 15 * 60 * 1000,
+        });
+
+        res.json({ ok: true });
+    } catch (err) {
+        return res.status(401).json({ error: 'Refresh token expired or invalid' });
+    }
+});
+
+router.post('/logout', authMiddleware, async (req, res) => {
+    try {
+        await User.findByIdAndUpdate(req.user._id, { refreshToken: null });
+    } catch (_) {}
+
+    res.clearCookie('accessToken');
+    res.clearCookie('refreshToken');
+    res.json({ ok: true });
 });
 
 module.exports = router;

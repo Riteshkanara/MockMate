@@ -41,6 +41,24 @@ router.get(
   interviewController.getPerformanceAnalytics
 );
 
+router.get(
+  '/session/last/breakdown',
+  authMiddleware,
+  interviewController.getLastSessionBreakdown
+);
+
+router.get(
+  '/blind-spots',
+  authMiddleware,
+  interviewController.getBlindSpots
+);
+
+router.get(
+  '/session-warmup',
+  authMiddleware,
+  interviewController.getSessionWarmup
+);
+
 router.post(
   '/ai-coach',
   authMiddleware,

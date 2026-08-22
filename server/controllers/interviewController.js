@@ -325,10 +325,10 @@ const startInterview = async (req, res) => {
     // Fetch last 10 completed sessions once — used for BOTH the
     // previous-questions exclusion list AND the weak-areas signal below.
     const recentSessions = await Session.find(
-      { user: userId, status: 'completed' },
-      { 'questions.text': 1, 'questions.topic': 1, 'questions.score': 1, 'questions.skipped': 1 },
-      { sort: { createdAt: -1 }, limit: 10 }
-    ).lean();
+  { $or: [{ user: userId }, { userId }], status: 'completed' },
+  { 'questions.text': 1, 'questions.topic': 1, 'questions.score': 1, 'questions.skipped': 1 },
+  { sort: { createdAt: -1 }, limit: 10 }
+).lean();
 
     const previousQuestions = recentSessions
       .flatMap(s => s.questions || [])

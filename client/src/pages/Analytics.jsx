@@ -3,13 +3,16 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
   ReferenceLine,
+  Legend,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
-import { getAnalytics } from "../Services/interviewService";
+import { getAnalytics, getLastSessionBreakdown, getBlindSpots, getSessionWarmup } from "../Services/interviewService";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE ANALYTICS — READINESS INTELLIGENCE v4
@@ -99,6 +102,36 @@ const ARCHETYPES = [
   { id: "speedRunner",        label: "Speed Runner",        icon: "⚡", desc: "Fast answers but sometimes sacrifices depth for pace.", fix: "Practise 'think aloud' — say your reasoning before your answer." },
   { id: "deepThinker",        label: "Deep Thinker",        icon: "🧠", desc: "Thorough and accurate — needs to improve time management.", fix: "Run timed drills: 2-minute cap per answer in quick-fire mode." },
   { id: "pressureCooker",     label: "Pressure Cooker",     icon: "🔥", desc: "Scores improve under timed, competitive conditions.", fix: "Channel this by joining live contest platforms weekly." },
+];
+
+// ─── Company target profiles — expected dimension polygon per archetype.
+// Values are minimum desired scores per dimension for that company tier.
+// These are directional benchmarks, not verified market data.
+const COMPANY_PROFILES = [
+  {
+    id: "service",
+    label: "Service (TCS / Infosys / Wipro)",
+    icon: "🏢",
+    scores: { technical: 55, problemSolving: 50, communication: 65, behavioral: 60, design: 25, fundamentals: 55 },
+  },
+  {
+    id: "product_mid",
+    label: "Mid Product (Flipkart / Swiggy / PhonePe)",
+    icon: "🚀",
+    scores: { technical: 72, problemSolving: 70, communication: 60, behavioral: 55, design: 55, fundamentals: 65 },
+  },
+  {
+    id: "faang",
+    label: "FAANG-adjacent (Google / Amazon / Microsoft)",
+    icon: "🏆",
+    scores: { technical: 85, problemSolving: 88, communication: 65, behavioral: 62, design: 75, fundamentals: 78 },
+  },
+  {
+    id: "startup",
+    label: "Early-Stage Startup",
+    icon: "⚡",
+    scores: { technical: 68, problemSolving: 65, communication: 72, behavioral: 65, design: 45, fundamentals: 58 },
+  },
 ];
 
 // ─── Shared maths helpers (read-only — used only for archetype derivation
@@ -215,8 +248,15 @@ const AnimatedRing = ({ score, size = 160, strokeWidth = 14 }) => {
 };
 
 // ─── Living Skill Aura — blue edition ────────────────────────────────────────
-const LivingAura = ({ data: radarData, irs }) => {
+// Props:
+//   data          — current dimensionProfile (array of dim objects with .score)
+//   irs           — headline IRS number shown in centre badge
+//   scoreTrend    — full scoreTrend from API (array of {date, score})
+//                   used to compute "14 days ago" ghost polygon
+//   onDrillDimension — called with dim object when user clicks an axis label
+const LivingAura = ({ data: radarData, irs, scoreTrend = [], onDrillDimension, companyOverlay = null }) => {
   const [pulse, setPulse] = useState(0);
+  const [hoveredDim, setHoveredDim] = useState(null);
   const rafRef = useRef(null);
 
   useEffect(() => {
@@ -230,8 +270,42 @@ const LivingAura = ({ data: radarData, irs }) => {
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
+  // ── Ghost polygon: approximate dimension scores 14 days ago ──────────────
+  // Strategy: find sessions that happened 14–28 days ago, compute per-dimension
+  // average score from those sessions' scores relative to overall trend delta,
+  // then nudge current dim scores backward by that delta.
+  const ghostScores = useMemo(() => {
+    const now = Date.now();
+    const msDay = 86400000;
+    const recentWindow = scoreTrend.filter(s => {
+      const age = now - new Date(s.date).getTime();
+      return age >= 0 && age <= 7 * msDay;
+    });
+    const oldWindow = scoreTrend.filter(s => {
+      const age = now - new Date(s.date).getTime();
+      return age > 14 * msDay && age <= 28 * msDay;
+    });
+    if (!oldWindow.length || !recentWindow.length) return null;
+
+    const recentAvg = recentWindow.reduce((a, s) => a + (s.score || 0), 0) / recentWindow.length;
+    const oldAvg = oldWindow.reduce((a, s) => a + (s.score || 0), 0) / oldWindow.length;
+    const delta = recentAvg - oldAvg; // overall improvement in last 14 days
+
+    // Apply the inverse delta proportionally to each dimension score
+    return radarData.map(d => Math.max(0, Math.min(100, (d.score || 0) - delta)));
+  }, [scoreTrend, radarData]);
+
+  const hasGhost = ghostScores !== null;
+
   const N = radarData.length;
   const cx = 200, cy = 200, maxR = 142;
+
+  const pointsForScaleData = (dataArr, scale) =>
+    dataArr.map((score, i) => {
+      const angle = (2 * Math.PI * i) / N - Math.PI / 2;
+      const r = (score / 100) * maxR * scale;
+      return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
+    });
 
   const pointsForScale = (scale) =>
     radarData.map((d, i) => {
@@ -240,13 +314,23 @@ const LivingAura = ({ data: radarData, irs }) => {
       return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
     });
 
+  // Company overlay: map DIMENSION_META order to companyOverlay scores
+  // Must be after pointsForScaleData is defined
+  const companyPts = companyOverlay
+    ? pointsForScaleData(
+        radarData.map(d => companyOverlay.scores[d.key] ?? 50),
+        1
+      )
+    : null;
+
   const toPath = (pts) =>
     pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ") + "Z";
 
-  const outerPts = pointsForScale(1);
-  const midPts   = pointsForScale(0.70 + pulse * 0.022);
-  const innerPts = pointsForScale(0.42 + pulse * 0.016);
-  const corePts  = pointsForScale(0.22);
+  const outerPts  = pointsForScale(1);
+  const midPts    = pointsForScale(0.70 + pulse * 0.022);
+  const innerPts  = pointsForScale(0.42 + pulse * 0.016);
+  const corePts   = pointsForScale(0.22);
+  const ghostPts  = hasGhost ? pointsForScaleData(ghostScores, 1) : null;
 
   const labelPts = radarData.map((d, i) => {
     const angle = (2 * Math.PI * i) / N - Math.PI / 2;
@@ -263,9 +347,36 @@ const LivingAura = ({ data: radarData, irs }) => {
     }).join(" ");
 
   return (
-    <div style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center" }}>
+    <div style={{ position: "relative", width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
+      {/* Legend */}
+      <div style={{ display: "flex", gap: 14, marginBottom: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <div style={{ width: 18, height: 3, borderRadius: 2, background: C.blue500 }} />
+          <span style={{ fontFamily: F.mono, fontSize: 9, color: C.sub }}>NOW</span>
+        </div>
+        {hasGhost && (
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 18, height: 2, borderRadius: 2, background: C.amber, borderTop: `2px dashed ${C.amber}` }} />
+            <span style={{ fontFamily: F.mono, fontSize: 9, color: C.sub }}>14 DAYS AGO</span>
+          </div>
+        )}
+        {companyOverlay && (
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 18, height: 2, borderRadius: 2, background: C.green, borderTop: `2px dotted ${C.green}` }} />
+            <span style={{ fontFamily: F.mono, fontSize: 9, color: C.green }}>{companyOverlay.icon} TARGET</span>
+          </div>
+        )}
+        {onDrillDimension && (
+          <div style={{ fontSize: 9, color: C.muted, fontFamily: F.mono }}>· Click label to drill</div>
+        )}
+      </div>
+
       <svg viewBox="0 0 400 400" width="100%" style={{ maxWidth: 420, overflow: "visible" }}>
         <defs>
+          <linearGradient id="auraRingGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stopColor={C.blue400} stopOpacity="0.5" />
+            <stop offset="100%" stopColor={C.cyan400} />
+          </linearGradient>
           <radialGradient id="auraCore" cx="50%" cy="50%" r="50%">
             <stop offset="0%"   stopColor={C.blue500}  stopOpacity="0.5" />
             <stop offset="100%" stopColor={C.blue700}  stopOpacity="0.04" />
@@ -321,6 +432,26 @@ const LivingAura = ({ data: radarData, irs }) => {
           );
         })}
 
+        {/* Ghost polygon — 14 days ago */}
+        {hasGhost && ghostPts && (
+          <path
+            d={toPath(ghostPts)}
+            fill={C.amber} fillOpacity={0.06}
+            stroke={C.amber} strokeWidth={1.5} strokeOpacity={0.55}
+            strokeDasharray="5 3"
+          />
+        )}
+
+        {/* Company target overlay — dotted green polygon */}
+        {companyPts && (
+          <path
+            d={toPath(companyPts)}
+            fill={C.green} fillOpacity={0.05}
+            stroke={C.green} strokeWidth={2} strokeOpacity={0.75}
+            strokeDasharray="3 4"
+          />
+        )}
+
         {/* Aura layers */}
         <path d={toPath(outerPts)} fill="url(#auraOuter)" stroke={C.cyan400} strokeWidth={1} strokeOpacity={0.25 + pulse * 0.05} />
         <path d={toPath(midPts)}   fill="url(#auraMid)"   stroke={C.blue400} strokeWidth={1.5} strokeOpacity={0.4 + pulse * 0.1} filter="url(#softGlow)" />
@@ -328,7 +459,7 @@ const LivingAura = ({ data: radarData, irs }) => {
         <path d={toPath(corePts)}  fill={C.blue500} fillOpacity={0.18} stroke={C.blue600} strokeWidth={1.5} />
 
         {/* Outer data line */}
-        <path d={toPath(outerPts)} fill="none" stroke={`url(#ringGrad)`} strokeWidth={2.5} strokeOpacity={0.95} filter="url(#softGlow)" />
+        <path d={toPath(outerPts)} fill="none" stroke="url(#auraRingGrad)" strokeWidth={2.5} strokeOpacity={0.95} filter="url(#softGlow)" />
 
         {/* Data dots */}
         {outerPts.map(([x, y], i) => (
@@ -339,17 +470,38 @@ const LivingAura = ({ data: radarData, irs }) => {
           />
         ))}
 
-        {/* Labels */}
-        {labelPts.map(({ x, y, label, score, icon }, i) => (
-          <g key={i}>
-            <text x={x} y={y - 8} textAnchor="middle" dominantBaseline="middle"
-              fill={C.text} fontSize={10} fontWeight={800} fontFamily={F.body}
-            >{icon} {label}</text>
-            <text x={x} y={y + 8} textAnchor="middle" dominantBaseline="middle"
-              fill={scoreColor(score)} fontSize={11} fontWeight={700} fontFamily={F.display}
-            >{score}</text>
-          </g>
-        ))}
+        {/* Clickable axis labels */}
+        {labelPts.map(({ x, y, label, score, icon, key, contributingTopics }, i) => {
+          const isHovered = hoveredDim === key;
+          const canDrill = onDrillDimension && (contributingTopics?.length > 0);
+          return (
+            <g
+              key={i}
+              style={{ cursor: canDrill ? "pointer" : "default" }}
+              onClick={() => canDrill && onDrillDimension(radarData[i])}
+              onMouseEnter={() => setHoveredDim(key)}
+              onMouseLeave={() => setHoveredDim(null)}
+            >
+              {/* Hover hit area */}
+              {canDrill && (
+                <ellipse
+                  cx={x} cy={y}
+                  rx={34} ry={14}
+                  fill={isHovered ? C.blue50 : "transparent"}
+                  stroke={isHovered ? C.borderMd : "transparent"}
+                  strokeWidth={1}
+                />
+              )}
+              <text x={x} y={y - 8} textAnchor="middle" dominantBaseline="middle"
+                fill={isHovered ? C.blue500 : C.text}
+                fontSize={10} fontWeight={800} fontFamily={F.body}
+              >{icon} {label}{canDrill && isHovered ? " ↗" : ""}</text>
+              <text x={x} y={y + 8} textAnchor="middle" dominantBaseline="middle"
+                fill={scoreColor(score)} fontSize={11} fontWeight={700} fontFamily={F.display}
+              >{score}</text>
+            </g>
+          );
+        })}
 
         {/* Centre badge */}
         <circle cx={cx} cy={cy} r={38}
@@ -364,6 +516,602 @@ const LivingAura = ({ data: radarData, irs }) => {
           fill={C.muted} fontSize={7} fontWeight={800} letterSpacing="1.4" fontFamily={F.mono}
         >IRS</text>
       </svg>
+    </div>
+  );
+};
+
+// ─── Cold Start vs Warm Up Card — session-position performance pattern ────────
+const ColdStartWarmUpCard = () => {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await getSessionWarmup();
+        setData(result);
+      } catch {
+        // silently fail — non-critical card
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading || !data?.available) return null;
+
+  const { positions, pattern } = data;
+
+  const patternConfig = {
+    warmup:     { label: "Warm-Up Performer",  icon: "🔥", color: C.orange,  desc: "You consistently score higher in your 2nd+ session of the day. Let your brain warm up before high-stakes practice." },
+    coldstart:  { label: "Cold Start Performer",icon: "⚡", color: C.blue500, desc: "You actually score highest in your 1st session. Your freshest brain is your sharpest — use mornings for hard topics." },
+    consistent: { label: "Consistent Performer", icon: "⚖️", color: C.green, desc: "Session order doesn't affect your performance much. You're mentally well-calibrated regardless of timing." },
+  };
+  const cfg = patternConfig[pattern] || patternConfig.consistent;
+  const maxScore = Math.max(...positions.map(p => p.avgScore));
+
+  return (
+    <div style={{ ...S.card, marginBottom: 18 }}>
+      <div style={S.eyebrow}>COLD START vs WARM UP</div>
+      <h2 style={S.cardH2}>Does session order affect your score?</h2>
+      <p style={{ ...S.cardSub, marginBottom: 14 }}>Based on your multi-session days — comparing performance by position within the day.</p>
+
+      {/* Pattern verdict */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 14, background: `${cfg.color}10`, border: `1.5px solid ${cfg.color}35`, marginBottom: 16 }}>
+        <span style={{ fontSize: 24 }}>{cfg.icon}</span>
+        <div>
+          <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: cfg.color }}>{cfg.label}</div>
+          <div style={{ fontSize: 11.5, color: C.sub, marginTop: 3, lineHeight: 1.5 }}>{cfg.desc}</div>
+        </div>
+      </div>
+
+      {/* Bar comparison */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {positions.map(p => {
+          const isMax = p.avgScore === maxScore;
+          return (
+            <div key={p.position} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 88, fontSize: 11.5, fontWeight: 700, color: C.text, flexShrink: 0 }}>{p.label}</div>
+              <div style={{ flex: 1, height: 10, borderRadius: 999, background: C.border, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${p.avgScore}%`, background: isMax ? cfg.color : C.blue200, borderRadius: 999, transition: "width 1s ease" }} />
+              </div>
+              <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: isMax ? cfg.color : C.muted, width: 34, textAlign: "right", flexShrink: 0 }}>
+                {p.avgScore}
+              </div>
+              <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, width: 48, flexShrink: 0 }}>
+                {p.count} session{p.count !== 1 ? "s" : ""}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ─── Deep Personality Profile — AI-generated behavioral fingerprint ───────────
+// Only activates after 10+ sessions (per Phase 3 spec). Sends full session
+// history summary to Claude and displays a structured behavioral analysis.
+const DeepPersonalityProfile = ({ dimensionProfile, scoreTrend, archetype, totalSessions, irs }) => {
+  const [profile,  setProfile]  = useState(null);
+  const [loading,  setLoading]  = useState(false);
+  const [done,     setDone]     = useState(false);
+  const [sections, setSections] = useState([]);
+
+  if (totalSessions < 10) return null; // gate: only show after 10 sessions
+
+  const slope = trendSlope(scoreTrend.slice(-6).map(s => s.score || 0));
+  const sd    = stdDev(scoreTrend.map(s => s.score || 0));
+
+  const generateProfile = async () => {
+    setLoading(true);
+    setProfile(null);
+    setDone(false);
+    setSections([]);
+    try {
+      const prompt = `You are MockMate's behavioral intelligence engine. Based on ${totalSessions} mock interview sessions of an Indian CS/IT student, generate a precise Interview DNA profile.
+
+Performance data:
+- IRS: ${irs}/100
+- Archetype: ${archetype?.label} (${archetype?.desc})
+- Score std-dev: ${sd.toFixed(1)} (${sd > 18 ? "HIGH variance" : sd > 10 ? "moderate" : "consistent"})
+- Trend slope (last 6 sessions): ${slope.toFixed(2)} pts/session
+- Dimensions: ${dimensionProfile.filter(d => d.hasData).map(d => `${d.label}: ${d.score}/100`).join(" | ")}
+- Session count: ${totalSessions}
+
+Generate a behavioral fingerprint with EXACTLY these 4 sections, plain text, no markdown, no emojis:
+
+RESPONSE STYLE
+One precise sentence about how they communicate answers — pace, structure, confidence pattern.
+
+PRESSURE RESPONSE
+One precise sentence about how their performance shifts under timed or high-stakes conditions.
+
+KNOWLEDGE PATTERN
+One precise sentence about how they distribute knowledge — broad generalist vs. deep specialist tendencies.
+
+GROWTH EDGE
+One precise sentence naming the single behavioral habit that, if changed, would move their IRS fastest.
+
+Under 120 words total. Write as behavioral observations, not advice.`;
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      const d    = await res.json();
+      const text = d.content?.[0]?.text || "";
+      setProfile(text);
+
+      const parsed = text
+        .split(/\n(?=[A-Z][A-Z ]{3,}\n)/)
+        .filter(Boolean)
+        .map(s => {
+          const lines   = s.trim().split("\n");
+          const heading = lines[0].trim();
+          const body    = lines.slice(1).join("\n").trim();
+          return { heading, body };
+        })
+        .filter(s => s.heading && s.body);
+      setSections(parsed);
+      setDone(true);
+    } catch {
+      setProfile("Could not generate profile. Check your connection and try again.");
+      setDone(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sectionColors = {
+    "RESPONSE STYLE":  C.blue500,
+    "PRESSURE RESPONSE": C.cyan500,
+    "KNOWLEDGE PATTERN": C.green,
+    "GROWTH EDGE":     C.amber,
+  };
+
+  return (
+    <div style={{
+      background: `linear-gradient(135deg, #0D1F3C 0%, #0A1A30 50%, #071525 100%)`,
+      border: `1px solid rgba(0,200,240,0.2)`,
+      borderRadius: 22, padding: "24px 26px", marginBottom: 18,
+      boxShadow: "0 8px 40px rgba(0,20,80,0.35)",
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.6px", color: C.cyan400, marginBottom: 7 }}>
+            🧬 YOUR INTERVIEW DNA
+          </div>
+          <h2 style={{ margin: 0, fontFamily: F.display, fontSize: 20, fontWeight: 800, color: "#fff" }}>
+            Behavioral Fingerprint — {totalSessions} sessions analyzed
+          </h2>
+          <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,0.5)", fontSize: 12, lineHeight: 1.6 }}>
+            Four behavioral observations derived from your full session history. No two students have the same profile.
+          </p>
+        </div>
+        <button
+          onClick={generateProfile}
+          disabled={loading}
+          style={{
+            border: "none", borderRadius: 11, flexShrink: 0,
+            background: loading ? "rgba(255,255,255,0.06)" : `linear-gradient(135deg, ${C.cyan600}, ${C.blue600})`,
+            color: "#fff", padding: "11px 18px", fontSize: 12.5, fontWeight: 800,
+            cursor: loading ? "not-allowed" : "pointer",
+            boxShadow: loading ? "none" : "0 4px 16px rgba(0,173,224,0.3)",
+            fontFamily: F.body, whiteSpace: "nowrap",
+            display: "flex", alignItems: "center", gap: 8,
+          }}
+        >
+          {loading
+            ? <><span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /> Profiling…</>
+            : done ? "↺ Regenerate" : "🧬 Generate My DNA"}
+        </button>
+      </div>
+
+      {!done && !loading && (
+        <div style={{ padding: "32px 20px", textAlign: "center", border: "1.5px dashed rgba(0,200,240,0.2)", borderRadius: 14 }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>🧬</div>
+          <p style={{ color: "rgba(255,255,255,0.38)", fontSize: 12.5, margin: 0 }}>
+            Unlocked at 10 sessions. Click above — the AI will read your full performance pattern and write your behavioral fingerprint.
+          </p>
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {["Reading session variance patterns…", "Mapping response style indicators…", "Identifying pressure response signals…", "Writing your behavioral fingerprint…"].map((msg, i) => (
+            <div key={i} style={{ padding: "9px 13px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(0,200,240,0.1)", color: "rgba(255,255,255,0.4)", fontSize: 11.5, fontFamily: F.mono }}>{msg}</div>
+          ))}
+        </div>
+      )}
+
+      {done && sections.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+          {sections.map((s, i) => {
+            const color = sectionColors[s.heading] || C.blue400;
+            return (
+              <div key={i} style={{ padding: "14px 16px", borderRadius: 13, background: "rgba(255,255,255,0.04)", border: `1px solid rgba(255,255,255,0.06)`, borderLeft: `3px solid ${color}` }}>
+                <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: "1.2px", color, marginBottom: 8 }}>{s.heading}</div>
+                <p style={{ margin: 0, color: "rgba(255,255,255,0.82)", fontSize: 12.5, lineHeight: 1.7 }}>{s.body}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {done && sections.length === 0 && profile && (
+        <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12.5, lineHeight: 1.7, margin: 0 }}>{profile}</p>
+      )}
+    </div>
+  );
+};
+
+// ─── Skill Velocity Graph — rate of improvement per dimension over time ───────
+// Uses scoreTrend[].topicScores (added by upgraded getAnalytics backend) to
+// plot each dimension as a separate line. Falls back gracefully when the field
+// isn't present (older sessions without topicScores).
+const VELOCITY_COLORS = {
+  technical:      "#1A6EFF",
+  problemSolving: "#00ADE0",
+  communication:  "#059669",
+  behavioral:     "#D97706",
+  design:         "#7C3AED",
+  fundamentals:   "#DC2626",
+};
+
+const VELOCITY_LABELS = {
+  technical:      "Technical",
+  problemSolving: "Problem Solving",
+  communication:  "Communication",
+  behavioral:     "Behavioral",
+  design:         "System Design",
+  fundamentals:   "CS Fundamentals",
+};
+
+const SkillVelocityGraph = ({ scoreTrend }) => {
+  const [activeDims, setActiveDims] = useState(
+    new Set(["technical", "problemSolving", "communication"])
+  );
+
+  // Build chart data — one row per session, columns per dimension
+  const chartData = useMemo(() => {
+    if (!scoreTrend?.length) return [];
+    return scoreTrend.map((s, i) => {
+      const row = {
+        session: `#${i + 1}`,
+        date: s.date ? new Date(s.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : `S${i + 1}`,
+      };
+      const ts = s.topicScores || {};
+      Object.keys(VELOCITY_LABELS).forEach(key => {
+        row[key] = ts[key] ?? null; // null = no data this session, recharts skips the point
+      });
+      return row;
+    });
+  }, [scoreTrend]);
+
+  // Only show dims that have at least 2 data points
+  const dimsWithData = useMemo(() => {
+    return Object.keys(VELOCITY_LABELS).filter(key =>
+      chartData.filter(r => r[key] !== null).length >= 2
+    );
+  }, [chartData]);
+
+  const toggleDim = (key) => {
+    setActiveDims(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) { if (next.size > 1) next.delete(key); }
+      else next.add(key);
+      return next;
+    });
+  };
+
+  if (!chartData.length || !dimsWithData.length) return null;
+
+  return (
+    <div style={{ ...S.card, marginBottom: 18 }}>
+      <div style={S.eyebrow}>SKILL VELOCITY</div>
+      <h2 style={S.cardH2}>Rate of improvement per dimension</h2>
+      <p style={{ ...S.cardSub, marginBottom: 14 }}>
+        Each line tracks one dimension's score across sessions — steeper = faster growth.
+        Toggle dimensions below to focus.
+      </p>
+
+      {/* Dimension toggles */}
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
+        {dimsWithData.map(key => {
+          const active = activeDims.has(key);
+          const color  = VELOCITY_COLORS[key];
+          return (
+            <button
+              key={key}
+              onClick={() => toggleDim(key)}
+              style={{
+                border: `1.5px solid ${active ? color : C.border}`,
+                borderRadius: 999, padding: "4px 12px",
+                background: active ? `${color}15` : C.cardAlt,
+                color: active ? color : C.muted,
+                fontSize: 11, fontWeight: 700, cursor: "pointer",
+                fontFamily: F.body, transition: "all 0.15s",
+              }}
+            >
+              {VELOCITY_LABELS[key]}
+            </button>
+          );
+        })}
+      </div>
+
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={chartData} margin={{ top: 8, right: 12, left: -22, bottom: 0 }}>
+          <XAxis dataKey="date" axisLine={false} tickLine={false}
+            tick={{ fill: C.muted, fontSize: 9, fontFamily: F.mono }} />
+          <YAxis domain={[0, 100]} axisLine={false} tickLine={false}
+            tick={{ fill: C.muted, fontSize: 9, fontFamily: F.mono }} />
+          <Tooltip
+            formatter={(v, name) => [v !== null ? `${v}/100` : "—", VELOCITY_LABELS[name] || name]}
+            contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontFamily: F.body, fontSize: 11 }}
+            labelStyle={{ color: C.sub, fontSize: 10 }}
+          />
+          {dimsWithData.filter(k => activeDims.has(k)).map(key => (
+            <Line
+              key={key}
+              type="monotone"
+              dataKey={key}
+              stroke={VELOCITY_COLORS[key]}
+              strokeWidth={2}
+              dot={{ r: 3, fill: VELOCITY_COLORS[key], strokeWidth: 0 }}
+              activeDot={{ r: 5 }}
+              connectNulls={false}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+// ─── Blind Spot Alert Card — recurring weaknesses across sessions ─────────────
+const BlindSpotAlertCard = () => {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await getBlindSpots();
+        setData(result);
+      } catch {
+        // silently fail — not a critical card
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading || !data || !data.blindSpots?.length) return null;
+
+  const { blindSpots, sessionsAnalyzed } = data;
+  const severityConfig = {
+    high:   { color: C.red,    bg: C.redTint,   icon: "🔴", label: "High" },
+    medium: { color: C.orange, bg: C.orangeTint, icon: "🟠", label: "Medium" },
+    low:    { color: C.amber,  bg: C.amberTint,  icon: "🟡", label: "Low" },
+  };
+
+  return (
+    <div style={{ ...S.card, borderLeft: `3px solid ${C.red}`, marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ ...S.eyebrow, color: C.red }}>🚨 RECURRING BLIND SPOT ALERT</div>
+          <h2 style={S.cardH2}>These topics keep showing up as weaknesses</h2>
+          <p style={{ ...S.cardSub }}>
+            Detected across your last {sessionsAnalyzed} sessions. These aren't random — they're patterns that need targeted work.
+          </p>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+        {blindSpots.map((spot, i) => {
+          const cfg = severityConfig[spot.severity];
+          return (
+            <div key={spot.topic} style={{ padding: "12px 14px", borderRadius: 12, background: cfg.bg, border: `1px solid ${cfg.color}30`, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: cfg.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, fontFamily: F.mono, flexShrink: 0 }}>{i + 1}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text, textTransform: "capitalize" }}>{spot.topic}</div>
+                <div style={{ fontSize: 10, color: cfg.color, fontFamily: F.mono, marginTop: 2 }}>
+                  {cfg.icon} {cfg.label} · {spot.sessionCount}/{sessionsAnalyzed} sessions
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 12, fontSize: 11.5, color: C.sub, lineHeight: 1.6 }}>
+        Blind spots from recurring weaknesses require <strong style={{ color: C.text }}>targeted isolation drills</strong>, not just more sessions. Pick the #1 topic above and do a dedicated topic-mode session.
+      </div>
+    </div>
+  );
+};
+
+// ─── Session Quality Breakdown — last session per-question analysis ───────────
+const SessionQualityCard = () => {
+  const [breakdown, setBreakdown] = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getLastSessionBreakdown();
+        setBreakdown(data);
+      } catch {
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return (
+    <div style={S.card}>
+      <div style={S.eyebrow}>LAST SESSION QUALITY</div>
+      <div style={{ color: C.muted, fontSize: 12, padding: "16px 0" }}>Loading session data…</div>
+    </div>
+  );
+
+  if (error || !breakdown) return null;
+
+  const { questions = [], sessionScore, avgTimeTaken, skipRate, sessionMode, sessionDate, totalQuestions } = breakdown;
+  const answered  = questions.filter(q => !q.skipped);
+  const fast      = answered.filter(q => q.timeTaken < 25).length;
+  const slow      = answered.filter(q => q.timeTaken > 55).length;
+  const perfect   = answered.filter(q => q.score >= 90).length;
+  const struggle  = answered.filter(q => q.score < 50).length;
+
+  const timeLabel = avgTimeTaken < 25 ? "Fast paced ⚡" : avgTimeTaken > 55 ? "Methodical 🧠" : "Balanced ⚖️";
+  const date = sessionDate ? new Date(sessionDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "";
+
+  return (
+    <div style={S.card}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <div style={S.eyebrow}>LAST SESSION QUALITY</div>
+          <h2 style={S.cardH2}>Per-question breakdown · {date}</h2>
+          <p style={{ ...S.cardSub, marginBottom: 12 }}>{totalQuestions} questions · {sessionMode} mode · session score {sessionScore}/100</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[
+            { label: "Avg time", value: `${avgTimeTaken}s`, sub: timeLabel, color: C.blue600 },
+            { label: "Skip rate", value: `${skipRate}%`, sub: skipRate > 30 ? "High — review skips" : "Good coverage", color: skipRate > 30 ? C.orange : C.green },
+            { label: "Perfect (90+)", value: perfect, sub: `of ${answered.length} answered`, color: C.green },
+            { label: "Struggled (<50)", value: struggle, sub: `of ${answered.length} answered`, color: struggle > 2 ? C.red : C.muted },
+          ].map(({ label, value, sub, color }) => (
+            <div key={label} style={{ padding: "8px 12px", borderRadius: 10, background: C.cardAlt, border: `1px solid ${C.border}`, textAlign: "center", minWidth: 72 }}>
+              <div style={{ fontFamily: F.display, fontSize: 18, fontWeight: 800, color }}>{value}</div>
+              <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted, marginTop: 1 }}>{label.toUpperCase()}</div>
+              <div style={{ fontSize: 9, color: C.sub, marginTop: 2 }}>{sub}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Per-question bars */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 12 }}>
+        {questions.map((q, i) => {
+          const barColor = q.skipped ? C.faint : scoreColor(q.score);
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, width: 16, flexShrink: 0, textAlign: "right" }}>Q{q.index}</div>
+              <div style={{ flex: 1, height: 8, borderRadius: 999, background: C.border, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: q.skipped ? "100%" : `${q.score}%`, background: q.skipped ? C.border : barColor, borderRadius: 999, opacity: q.skipped ? 0.4 : 1 }} />
+              </div>
+              <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: barColor, width: 26, textAlign: "right", flexShrink: 0 }}>
+                {q.skipped ? "skip" : q.score}
+              </div>
+              <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted, width: 30, textAlign: "right", flexShrink: 0 }}>
+                {q.skipped ? "" : `${q.timeTaken}s`}
+              </div>
+              <div style={{ fontSize: 9, color: C.muted, width: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>
+                {q.topic}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Time distribution mini-summary */}
+      {answered.length > 0 && (
+        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: C.blue50, border: `1px solid ${C.borderMd}`, display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 11, color: C.sub }}><strong style={{ color: C.blue600 }}>{fast}</strong> fast (&lt;25s)</div>
+          <div style={{ fontSize: 11, color: C.sub }}><strong style={{ color: C.blue500 }}>{answered.length - fast - slow}</strong> normal</div>
+          <div style={{ fontSize: 11, color: C.sub }}><strong style={{ color: C.amber }}>{slow}</strong> slow (&gt;55s)</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Dimension Drill Panel — slides in when user clicks a radar axis ─────────
+const DimensionDrillPanel = ({ dim, onClose, navigate }) => {
+  if (!dim) return null;
+  const topics = dim.contributingTopics || [];
+  const score = dim.score || 0;
+  const col = scoreColor(score);
+
+  return (
+    <div style={{
+      position: "fixed", top: 0, right: 0, bottom: 0, width: "min(380px, 95vw)",
+      background: C.card, borderLeft: `2px solid ${C.borderMd}`,
+      boxShadow: C.shadowLg, zIndex: 9999,
+      display: "flex", flexDirection: "column",
+      animation: "slideInRight 0.25s cubic-bezier(.16,1,.3,1)",
+      overflowY: "auto",
+    }}>
+      <style>{`@keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
+      {/* Header */}
+      <div style={{ padding: "20px 20px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <div style={S.eyebrow}>DIMENSION DRILL</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <span style={{ fontSize: 22 }}>{dim.icon}</span>
+            <div>
+              <div style={{ fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.text }}>{dim.label}</div>
+              <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>{Math.round((dim.weight ?? 0) * 100)}% IRS weight</div>
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          style={{ background: C.blue50, border: `1px solid ${C.borderMd}`, borderRadius: 10, padding: "6px 12px", cursor: "pointer", fontSize: 13, color: C.sub, fontFamily: F.body, flexShrink: 0 }}
+        >✕</button>
+      </div>
+
+      {/* Score ring summary */}
+      <div style={{ margin: "16px 20px", padding: "14px 16px", background: `${col}10`, border: `1.5px solid ${col}40`, borderRadius: 14, display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{ fontFamily: F.display, fontSize: 38, fontWeight: 900, color: col, lineHeight: 1 }}>{score}</div>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>
+            {score >= 80 ? "Strong — above par" : score >= 60 ? "Developing — closing fast" : "Focus area — highest leverage"}
+          </div>
+          <div style={{ fontSize: 11, color: C.sub, marginTop: 3, lineHeight: 1.5 }}>{dim.tip}</div>
+        </div>
+      </div>
+
+      {/* Contributing topics */}
+      <div style={{ padding: "0 20px", marginBottom: 16 }}>
+        <div style={S.eyebrow}>CONTRIBUTING TOPICS</div>
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          {topics.length === 0 && (
+            <div style={{ color: C.muted, fontSize: 12, padding: "12px 0" }}>No topic data mapped to this dimension yet.</div>
+          )}
+          {topics.map((topic, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, background: C.cardAlt, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{topic}</div>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: F.mono }}>→ {dim.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Improvement tip */}
+      {dim.answeredCount != null && (
+        <div style={{ margin: "0 20px 16px", padding: "12px 14px", background: C.blue50, border: `1px solid ${C.borderMd}`, borderRadius: 12, fontSize: 11.5, color: C.sub, lineHeight: 1.6 }}>
+          <strong style={{ color: C.blue600 }}>Evidence:</strong> {dim.answeredCount} answered questions in this dimension.
+          {dim.isProvisional && <span style={{ color: C.amber }}> Score is provisional — keep practicing to stabilize.</span>}
+        </div>
+      )}
+
+      {/* CTA */}
+      <div style={{ padding: "0 20px 24px", marginTop: "auto" }}>
+        <button
+          style={{ ...S.btnPrimary, width: "100%", textAlign: "center", display: "block" }}
+          onClick={() => { onClose(); navigate("/interview"); }}
+        >
+          ⚡ Drill {dim.label} now →
+        </button>
+      </div>
     </div>
   );
 };
@@ -778,10 +1526,12 @@ Under 300 words. Sharp, real, no padding.`;
 // ═══════════════════════════════════════════════════════════════════════════
 const Analytics = () => {
   const navigate = useNavigate();
-  const [data,    setData]    = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState("");
-  const [mounted, setMounted] = useState(false);
+  const [data,     setData]     = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState("");
+  const [mounted,  setMounted]  = useState(false);
+  const [drillDim,        setDrillDim]        = useState(null);  // radar axis drill
+  const [selectedCompany, setSelectedCompany] = useState(null);   // company overlay on radar
 
   useEffect(() => {
     (async () => {
@@ -981,7 +1731,35 @@ const Analytics = () => {
               Each pulsing layer represents your real skill depth across six dimensions.
               Larger shape = stronger readiness. Empty rings = room to grow.
             </p>
-            <LivingAura data={dimensionProfile} irs={irs} />
+            {/* Company target selector */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+              <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, alignSelf: "center", marginRight: 2 }}>TARGET:</span>
+              {COMPANY_PROFILES.map(cp => {
+                const active = selectedCompany?.id === cp.id;
+                return (
+                  <button
+                    key={cp.id}
+                    onClick={() => setSelectedCompany(active ? null : cp)}
+                    style={{
+                      border: `1.5px solid ${active ? C.green : C.border}`,
+                      borderRadius: 999, padding: "3px 10px",
+                      background: active ? `${C.green}15` : C.cardAlt,
+                      color: active ? C.green : C.muted,
+                      fontSize: 10, fontWeight: 700, cursor: "pointer",
+                      fontFamily: F.body, transition: "all 0.15s",
+                    }}
+                  >{cp.icon} {cp.label.split(" (")[0]}</button>
+                );
+              })}
+            </div>
+
+            <LivingAura
+              data={dimensionProfile}
+              irs={irs}
+              scoreTrend={scoreTrend}
+              onDrillDimension={setDrillDim}
+              companyOverlay={selectedCompany}
+            />
           </div>
 
           {/* Right column */}
@@ -1069,6 +1847,11 @@ const Analytics = () => {
             <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>EVIDENCE CONFIDENCE</span><br /><strong style={{ color: C.text, fontSize: 14, fontFamily: F.display }}>{irsMaturity != null ? `${Math.round(irsMaturity * 100)}%` : "—"}</strong></div>
           </div>
         </section>
+
+        {/* ── SESSION QUALITY BREAKDOWN ────────────────────────────────── */}
+        <div style={{ marginBottom: 18 }}>
+          <SessionQualityCard />
+        </div>
 
         {/* ── STAT CARDS ───────────────────────────────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }} className="an-stats">
@@ -1216,6 +1999,9 @@ const Analytics = () => {
           </div>
         </div>
 
+        {/* ── SKILL VELOCITY GRAPH ─────────────────────────────────────── */}
+        <SkillVelocityGraph scoreTrend={scoreTrend} />
+
         {/* ── CONFIDENCE vs ACCURACY + POINT-LOSS MAP ─────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
           <div style={S.card}>
@@ -1274,6 +2060,9 @@ const Analytics = () => {
           </div>
         </div>
 
+        {/* ── BLIND SPOT ALERTS ────────────────────────────────────────── */}
+        <BlindSpotAlertCard />
+
         {/* ── SIX DIMENSIONS GRID ──────────────────────────────────────── */}
         <section style={{ ...S.card, marginBottom: 18 }}>
           <div style={S.eyebrow}>PREPARATION PROFILE</div>
@@ -1317,6 +2106,15 @@ const Analytics = () => {
           </div>
         </section>
 
+        {/* ── DEEP PERSONALITY PROFILE (10+ sessions) ─────────────────── */}
+        <DeepPersonalityProfile
+          dimensionProfile={dimensionProfile}
+          scoreTrend={scoreTrend}
+          archetype={archetype}
+          totalSessions={totalSessions}
+          irs={irs}
+        />
+
         {/* ── AI READINESS BOARD ───────────────────────────────────────── */}
         <AIReadinessBoard
           profile={dimensionProfile}
@@ -1329,18 +2127,35 @@ const Analytics = () => {
           totalSessions={totalSessions}
         />
 
+        {/* ── COLD START vs WARM UP ────────────────────────────────────── */}
+        <ColdStartWarmUpCard />
+
         {/* ── SMART FOCUS + IRS CLIMB BANNER ───────────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
 
-          {/* Smart Focus */}
+          {/* Smart Focus — upgraded action map */}
           <div style={S.card}>
             <div style={S.eyebrow}>SMART FOCUS RECOMMENDER</div>
             <h2 style={S.cardH2}>Where to put your next hour</h2>
-            <p style={S.cardSub}>Sorted by ROI — these fixes compound the fastest.</p>
+            <p style={S.cardSub}>Sorted by ROI — specific action, mode, and estimated sessions to close the gap.</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
               {topicROIRanking.slice(0, 3).map((t, i) => {
                 const score  = t.averageScore || 0;
-                const advice = score < 40 ? "Start from fundamentals — no shortcut here" : score < 60 ? "Drilling practice problems will move this fast" : "Run timed mock sessions on this topic only";
+                // Specific mode recommendation based on score bucket
+                const mode   = score < 40 ? "topic" : score < 60 ? "full" : "challenge";
+                const modeLabel = { topic: "Topic Focus", full: "Full Session", challenge: "Challenge Mode" }[mode];
+                const modeIcon  = { topic: "📚", full: "🎯", challenge: "⚡" }[mode];
+                // Concrete action text
+                const action = score < 40
+                  ? `Start with ${t.topic} basics — cover definitions, then worked examples`
+                  : score < 60
+                  ? `Practice ${t.topic} with immediate answer review after each question`
+                  : `Run a timed ${t.topic}-only challenge — aim to hold 75+ every question`;
+                // Sessions-to-close estimate: gap / avg improvement per session (conservative 4 pts/session)
+                const avgImprovementPerSession = 4;
+                const sessionsEst = Math.ceil((100 - score) / avgImprovementPerSession);
+                const sessionsLabel = sessionsEst <= 3 ? `~${sessionsEst} sessions` : sessionsEst <= 8 ? `~${sessionsEst} sessions` : "10+ sessions";
+
                 return (
                   <div key={t.topic} style={{
                     display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 14px",
@@ -1351,16 +2166,25 @@ const Analytics = () => {
                     <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: i === 0 ? C.red : i === 1 ? C.amber : C.blue500, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, fontFamily: F.mono, marginTop: 1 }}>
                       {i + 1}
                     </div>
-                    <div>
-                      <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text }}>{t.topic} · {score}/100</div>
-                      <div style={{ fontSize: 11, color: C.sub, marginTop: 2, lineHeight: 1.5 }}>{advice}</div>
-                      <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted, marginTop: 4 }}>ROI score {t.roi.toFixed(1)}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text }}>{t.topic} · {score}/100</div>
+                        <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted, whiteSpace: "nowrap", marginLeft: 8 }}>est. {sessionsLabel}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: C.sub, marginTop: 3, lineHeight: 1.5 }}>{action}</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                        <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>ROI {t.roi.toFixed(1)}</div>
+                        <button
+                          onClick={() => navigate("/interview")}
+                          style={{ border: "none", borderRadius: 7, background: i === 0 ? C.red : i === 1 ? C.amber : C.blue500, color: "#fff", padding: "4px 10px", fontSize: 10.5, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: F.body }}>
+                          {modeIcon} Start {modeLabel} →
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-            <button style={{ ...S.btnSecondary, marginTop: 14 }} onClick={() => navigate("/interview")}>⚡ Start focused session →</button>
           </div>
 
           {/* Climb to next tier */}
@@ -1425,6 +2249,18 @@ const Analytics = () => {
         </section>
 
       </div>
+
+      {/* ── DIMENSION DRILL PANEL (slide-in sidebar) ────────────────── */}
+      {drillDim && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => setDrillDim(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(10,22,40,0.35)", zIndex: 9998, backdropFilter: "blur(2px)" }}
+          />
+          <DimensionDrillPanel dim={drillDim} onClose={() => setDrillDim(null)} navigate={navigate} />
+        </>
+      )}
     </div>
   );
 };

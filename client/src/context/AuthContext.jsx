@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+
 import API_BASE from '../config/api.js';
 import { createContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
@@ -7,11 +8,11 @@ export const AuthContext = createContext(null);
 
 // All API calls go through this instead of plain fetch.
 // On 401 → tries /auth/refresh → retries original request once.
-// On second 401 → forces logout.
+// If refresh fails → clears authentication state.
 export const authFetch = async (url, options = {}, onForceLogout) => {
     const defaultOptions = {
         ...options,
-        credentials: 'include',   // always send cookies
+        credentials: 'include',
     };
 
     let res = await fetch(url, defaultOptions);
@@ -24,11 +25,14 @@ export const authFetch = async (url, options = {}, onForceLogout) => {
         });
 
         if (refreshRes.ok) {
-            // Retry original request with new access token cookie
+            // Retry original request with the new access token cookie
             res = await fetch(url, defaultOptions);
         } else {
-            // Refresh also failed → force logout
-            if (onForceLogout) onForceLogout();
+            // Refresh failed → user is no longer authenticated
+            if (onForceLogout) {
+                onForceLogout();
+            }
+
             return res;
         }
     }
@@ -38,7 +42,12 @@ export const authFetch = async (url, options = {}, onForceLogout) => {
 
 const fetchUser = async (setUser, setIsLoading, onForceLogout) => {
     try {
-        const response = await authFetch(`${API_BASE}/auth/me`, {}, onForceLogout);
+        const response = await authFetch(
+            `${API_BASE}/auth/me`,
+            {},
+            onForceLogout
+        );
+
         const data = await response.json();
 
         if (response.ok) {
@@ -58,9 +67,11 @@ export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
+    // IMPORTANT:
+    // Do NOT redirect here.
+    // Being logged out is a valid authentication state.
     const forceLogout = () => {
         setUser(null);
-        window.location.href = '/';
     };
 
     useEffect(() => {
@@ -73,18 +84,38 @@ export const AuthProvider = ({ children }) => {
                 method: 'POST',
                 credentials: 'include',
             });
-        } catch (_) {}
-        toast.success('Logged out successfully');
+        } catch (_) {
+            // Ignore logout network errors
+        }
+
         setUser(null);
-        window.location.href = '/';
+        toast.success('Logged out successfully');
+
+        // ❌ Do not use window.location.href here.
+        // React will re-render based on user === null.
     };
 
     const refreshUser = async () => {
-        await fetchUser(setUser, setIsLoading, forceLogout);
+        setIsLoading(true);
+
+        await fetchUser(
+            setUser,
+            setIsLoading,
+            forceLogout
+        );
     };
 
     return (
-        <AuthContext.Provider value={{ user, setUser, logout, isLoading, refreshUser, authFetch }}>
+        <AuthContext.Provider
+            value={{
+                user,
+                setUser,
+                logout,
+                isLoading,
+                refreshUser,
+                authFetch,
+            }}
+        >
             {children}
         </AuthContext.Provider>
     );

@@ -219,3 +219,47 @@ export const getAICoach = async () => {
     throw error;
   }
 };
+
+// --------------------------------------------------
+// GET LAST SESSION BREAKDOWN (Phase 1B)
+// --------------------------------------------------
+
+export const getLastSessionBreakdown = async () => {
+  try {
+    const response = await API.get('/session/last/breakdown');
+    return response.data;
+  } catch (error) {
+    console.error('Get last session breakdown failed:', error);
+    throw error;
+  }
+};
+
+
+// --------------------------------------------------
+// GET BLIND SPOTS (Phase 2)
+// --------------------------------------------------
+
+export const getBlindSpots = async () => {
+  try {
+    const response = await API.get('/blind-spots');
+    return response.data;
+  } catch (error) {
+    console.error('Get blind spots failed:', error);
+    throw error;
+  }
+};
+
+
+// --------------------------------------------------
+// GET SESSION WARMUP — Cold Start vs Warm Up (Phase 3)
+// --------------------------------------------------
+
+export const getSessionWarmup = async () => {
+  try {
+    const response = await API.get('/session-warmup');
+    return response.data;
+  } catch (error) {
+    console.error('Get session warmup failed:', error);
+    throw error;
+  }
+};

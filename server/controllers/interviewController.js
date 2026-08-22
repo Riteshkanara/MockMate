@@ -12,7 +12,26 @@ const { evaluateBadges } = require('../utils/badgeEngine');
       findBlockingDimension,
       buildDimensionTimeSeries,
       projectSessionsToUnlock,
+      resolveCanonicalTopic,
     } = require('../utils/scoringModel');
+
+// CANONICAL_TOPIC_TO_DIMENSIONS is not exported from scoringModel, so we
+// mirror the minimal mapping needed for scoreTrend enrichment here.
+// (This is display-only — IRS still uses the full buildDimensionProfile.)
+const CANONICAL_TOPIC_TO_DIMENSIONS = {
+  dsa:            ['technical', 'problemSolving'],
+  oop:            ['technical', 'design', 'fundamentals'],
+  dbms:           ['fundamentals', 'technical'],
+  os:             ['fundamentals'],
+  javascript:     ['technical', 'fundamentals'],
+  webdev:         ['technical'],
+  systemdesign:   ['design'],
+  networking:     ['fundamentals'],
+  hr:             ['communication', 'behavioral'],
+  behavioral:     ['behavioral'],
+  communication:  ['communication'],
+  csfundamentals: ['fundamentals'],
+};
 
 // ─── Shared evidence extractor ──────────────────────────────────────────────
 // Pulls the richer signals the V2 scoring model needs (total answered
@@ -1100,15 +1119,35 @@ const getAnalytics = async (req, res) => {
       ...scores
     );
 
-    const scoreTrend = sessions.map(
-      session => ({
+    // Build scoreTrend with per-dimension scores for the Skill Velocity graph.
+    // For each session we compute a quick dimension average from its questions —
+    // same synonym resolver as buildDimensionProfile, but lightweight (no shrinkage)
+    // because this is only used for relative trend lines, not for IRS computation.
+    const scoreTrend = sessions.map(session => {
+      const sessionScore = getNormalizedSessionScore(session);
+      const dimTotals = {};
+      (session.questions || []).forEach(q => {
+        if (!q.userAnswer || q.userAnswer === 'Skipped') return;
+        const canonical = resolveCanonicalTopic(q.topic);
+        const dims = CANONICAL_TOPIC_TO_DIMENSIONS[canonical] || [];
+        const score = getNormalizedQuestionScore(q);
+        dims.forEach(dimKey => {
+          if (!dimTotals[dimKey]) dimTotals[dimKey] = { sum: 0, count: 0 };
+          dimTotals[dimKey].sum += score;
+          dimTotals[dimKey].count += 1;
+        });
+      });
+      const topicScores = {};
+      Object.entries(dimTotals).forEach(([key, { sum, count }]) => {
+        if (count > 0) topicScores[key] = Math.round(sum / count);
+      });
+      return {
         date: session.createdAt,
-        score:
-          getNormalizedSessionScore(
-            session
-          ),
-      })
-    );
+        score: sessionScore,
+        mode: session.mode,
+        topicScores, // { technical: 72, problemSolving: 65, … } — only dims with data this session
+      };
+    });
 
     const allQuestions =
       sessions.flatMap(
@@ -1604,6 +1643,168 @@ const getAICoach = async (req, res) => {
 };
 
 
+// ── GET /interview/session/last/breakdown — Phase 1B ──────────────────────
+// Returns per-question breakdown for the user's most recent completed session.
+// Data used: timeTaken, score, skipped, topic, text (truncated).
+// No new DB fields needed — all data is in the existing Session model.
+const getLastSessionBreakdown = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const session = await Session.findOne({
+      $or: [{ user: userId }, { userId }],
+      status: 'completed',
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!session) {
+      return res.status(404).json({ message: 'No completed sessions found.' });
+    }
+
+    const questions = (session.questions || []).map((q, idx) => ({
+      index:     idx + 1,
+      topic:     q.topic || 'General',
+      text:      q.text ? q.text.slice(0, 120) + (q.text.length > 120 ? '…' : '') : '',
+      score:     getNormalizedQuestionScore(q),
+      timeTaken: Number(q.timeTaken) || 0,
+      skipped:   Boolean(q.skipped) || !q.userAnswer,
+      difficulty: q.difficulty || 'medium',
+    }));
+
+    const answered      = questions.filter(q => !q.skipped);
+    const avgTime       = answered.length ? Math.round(answered.reduce((a, q) => a + q.timeTaken, 0) / answered.length) : 0;
+    const skipRate      = questions.length ? Math.round((questions.filter(q => q.skipped).length / questions.length) * 100) : 0;
+    const sessionScore  = getNormalizedSessionScore(session);
+
+    return res.json({
+      sessionId:   session._id,
+      sessionDate: session.createdAt,
+      sessionMode: session.mode,
+      sessionScore,
+      avgTimeTaken: avgTime,
+      skipRate,
+      totalQuestions: questions.length,
+      questions,
+    });
+  } catch (err) {
+    console.error('getLastSessionBreakdown error:', err);
+    return res.status(500).json({ error: 'Failed to load session breakdown.' });
+  }
+};
+
+
+// ── GET /interview/blind-spots — Phase 2 ─────────────────────────────────────
+// Aggregates weaknesses[] across the last 10 sessions to find topics that
+// appear as a weakness in 3+ sessions. Returns sorted by frequency.
+const getBlindSpots = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const sessions = await Session.find({
+      $or: [{ user: userId }, { userId }],
+      status: 'completed',
+    })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select('weaknesses createdAt')
+      .lean();
+
+    if (!sessions.length) {
+      return res.json({ blindSpots: [] });
+    }
+
+    const freq = {};
+    sessions.forEach(s => {
+      const seen = new Set(); // only count each topic once per session
+      (s.weaknesses || []).forEach(w => {
+        const key = w.toLowerCase().trim();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        freq[key] = (freq[key] || 0) + 1;
+      });
+    });
+
+    const blindSpots = Object.entries(freq)
+      .filter(([, count]) => count >= 2) // threshold: appeared as weakness in 2+ sessions
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([topic, count]) => ({
+        topic,
+        sessionCount: count,
+        severity: count >= 4 ? 'high' : count >= 3 ? 'medium' : 'low',
+      }));
+
+    return res.json({ blindSpots, sessionsAnalyzed: sessions.length });
+  } catch (err) {
+    console.error('getBlindSpots error:', err);
+    return res.status(500).json({ error: 'Failed to compute blind spots.' });
+  }
+};
+
+
+// ── GET /interview/session-warmup — Phase 3 ───────────────────────────────────
+// Tags each user's sessions by their position within the same calendar day
+// (1st session of the day, 2nd, 3rd+), then computes average score by position.
+// Shows whether the student is a "cold start" performer or a "warm up" performer.
+const getSessionWarmup = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const sessions = await Session.find({
+      $or: [{ user: userId }, { userId }],
+      status: 'completed',
+    })
+      .sort({ createdAt: 1 })
+      .select('createdAt averageScore totalScore questions')
+      .lean();
+
+    if (sessions.length < 4) {
+      return res.json({ available: false, reason: 'not_enough_sessions', minSessions: 4 });
+    }
+
+    // Group sessions by calendar date (local date string)
+    const byDate = {};
+    sessions.forEach(s => {
+      const dateKey = new Date(s.createdAt).toISOString().slice(0, 10);
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+      byDate[dateKey].push(s);
+    });
+
+    // Tag each session with its within-day position (1, 2, 3+)
+    const positionTotals = { 1: { sum: 0, count: 0 }, 2: { sum: 0, count: 0 }, 3: { sum: 0, count: 0 } };
+
+    Object.values(byDate).forEach(daySessions => {
+      daySessions.forEach((s, idx) => {
+        const pos = Math.min(idx + 1, 3);
+        const score = getNormalizedSessionScore(s);
+        positionTotals[pos].sum += score;
+        positionTotals[pos].count += 1;
+      });
+    });
+
+    const positions = Object.entries(positionTotals)
+      .filter(([, { count }]) => count > 0)
+      .map(([pos, { sum, count }]) => ({
+        position: Number(pos),
+        label: pos === '1' ? '1st session' : pos === '2' ? '2nd session' : '3rd+ session',
+        avgScore: Math.round(sum / count),
+        count,
+      }));
+
+    if (positions.length < 2) {
+      return res.json({ available: false, reason: 'needs_multi_session_days' });
+    }
+
+    const first   = positions.find(p => p.position === 1);
+    const second  = positions.find(p => p.position === 2);
+    const pattern = (first && second)
+      ? (second.avgScore - first.avgScore > 5 ? 'warmup' : second.avgScore - first.avgScore < -5 ? 'coldstart' : 'consistent')
+      : 'insufficient';
+
+    return res.json({ available: true, positions, pattern });
+  } catch (err) {
+    console.error('getSessionWarmup error:', err);
+    return res.status(500).json({ error: 'Failed to compute warmup data.' });
+  }
+};
 
 module.exports = {
   startInterview,
@@ -1619,4 +1820,7 @@ module.exports = {
   getPerformanceAnalytics,
   getAICoach,
   computeUserIRS,
+  getLastSessionBreakdown,
+  getBlindSpots,
+  getSessionWarmup,
 };

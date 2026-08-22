@@ -921,8 +921,8 @@ const RecentSessionsCard = ({ sessions, mounted }) => {
                 {s.questionCount} Qs · {s.date}
               </div>
             </div>
-            <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 800, color: scoreCol(s.totalScore), flexShrink: 0 }}>
-              {s.totalScore ?? '—'}
+            <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 800, color: scoreCol(s.score), flexShrink: 0 }}>
+              {s.score ?? '—'}
             </div>
           </div>
         ))}

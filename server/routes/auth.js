@@ -8,6 +8,7 @@ const User = require('../models/User');
 const Session = require('../models/Session');
 const { buildDimensionProfile, computeIRS, tierForScore } = require('../utils/scoringModel');
 const { computeUserIRS } = require('../controllers/interviewController');
+const { SIMPLE_BADGE_RULES } = require('../utils/badgeEngine');
 
 // Step 1: Redirect user to Google
 router.get('/google', passport.authenticate('google', {
@@ -86,40 +87,8 @@ router.post('/fix-badges', authMiddleware, async (req, res) => {
       status: 'completed',
     });
 
-    const BADGE_RULES = [
-      {
-        id: 'first_interview',
-        check: (user) => user.totalSessions >= 1
-      },
-      {
-        id: 'streak_3',
-        check: (user) => user.streak?.current >= 3
-      },
-      {
-        id: 'streak_7',
-        check: (user) => user.streak?.current >= 7
-      },
-      {
-        id: 'streak_14',
-        check: (user) => user.streak?.current >= 14
-      },
-      {
-        id: 'streak_30',
-        check: (user) => user.streak?.current >= 30
-      },
-      {
-        id: 'streak_60',
-        check: (user) => user.streak?.current >= 60
-      },
-      {
-        id: 'score_90',
-        check: (user, score) => score >= 90
-      },
-      {
-        id: 'sessions_50',
-        check: (user) => user.totalSessions >= 50
-      }
-    ];
+    // Badge rules imported from badgeEngine — single source of truth
+    const BADGE_RULES = SIMPLE_BADGE_RULES;
 
     const updatedUser = {
       ...user.toObject(),

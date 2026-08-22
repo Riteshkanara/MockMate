@@ -67,8 +67,6 @@ const topicSeries = (sessions) => {
 };
 
 // ─── Individual badge checkers ───────────────────────────────────────────────
-// Each returns { unlocked: bool, progress?: 0-1, meta?: any } — meta powers
-// the "why you earned this" caption on the frontend.
 
 const checkFirstRep = ({ sessions }) => ({
   unlocked: sessions.length >= 1,
@@ -184,11 +182,9 @@ const checkWeaknessSlayer = ({ sessions }) => {
   return { unlocked: false };
 };
 
-/** Approximates tier-jump using IRS-equivalent (avg score) crossing 38/60/80 across sessions. */
 const checkTierJumper = ({ sessions }) => {
   const THRESHOLDS = [38, 60, 80];
   const scores = sessions.map(sessionScore);
-  // rolling average as a simple proxy for "IRS at the time"
   for (let i = 1; i < scores.length; i++) {
     const before = scores.slice(0, i).reduce((a, v) => a + v, 0) / i;
     const afterWindow = scores.slice(Math.max(0, i - 2), i + 1);
@@ -242,4 +238,18 @@ const evaluateBadges = ({ user, sessions }) => {
   });
 };
 
-module.exports = { evaluateBadges, BADGE_DEFS };
+// ─── Simple rule set ──────────────────────────────────────────────────────────
+// Used by the /auth/fix-badges repair route. These are lightweight checks
+// that only need the User document (no session data), unlike the rich
+// BADGE_DEFS above which require full session arrays.
+// Keep in sync with BADGE_DEFS — if you add a badge there, add a simple
+// check here too so the repair route can catch legacy users.
+const SIMPLE_BADGE_RULES = [
+  { id: 'first_rep',       check: (user)        => (user.totalSessions ?? 0) >= 1 },
+  { id: 'the_grinder',     check: (user)        => (user.totalSessions ?? 0) >= 25 },
+  { id: 'streak_3',        check: (user)        => (user.streak?.current ?? 0) >= 3 },
+  { id: 'iron_streak',     check: (user)        => (user.streak?.current ?? 0) >= 14 },
+  { id: 'elite_pass',      check: (user, score) => (score ?? 0) >= 90 },
+];
+
+module.exports = { evaluateBadges, BADGE_DEFS, SIMPLE_BADGE_RULES };

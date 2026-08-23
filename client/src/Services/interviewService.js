@@ -263,3 +263,21 @@ export const getSessionWarmup = async () => {
     throw error;
   }
 };
+
+// --------------------------------------------------
+// AI FREEFORM — authenticated backend Gemini proxy
+// --------------------------------------------------
+
+export const getAIFreeform = async (prompt, maxTokens = 400) => {
+  try {
+    const response = await API.post('/ai-freeform', {
+      prompt,
+      maxTokens,
+    });
+
+    return response.data?.text || '';
+  } catch (error) {
+    console.error('Get AI freeform failed:', error);
+    throw error;
+  }
+};

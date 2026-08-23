@@ -2,7 +2,7 @@ import API_BASE from '../config/api.js';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
-import { getPerformanceAnalytics, startInterview } from '../Services/interviewService';
+import { getAICoach, getAIFreeform, getPerformanceAnalytics, startInterview } from '../Services/interviewService';
 import { getShareLink } from '../Services/profileServices';
 import PageLoader from '../components/PageLoader';
 
@@ -329,46 +329,96 @@ const AICoachModal = ({ open, onClose, profile, irs, archetype, topTier, weakest
   const generateAnalysis = useCallback(async () => {
     setLoading(true); setAnalysis(''); setDone(false);
     try {
-      const prompt = `You are MockMate's AI placement coach for Indian CS/IT students. Give sharp, specific, actionable advice based on this student's real data.
+      const dimLines = (profile || []).map(d => {
+        const gap = 100 - d.score;
+        const trendMark = d.score >= 75 ? '↑ strong' : d.score >= 55 ? '→ developing' : '↓ weak';
+        return `  • ${d.label}: ${d.score}/100 (${gap} pts to max) — ${trendMark}`;
+      }).join('\n');
 
-Verified stats:
-- Interview Readiness Score (IRS): ${irs}/100  |  Package tier: ${topTier?.label}
-- Archetype: ${archetype?.label} — ${archetype?.desc}
-- Strongest dimension: ${strongest?.label} (${strongest?.score}/100)
-- Weakest dimension:   ${weakest?.label} (${weakest?.score}/100)
-- Total sessions: ${totalSessions}
-- Score trend slope (last 6): ${slope.toFixed(2)} pts/session
-- Score StdDev: ${sd.toFixed(1)} (${sd > 18 ? 'HIGH variance' : sd > 10 ? 'moderate variance' : 'consistent'})
-- Dimensions: ${(profile || []).map(d => `${d.label}: ${d.score}`).join(' | ')}
+      const trendVerdict = slope > 1.5
+        ? `improving fast (+${slope.toFixed(1)} pts/session)`
+        : slope > 0
+        ? `slowly improving (+${slope.toFixed(1)} pts/session)`
+        : slope < -1
+        ? `declining (${slope.toFixed(1)} pts/session) — RED FLAG`
+        : 'plateaued (near-zero slope)';
 
-Write exactly this structure (plain text, no markdown, no emojis):
+      const consistencyVerdict = sd > 18
+        ? `HIGH variance (StdDev ${sd.toFixed(1)}) — wildly inconsistent; good days mask deep gaps`
+        : sd > 10
+        ? `moderate variance (StdDev ${sd.toFixed(1)}) — some inconsistency to iron out`
+        : `consistent (StdDev ${sd.toFixed(1)}) — reliable performer`;
+
+      const prompt = `You are a senior placement preparation coach at a top Indian engineering coaching firm. You have seen hundreds of students get placed and fail to get placed at FAANG, product startups, and service companies. You give honest, specific, data-driven coaching — not generic encouragement.
+
+You are writing a placement readiness report for a student. Use ONLY the data below. Do not invent numbers.
+
+═══ STUDENT DATA ═══
+IRS (Interview Readiness Score): ${irs}/100
+Package tier unlocked: ${topTier?.label || 'Not determined yet'}
+Performance archetype: ${archetype?.label || 'Unknown'} — ${archetype?.desc || ''}
+Total sessions completed: ${totalSessions}
+Score trend (last 6 sessions): ${trendVerdict}
+Consistency: ${consistencyVerdict}
+
+Strongest dimension: ${strongest?.label || '—'} at ${strongest?.score || 0}/100
+Weakest dimension:   ${weakest?.label || '—'} at ${weakest?.score || 0}/100
+
+All 6 dimensions breakdown:
+${dimLines}
+═══════════════════
+
+Write exactly this structure. Plain text only. No markdown. No bullet symbols. No emojis. No preamble.
 
 VERDICT
-One direct sentence on where they truly stand entering placement season.
+One ruthlessly honest sentence about where this student actually stands right now — name the IRS, name the tier, name the trajectory. Do not soften it.
 
 CRITICAL GAPS
-3 specific things to fix before interviews. Name topics and numbers.
+Exactly 3 gaps. Each on its own line. Start each with the dimension name and score, then say precisely what kind of questions they are failing at and why it costs them offers. Be brutally specific.
 
 STRENGTHS TO LEVERAGE
-2 real advantages they have over peers. Be specific.
+Exactly 2 strengths. Each on its own line. Name the dimension and score. Explain how interviewers reward this and how to weaponize it in an actual interview room — not generic advice.
 
 30-DAY BATTLE PLAN
-4 concrete weekly targets to jump one tier. Start each with a number.
+Exactly 4 weekly targets, numbered Week 1 through Week 4. Each week: one specific skill to drill, a measurable target (e.g. "score 75+ on 3 consecutive DSA sessions"), and one topic area to focus on. Make it a real plan someone can follow tomorrow morning.
 
 MINDSET ALERT
-One honest observation about their learning pattern that most coaches won't say. Reference their archetype.
+One honest paragraph (3-4 sentences) about the psychological pattern this archetype creates and how it silently sabotages placement. Name the specific trap. Tell them what top-placed students do differently. Do not be kind if the data shows a problem.
 
-Under 300 words. Sharp, real, no padding.`;
+Hard limit: 350 words total. Every word must earn its place.`;
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] }),
-      });
-      const d = await res.json();
-      setAnalysis(d.content?.[0]?.text || 'Unable to generate analysis. Try again.');
-    } catch {
-      setAnalysis('Could not reach AI coach. Please check your connection and try again.');
+            const coach = await getAICoach();
+
+      if (coach?.analysis) {
+        const a = coach.analysis;
+
+        setAnalysis(
+          [
+            'VERDICT',
+            a.verdict,
+            '',
+            'CRITICAL GAPS',
+            a.criticalGaps,
+            '',
+            'STRENGTHS TO LEVERAGE',
+            a.strengths,
+            '',
+            '30-DAY BATTLE PLAN',
+            a.battlePlan,
+            '',
+            'MINDSET ALERT',
+            a.mindset,
+          ].join('\n')
+        );
+      } else {
+        setAnalysis('Unable to generate analysis. Try again.'); 
+      }
+    } catch (err) {
+      if (err?.isQuota) {
+        setAnalysis('QUOTA EXHAUSTED\n\nYour Gemini free-tier limit (20 req/day) is used up. Fix: open server/.env, set GEMINI_MODEL=gemini-2.5-flash, restart the server. The quota resets at midnight Pacific time.');
+      } else {
+        setAnalysis('Could not reach AI coach. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false); setDone(true);
     }
@@ -527,14 +577,16 @@ Context:
 
 Reply with ONLY the one sentence. No preamble, no label.`;
 
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 80, messages: [{ role: 'user', content: prompt }] }),
-        });
-        const d = await res.json();
-        if (!cancelled) setFocus((d.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '') || null);
-      } catch { /* silent */ }
+        const text = await getAIFreeform(prompt, 80);
+        
+        if (!cancelled) {
+          setFocus(
+            text.trim().replace(/^["']|["']$/g, '') || null
+          );
+        }
+      } catch (err) {
+        if (!cancelled && err?.isQuota) setFocus('⚠ Gemini quota exhausted — set GEMINI_MODEL=gemini-2.5-flash in server/.env and restart.');
+      }
       finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };

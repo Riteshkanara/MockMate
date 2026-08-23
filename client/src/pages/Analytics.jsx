@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { useNavigate } from "react-router-dom";
 import PencilLoader from '../components/PencilLoader'
-import { getAnalytics, getLastSessionBreakdown, getBlindSpots, getSessionWarmup } from "../Services/interviewService";
+import { getAIFreeform, getAnalytics, getLastSessionBreakdown, getBlindSpots, getSessionWarmup } from "../Services/interviewService";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE ANALYTICS — READINESS INTELLIGENCE v4
@@ -637,17 +637,7 @@ One precise sentence naming the single behavioral habit that, if changed, would 
 
 Under 120 words total. Write as behavioral observations, not advice.`;
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      const d    = await res.json();
-      const text = d.content?.[0]?.text || "";
+      const text = await getAIFreeform(prompt, 1000);
       setProfile(text);
 
       const parsed = text
@@ -662,8 +652,11 @@ Under 120 words total. Write as behavioral observations, not advice.`;
         .filter(s => s.heading && s.body);
       setSections(parsed);
       setDone(true);
-    } catch {
-      setProfile("Could not generate profile. Check your connection and try again.");
+    } catch (err) {
+      const msg = err?.isQuota
+        ? "Gemini quota exhausted (20 req/day limit). Set GEMINI_MODEL=gemini-2.5-flash in server/.env and restart."
+        : "Could not generate profile. Check your connection and try again.";
+      setProfile(msg);
       setDone(true);
     } finally {
       setLoading(false);
@@ -1353,64 +1346,99 @@ const IRSComponentBar = ({ label, value, weight, color }) => (
 // FULL AI PROFILE — Readiness Board + Interview DNA merged into one section
 // One button generates both simultaneously. Two panels, one story.
 // ═══════════════════════════════════════════════════════════════════════════
-const FullAIProfileSection = ({ dimensionProfile, scoreTrend, archetype, totalSessions, irs, topTier, weakest, strongest }) => {
+const FullAIProfileSection = ({
+  dimensionProfile,
+  scoreTrend,
+  archetype,
+  totalSessions,
+  irs,
+  topTier,
+  weakest,
+  strongest,
+}) => {
   // Board state
   const [boardSections, setBoardSections] = useState([]);
-  const [boardRaw,      setBoardRaw]      = useState("");
-  const [boardDone,     setBoardDone]     = useState(false);
+  const [boardRaw, setBoardRaw] = useState("");
+  const [boardDone, setBoardDone] = useState(false);
 
   // DNA state
-  const [dnaSections,   setDnaSections]   = useState([]);
-  const [dnaRaw,        setDnaRaw]        = useState("");
-  const [dnaDone,       setDnaDone]       = useState(false);
+  const [dnaSections, setDnaSections] = useState([]);
+  const [dnaRaw, setDnaRaw] = useState("");
+  const [dnaDone, setDnaDone] = useState(false);
 
   // Shared loading
   const [loading, setLoading] = useState(false);
-  const [done,    setDone]    = useState(false);
+  const [done, setDone] = useState(false);
 
-  const slope = trendSlope((scoreTrend || []).slice(-6).map(s => s.score || 0));
-  const sd    = stdDev((scoreTrend || []).map(s => s.score || 0));
+  const slope = trendSlope(
+    (scoreTrend || []).slice(-6).map((s) => s.score || 0)
+  );
+
+  const sd = stdDev(
+    (scoreTrend || []).map((s) => s.score || 0)
+  );
 
   const boardAccents = {
-    "VERDICT":               C.cyan400,
-    "CRITICAL GAPS":         C.red,
+    VERDICT: C.cyan400,
+    "CRITICAL GAPS": C.red,
     "STRENGTHS TO LEVERAGE": C.green,
-    "30-DAY BATTLE PLAN":    C.blue400,
-    "MINDSET ALERT":         C.amber,
+    "30-DAY BATTLE PLAN": C.blue400,
+    "MINDSET ALERT": C.amber,
   };
+
   const boardIcons = {
-    "VERDICT":               "🎯",
-    "CRITICAL GAPS":         "🚨",
+    VERDICT: "🎯",
+    "CRITICAL GAPS": "🚨",
     "STRENGTHS TO LEVERAGE": "✨",
-    "30-DAY BATTLE PLAN":    "📅",
-    "MINDSET ALERT":         "🧠",
+    "30-DAY BATTLE PLAN": "📅",
+    "MINDSET ALERT": "🧠",
   };
+
   const dnaColors = {
-    "RESPONSE STYLE":   C.blue500,
-    "PRESSURE RESPONSE":C.cyan500,
-    "KNOWLEDGE PATTERN":C.green,
-    "GROWTH EDGE":      C.amber,
+    "RESPONSE STYLE": C.blue500,
+    "PRESSURE RESPONSE": C.cyan500,
+    "KNOWLEDGE PATTERN": C.green,
+    "GROWTH EDGE": C.amber,
   };
+
   const dnaIcons = {
-    "RESPONSE STYLE":   "💬",
-    "PRESSURE RESPONSE":"🔥",
-    "KNOWLEDGE PATTERN":"📚",
-    "GROWTH EDGE":      "🎯",
+    "RESPONSE STYLE": "💬",
+    "PRESSURE RESPONSE": "🔥",
+    "KNOWLEDGE PATTERN": "📚",
+    "GROWTH EDGE": "🎯",
   };
 
   const parseSections = (text, accentMap) =>
-    text.split(/\n(?=[A-Z][A-Z ]{3,}\n)/).filter(Boolean).map(s => {
-      const lines   = s.trim().split("\n");
-      const heading = lines[0].trim();
-      const body    = lines.slice(1).join("\n").trim();
-      return { heading, body, accent: accentMap[heading] || C.blue400 };
-    }).filter(s => s.heading && s.body);
+    text
+      .split(/\n(?=[A-Z][A-Z ]{3,}\n)/)
+      .filter(Boolean)
+      .map((section) => {
+        const lines = section.trim().split("\n");
+        const heading = lines[0].trim();
+        const body = lines.slice(1).join("\n").trim();
+
+        return {
+          heading,
+          body,
+          accent: accentMap[heading] || C.blue400,
+        };
+      })
+      .filter((section) => section.heading && section.body);
 
   const generateBoth = async () => {
+    // Start loading
     setLoading(true);
-    setBoardDone(false); setDnaDone(false);
-    setBoardSections([]); setDnaSections([]);
-    setBoardRaw(""); setDnaRaw("");
+
+    // Reset previous results
+    setBoardDone(false);
+    setDnaDone(false);
+
+    setBoardSections([]);
+    setDnaSections([]);
+
+    setBoardRaw("");
+    setDnaRaw("");
+
     setDone(false);
 
     const boardPrompt = `You are MockMate's AI placement coach. Analyze this Indian CS/IT student's mock interview performance and give sharp, actionable advice.
@@ -1423,7 +1451,10 @@ Verified stats:
 - Sessions: ${totalSessions}
 - Trend slope (last 6): ${slope.toFixed(2)} pts/session
 - StdDev: ${sd.toFixed(1)} (${sd > 18 ? "HIGH variance" : sd > 10 ? "moderate" : "consistent"})
-- Dimensions: ${(dimensionProfile || []).filter(d => d.hasData).map(d => `${d.label}: ${d.score}`).join(" | ")}
+- Dimensions: ${(dimensionProfile || [])
+      .filter((d) => d.hasData)
+      .map((d) => `${d.label}: ${d.score}`)
+      .join(" | ")}
 
 Write exactly this structure (plain text, no markdown):
 
@@ -1451,7 +1482,10 @@ Performance data:
 - Archetype: ${archetype?.label} (${archetype?.desc})
 - Score StdDev: ${sd.toFixed(1)} (${sd > 18 ? "HIGH variance" : sd > 10 ? "moderate" : "consistent"})
 - Trend slope (last 6 sessions): ${slope.toFixed(2)} pts/session
-- Dimensions: ${(dimensionProfile || []).filter(d => d.hasData).map(d => `${d.label}: ${d.score}/100`).join(" | ")}
+- Dimensions: ${(dimensionProfile || [])
+      .filter((d) => d.hasData)
+      .map((d) => `${d.label}: ${d.score}/100`)
+      .join(" | ")}
 - Session count: ${totalSessions}
 
 Generate a behavioral fingerprint with EXACTLY these 4 sections, plain text, no markdown:
@@ -1471,37 +1505,82 @@ One precise sentence naming the single behavioral habit that, if changed, would 
 Under 120 words total. Write as behavioral observations, not advice.`;
 
     try {
-      // Fire both API calls in parallel
-      const [boardRes, dnaRes] = await Promise.all([
-        fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: boardPrompt }] }),
-        }),
+      // Run both Gemini requests independently.
+      // If one fails, the other can still succeed.
+      const [boardResult, dnaResult] = await Promise.allSettled([
+        getAIFreeform(boardPrompt, 1000),
+
         totalSessions >= 10
-          ? fetch("https://api.anthropic.com/v1/messages", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: dnaPrompt }] }),
-            })
-          : Promise.resolve(null),
+          ? getAIFreeform(dnaPrompt, 600)
+          : Promise.resolve(""),
       ]);
 
-      const boardData = await boardRes.json();
-      const boardText = boardData.content?.[0]?.text || "Unable to generate analysis.";
-      setBoardRaw(boardText);
-      setBoardSections(parseSections(boardText, boardAccents));
+      // Debug rejected requests without breaking the UI
+      if (boardResult.status === "rejected") {
+        console.error(
+          "Placement coach AI failed:",
+          boardResult.reason
+        );
+      }
+
+      if (dnaResult.status === "rejected") {
+        console.error(
+          "Interview DNA AI failed:",
+          dnaResult.reason
+        );
+      }
+
+      // Get successful results
+      const boardText =
+        boardResult.status === "fulfilled"
+          ? boardResult.value
+          : "";
+
+      const dnaText =
+        dnaResult.status === "fulfilled"
+          ? dnaResult.value
+          : "";
+
+      // =========================
+      // PLACEMENT COACH RESULT
+      // =========================
+
+      setBoardRaw(
+        boardText ||
+          "Unable to generate the placement coach analysis."
+      );
+
+      setBoardSections(
+        parseSections(boardText, boardAccents)
+      );
+
       setBoardDone(true);
 
-      if (dnaRes) {
-        const dnaData = await dnaRes.json();
-        const dnaText = dnaData.content?.[0]?.text || "";
-        setDnaRaw(dnaText);
-        setDnaSections(parseSections(dnaText, dnaColors));
-        setDnaDone(true);
-      }
-    } catch {
-      setBoardRaw("Could not reach AI. Please check your connection and try again.");
+      // =========================
+      // INTERVIEW DNA RESULT
+      // =========================
+
+      setDnaRaw(dnaText);
+
+      setDnaSections(
+        parseSections(dnaText, dnaColors)
+      );
+
+      // Mark DNA as finished even
+      // when Gemini returns an empty response
+      setDnaDone(true);
+
+    } catch (err) {
+      console.error(
+        "Full AI profile generation failed:",
+        err
+      );
+
+      const msg = err?.isQuota
+        ? "Gemini quota exhausted (20 req/day limit). Set GEMINI_MODEL=gemini-2.5-flash in server/.env and restart."
+        : "Could not reach AI. Please check your connection and try again.";
+
+      setBoardRaw(msg);
       setBoardDone(true);
     } finally {
       setLoading(false);
@@ -1512,91 +1591,345 @@ Under 120 words total. Write as behavioral observations, not advice.`;
   const loadingMessages = [
     `Scanning IRS = ${irs}/100 across 6 dimensions…`,
     `Computing score variance (StdDev: ${sd.toFixed(1)})…`,
-    `Mapping ${strongest?.label || "—"} strength vs ${weakest?.label || "—"} gap…`,
+    `Mapping ${strongest?.label || "—"} strength vs ${
+      weakest?.label || "—"
+    } gap…`,
     "Drafting your 30-day battle plan…",
     "Mapping your behavioral fingerprint…",
   ];
 
   return (
-    <section style={{
-      background: `linear-gradient(145deg, #080F1E 0%, #0A1628 35%, #001A4A 70%, #002040 100%)`,
-      borderRadius: 24, padding: "28px",
-      boxShadow: "0 24px 72px rgba(0,20,80,0.45)",
-      border: "1px solid rgba(0,200,240,0.18)",
-      marginBottom: 18,
-    }}>
+    <section
+      style={{
+        background:
+          "linear-gradient(145deg, #080F1E 0%, #0A1628 35%, #001A4A 70%, #002040 100%)",
+        borderRadius: 24,
+        padding: "28px",
+        boxShadow: "0 24px 72px rgba(0,20,80,0.45)",
+        border: "1px solid rgba(0,200,240,0.18)",
+        marginBottom: 18,
+      }}
+    >
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 14 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          marginBottom: 20,
+          flexWrap: "wrap",
+          gap: 14,
+        }}
+      >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.8px", color: C.cyan400, marginBottom: 8 }}>
+          <div
+            style={{
+              fontFamily: F.mono,
+              fontSize: 9.5,
+              fontWeight: 700,
+              letterSpacing: "1.8px",
+              color: C.cyan400,
+              marginBottom: 8,
+            }}
+          >
             ⚡ FULL AI PROFILE
           </div>
-          <h2 style={{ margin: 0, fontFamily: F.display, fontSize: 22, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>
+
+          <h2
+            style={{
+              margin: 0,
+              fontFamily: F.display,
+              fontSize: 22,
+              fontWeight: 800,
+              color: "#fff",
+              lineHeight: 1.2,
+            }}
+          >
             Placement Coach + Behavioral DNA
           </h2>
-          <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.5)", fontSize: 12.5, lineHeight: 1.65, maxWidth: 560 }}>
-            Two AI analyses, one click. Left panel: your 30-day action plan from the placement coach. Right panel: your behavioral fingerprint derived from {totalSessions} sessions.
+
+          <p
+            style={{
+              margin: "8px 0 0",
+              color: "rgba(255,255,255,0.5)",
+              fontSize: 12.5,
+              lineHeight: 1.65,
+              maxWidth: 560,
+            }}
+          >
+            Two AI analyses, one click. Left panel: your 30-day action
+            plan from the placement coach. Right panel: your behavioral
+            fingerprint derived from {totalSessions} sessions.
+
             {totalSessions < 10 && (
-              <span style={{ display: "block", marginTop: 6, color: C.amber, fontSize: 11.5 }}>
-                ⚠ Interview DNA unlocks at 10 sessions — you have {totalSessions}. The coach analysis is available now.
+              <span
+                style={{
+                  display: "block",
+                  marginTop: 6,
+                  color: C.amber,
+                  fontSize: 11.5,
+                }}
+              >
+                ⚠ Interview DNA unlocks at 10 sessions — you have{" "}
+                {totalSessions}. The coach analysis is available now.
               </span>
             )}
           </p>
         </div>
 
         {/* Stats strip */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end", flexShrink: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            alignItems: "flex-end",
+            flexShrink: 0,
+          }}
+        >
           <div style={{ display: "flex", gap: 6 }}>
             {[
-              { label: "IRS", val: `${irs}/100`, color: irs >= 75 ? C.green : irs >= 55 ? C.blue400 : C.amber },
-              { label: "ARCHETYPE", val: archetype?.label || "—", color: C.blue300 },
-              { label: "VARIANCE", val: sd > 18 ? "HIGH" : sd > 10 ? "MED" : "LOW", color: sd > 18 ? C.red : sd > 10 ? C.amber : C.green },
+              {
+                label: "IRS",
+                val: `${irs}/100`,
+                color:
+                  irs >= 75
+                    ? C.green
+                    : irs >= 55
+                    ? C.blue400
+                    : C.amber,
+              },
+              {
+                label: "ARCHETYPE",
+                val: archetype?.label || "—",
+                color: C.blue300,
+              },
+              {
+                label: "VARIANCE",
+                val:
+                  sd > 18
+                    ? "HIGH"
+                    : sd > 10
+                    ? "MED"
+                    : "LOW",
+                color:
+                  sd > 18
+                    ? C.red
+                    : sd > 10
+                    ? C.amber
+                    : C.green,
+              },
             ].map((item, i) => (
-              <div key={i} style={{ padding: "6px 11px", borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center" }}>
-                <div style={{ fontFamily: F.mono, fontSize: 7.5, letterSpacing: "0.8px", color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>{item.label}</div>
-                <div style={{ fontFamily: F.display, fontSize: 11, fontWeight: 800, color: item.color, whiteSpace: "nowrap" }}>{item.val}</div>
+              <div
+                key={i}
+                style={{
+                  padding: "6px 11px",
+                  borderRadius: 8,
+                  background: "rgba(255,255,255,0.06)",
+                  border:
+                    "1px solid rgba(255,255,255,0.1)",
+                  textAlign: "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: F.mono,
+                    fontSize: 7.5,
+                    letterSpacing: "0.8px",
+                    color: "rgba(255,255,255,0.3)",
+                    marginBottom: 3,
+                  }}
+                >
+                  {item.label}
+                </div>
+
+                <div
+                  style={{
+                    fontFamily: F.display,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: item.color,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {item.val}
+                </div>
               </div>
             ))}
           </div>
+
           <button
             onClick={generateBoth}
             disabled={loading}
             className="an-ai-generate-btn"
             style={{
-              border: "none", borderRadius: 13,
-              background: loading ? "rgba(255,255,255,0.07)" : `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`,
-              color: "#fff", padding: "13px 24px", fontSize: 13.5, fontWeight: 800,
-              cursor: loading ? "not-allowed" : "pointer",
-              boxShadow: loading ? "none" : "0 4px 22px rgba(0,173,224,0.36)",
-              display: "flex", alignItems: "center", gap: 9, whiteSpace: "nowrap",
+              border: "none",
+              borderRadius: 13,
+              background: loading
+                ? "rgba(255,255,255,0.07)"
+                : `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`,
+              color: "#fff",
+              padding: "13px 24px",
+              fontSize: 13.5,
+              fontWeight: 800,
+              cursor: loading
+                ? "not-allowed"
+                : "pointer",
+              boxShadow: loading
+                ? "none"
+                : "0 4px 22px rgba(0,173,224,0.36)",
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              whiteSpace: "nowrap",
               fontFamily: F.body,
             }}
           >
             {loading ? (
-              <><span style={{ display: "inline-block", width: 14, height: 14, border: "2px solid rgba(255,255,255,0.22)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /> Generating both…</>
-            ) : done ? "↺ Regenerate Profile" : "⚡ Generate Full AI Profile"}
+              <>
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: 14,
+                    height: 14,
+                    border:
+                      "2px solid rgba(255,255,255,0.22)",
+                    borderTopColor: "#fff",
+                    borderRadius: "50%",
+                    animation:
+                      "spin 0.7s linear infinite",
+                  }}
+                />
+                Generating both…
+              </>
+            ) : done ? (
+              "↺ Regenerate Profile"
+            ) : (
+              "⚡ Generate Full AI Profile"
+            )}
           </button>
         </div>
       </div>
 
       {/* Empty state */}
       {!done && !loading && (
-        <div style={{ padding: "44px 20px", textAlign: "center", border: "1.5px dashed rgba(0,200,240,0.2)", borderRadius: 16 }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>⚡</div>
-          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, margin: "0 auto", maxWidth: 480, lineHeight: 1.7 }}>
-            Click <strong style={{ color: "rgba(255,255,255,0.7)" }}>Generate Full AI Profile</strong> to get your placement coach's action plan and your behavioral fingerprint — both computed from your real session data in parallel.
+        <div
+          style={{
+            padding: "44px 20px",
+            textAlign: "center",
+            border:
+              "1.5px dashed rgba(0,200,240,0.2)",
+            borderRadius: 16,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 36,
+              marginBottom: 12,
+            }}
+          >
+            ⚡
+          </div>
+
+          <p
+            style={{
+              color: "rgba(255,255,255,0.4)",
+              fontSize: 13,
+              margin: "0 auto",
+              maxWidth: 480,
+              lineHeight: 1.7,
+            }}
+          >
+            Click{" "}
+            <strong
+              style={{
+                color:
+                  "rgba(255,255,255,0.7)",
+              }}
+            >
+              Generate Full AI Profile
+            </strong>{" "}
+            to get your placement coach's action plan
+            and your behavioral fingerprint — both
+            computed from your real session data in
+            parallel.
           </p>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 20, flexWrap: "wrap" }}>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              justifyContent: "center",
+              marginTop: 20,
+              flexWrap: "wrap",
+            }}
+          >
             {[
-              { icon: "🎯", label: "VERDICT", desc: "Where you truly stand" },
-              { icon: "🚨", label: "CRITICAL GAPS", desc: "Top 3 things to fix" },
-              { icon: "📅", label: "30-DAY PLAN", desc: "Concrete weekly targets" },
-              { icon: "🧬", label: "INTERVIEW DNA", desc: "Behavioral fingerprint" },
-            ].map(item => (
-              <div key={item.label} style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", textAlign: "center", minWidth: 100 }}>
-                <div style={{ fontSize: 18, marginBottom: 5 }}>{item.icon}</div>
-                <div style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.8px", color: C.cyan400, marginBottom: 3 }}>{item.label}</div>
-                <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.38)" }}>{item.desc}</div>
+              {
+                icon: "🎯",
+                label: "VERDICT",
+                desc: "Where you truly stand",
+              },
+              {
+                icon: "🚨",
+                label: "CRITICAL GAPS",
+                desc: "Top 3 things to fix",
+              },
+              {
+                icon: "📅",
+                label: "30-DAY PLAN",
+                desc: "Concrete weekly targets",
+              },
+              {
+                icon: "🧬",
+                label: "INTERVIEW DNA",
+                desc: "Behavioral fingerprint",
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background:
+                    "rgba(255,255,255,0.05)",
+                  border:
+                    "1px solid rgba(255,255,255,0.08)",
+                  textAlign: "center",
+                  minWidth: 100,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 18,
+                    marginBottom: 5,
+                  }}
+                >
+                  {item.icon}
+                </div>
+
+                <div
+                  style={{
+                    fontFamily: F.mono,
+                    fontSize: 8.5,
+                    fontWeight: 800,
+                    letterSpacing: "0.8px",
+                    color: C.cyan400,
+                    marginBottom: 3,
+                  }}
+                >
+                  {item.label}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    color:
+                      "rgba(255,255,255,0.38)",
+                  }}
+                >
+                  {item.desc}
+                </div>
               </div>
             ))}
           </div>
@@ -1605,74 +1938,374 @@ Under 120 words total. Write as behavioral observations, not advice.`;
 
       {/* Loading state */}
       {loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 9,
+          }}
+        >
           {loadingMessages.map((msg, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(26,110,255,0.14)" }}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.cyan400, flexShrink: 0, animation: `livePulse 1.4s ease ${i * 0.22}s infinite` }} />
-              <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 11.5, fontFamily: F.mono }}>{msg}</div>
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 14px",
+                borderRadius: 10,
+                background:
+                  "rgba(255,255,255,0.04)",
+                border:
+                  "1px solid rgba(26,110,255,0.14)",
+              }}
+            >
+              <div
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: C.cyan400,
+                  flexShrink: 0,
+                  animation: `livePulse 1.4s ease ${
+                    i * 0.22
+                  }s infinite`,
+                }}
+              />
+
+              <div
+                style={{
+                  color:
+                    "rgba(255,255,255,0.45)",
+                  fontSize: 11.5,
+                  fontFamily: F.mono,
+                }}
+              >
+                {msg}
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Results — two panel layout */}
+      {/* Results */}
       {done && (
-        <div style={{ display: "grid", gridTemplateColumns: totalSessions >= 10 ? "1fr 1fr" : "1fr", gap: 18, marginTop: 4 }} className="an-two-col">
-
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              totalSessions >= 10
+                ? "1fr 1fr"
+                : "1fr",
+            gap: 18,
+            marginTop: 4,
+          }}
+          className="an-two-col"
+        >
           {/* Left — Placement Coach Board */}
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>⚡</div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 14,
+                paddingBottom: 10,
+                borderBottom:
+                  "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 14,
+                  flexShrink: 0,
+                }}
+              >
+                ⚡
+              </div>
+
               <div>
-                <div style={{ fontFamily: F.mono, fontSize: 8.5, letterSpacing: "1.2px", color: C.blue300, fontWeight: 700 }}>PLACEMENT COACH</div>
-                <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: "#fff" }}>Action plan from your data</div>
+                <div
+                  style={{
+                    fontFamily: F.mono,
+                    fontSize: 8.5,
+                    letterSpacing: "1.2px",
+                    color: C.blue300,
+                    fontWeight: 700,
+                  }}
+                >
+                  PLACEMENT COACH
+                </div>
+
+                <div
+                  style={{
+                    fontFamily: F.display,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "#fff",
+                  }}
+                >
+                  Action plan from your data
+                </div>
               </div>
             </div>
+
             {boardSections.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
                 {boardSections.map((s, i) => (
-                  <div key={i} style={{ padding: "13px 15px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderLeft: `3px solid ${s.accent}` }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-                      <span style={{ fontSize: 12 }}>{boardIcons[s.heading] || "•"}</span>
-                      <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 800, letterSpacing: "1.3px", color: s.accent }}>{s.heading}</div>
+                  <div
+                    key={i}
+                    style={{
+                      padding: "13px 15px",
+                      borderRadius: 12,
+                      background:
+                        "rgba(255,255,255,0.04)",
+                      border:
+                        "1px solid rgba(255,255,255,0.07)",
+                      borderLeft:
+                        `3px solid ${s.accent}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 7,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 12 }}>
+                        {boardIcons[s.heading] || "•"}
+                      </span>
+
+                      <div
+                        style={{
+                          fontFamily: F.mono,
+                          fontSize: 8,
+                          fontWeight: 800,
+                          letterSpacing: "1.3px",
+                          color: s.accent,
+                        }}
+                      >
+                        {s.heading}
+                      </div>
                     </div>
-                    <p style={{ margin: 0, color: "rgba(255,255,255,0.8)", fontSize: 12, lineHeight: 1.72, whiteSpace: "pre-line" }}>{s.body}</p>
+
+                    <p
+                      style={{
+                        margin: 0,
+                        color:
+                          "rgba(255,255,255,0.8)",
+                        fontSize: 12,
+                        lineHeight: 1.72,
+                        whiteSpace: "pre-line",
+                      }}
+                    >
+                      {s.body}
+                    </p>
                   </div>
                 ))}
               </div>
             ) : (
-              <p style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, lineHeight: 1.72, margin: 0, whiteSpace: "pre-line" }}>{boardRaw}</p>
+              <p
+                style={{
+                  color:
+                    "rgba(255,255,255,0.68)",
+                  fontSize: 12,
+                  lineHeight: 1.72,
+                  margin: 0,
+                  whiteSpace: "pre-line",
+                }}
+              >
+                {boardRaw}
+              </p>
             )}
           </div>
 
           {/* Right — Interview DNA */}
           {totalSessions >= 10 && (
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${C.cyan600}, ${C.cyan500})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>🧬</div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 14,
+                  paddingBottom: 10,
+                  borderBottom:
+                    "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    background: `linear-gradient(135deg, ${C.cyan600}, ${C.cyan500})`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent:
+                      "center",
+                    fontSize: 14,
+                    flexShrink: 0,
+                  }}
+                >
+                  🧬
+                </div>
+
                 <div>
-                  <div style={{ fontFamily: F.mono, fontSize: 8.5, letterSpacing: "1.2px", color: C.cyan400, fontWeight: 700 }}>INTERVIEW DNA</div>
-                  <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: "#fff" }}>Behavioral fingerprint — {totalSessions} sessions</div>
+                  <div
+                    style={{
+                      fontFamily: F.mono,
+                      fontSize: 8.5,
+                      letterSpacing: "1.2px",
+                      color: C.cyan400,
+                      fontWeight: 700,
+                    }}
+                  >
+                    INTERVIEW DNA
+                  </div>
+
+                  <div
+                    style={{
+                      fontFamily: F.display,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "#fff",
+                    }}
+                  >
+                    Behavioral fingerprint —{" "}
+                    {totalSessions} sessions
+                  </div>
                 </div>
               </div>
+
               {dnaSections.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                  }}
+                >
                   {dnaSections.map((s, i) => (
-                    <div key={i} style={{ padding: "13px 15px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderLeft: `3px solid ${s.accent}` }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-                        <span style={{ fontSize: 12 }}>{dnaIcons[s.heading] || "🧬"}</span>
-                        <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 800, letterSpacing: "1.3px", color: s.accent }}>{s.heading}</div>
+                    <div
+                      key={i}
+                      style={{
+                        padding: "13px 15px",
+                        borderRadius: 12,
+                        background:
+                          "rgba(255,255,255,0.04)",
+                        border:
+                          "1px solid rgba(255,255,255,0.07)",
+                        borderLeft:
+                          `3px solid ${s.accent}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 7,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <span style={{ fontSize: 12 }}>
+                          {dnaIcons[s.heading] ||
+                            "🧬"}
+                        </span>
+
+                        <div
+                          style={{
+                            fontFamily: F.mono,
+                            fontSize: 8,
+                            fontWeight: 800,
+                            letterSpacing:
+                              "1.3px",
+                            color: s.accent,
+                          }}
+                        >
+                          {s.heading}
+                        </div>
                       </div>
-                      <p style={{ margin: 0, color: "rgba(255,255,255,0.8)", fontSize: 12, lineHeight: 1.72, whiteSpace: "pre-line" }}>{s.body}</p>
+
+                      <p
+                        style={{
+                          margin: 0,
+                          color:
+                            "rgba(255,255,255,0.8)",
+                          fontSize: 12,
+                          lineHeight: 1.72,
+                          whiteSpace:
+                            "pre-line",
+                        }}
+                      >
+                        {s.body}
+                      </p>
                     </div>
                   ))}
                 </div>
               ) : dnaDone ? (
-                <p style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, lineHeight: 1.72, margin: 0, whiteSpace: "pre-line" }}>{dnaRaw}</p>
+                <p
+                  style={{
+                    color:
+                      "rgba(255,255,255,0.68)",
+                    fontSize: 12,
+                    lineHeight: 1.72,
+                    margin: 0,
+                    whiteSpace: "pre-line",
+                  }}
+                >
+                  {dnaRaw ||
+                    "Unable to generate the Interview DNA analysis."}
+                </p>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {["Reading session variance patterns…", "Mapping response style indicators…", "Identifying pressure response signals…", "Writing behavioral fingerprint…"].map((msg, i) => (
-                    <div key={i} style={{ padding: "9px 13px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(0,200,240,0.12)", color: "rgba(255,255,255,0.38)", fontSize: 11, fontFamily: F.mono, animation: `livePulse 1.5s ease ${i * 0.25}s infinite` }}>{msg}</div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  {[
+                    "Reading session variance patterns…",
+                    "Mapping response style indicators…",
+                    "Identifying pressure response signals…",
+                    "Writing behavioral fingerprint…",
+                  ].map((msg, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        padding: "9px 13px",
+                        borderRadius: 8,
+                        background:
+                          "rgba(255,255,255,0.04)",
+                        border:
+                          "1px solid rgba(0,200,240,0.12)",
+                        color:
+                          "rgba(255,255,255,0.38)",
+                        fontSize: 11,
+                        fontFamily: F.mono,
+                        animation: `livePulse 1.5s ease ${
+                          i * 0.25
+                        }s infinite`,
+                      }}
+                    >
+                      {msg}
+                    </div>
                   ))}
                 </div>
               )}
@@ -1683,11 +2316,52 @@ Under 120 words total. Write as behavioral observations, not advice.`;
 
       {/* Divider + note */}
       {done && (
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-          <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.3)", lineHeight: 1.6 }}>
-            Both analyses are re-generated fresh on each click. DNA unlocks at 10 sessions.
+        <div
+          style={{
+            marginTop: 18,
+            paddingTop: 14,
+            borderTop:
+              "1px solid rgba(255,255,255,0.07)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent:
+              "space-between",
+            flexWrap: "wrap",
+            gap: 10,
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontSize: 11,
+              color:
+                "rgba(255,255,255,0.3)",
+              lineHeight: 1.6,
+            }}
+          >
+            Both analyses are re-generated fresh
+            on each click. DNA unlocks at 10
+            sessions.
           </p>
-          <button onClick={generateBoth} disabled={loading} style={{ border: "1px solid rgba(255,255,255,0.14)", borderRadius: 9, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: F.body }}>
+
+          <button
+            onClick={generateBoth}
+            disabled={loading}
+            style={{
+              border:
+                "1px solid rgba(255,255,255,0.14)",
+              borderRadius: 9,
+              background:
+                "rgba(255,255,255,0.06)",
+              color:
+                "rgba(255,255,255,0.6)",
+              padding: "7px 14px",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: F.body,
+            }}
+          >
             ↺ Regenerate both
           </button>
         </div>
@@ -1695,7 +2369,6 @@ Under 120 words total. Write as behavioral observations, not advice.`;
     </section>
   );
 };
-
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN ANALYTICS COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════

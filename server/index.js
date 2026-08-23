@@ -51,7 +51,7 @@ const interviewLimiter = rateLimit({
     if (req.method === 'GET') return true;
 
     // POST routes that are AI-heavy
-    const aiPosts = ['/interview/start', '/interview/ai-coach'];
+    const aiPosts = ['/interview/start', '/interview/ai-coach', '/interview/ai-freeform'];
     const isDynamicAiPost =
       /^\/interview\/[^/]+\/(answer|complete)$/.test(req.path);
 

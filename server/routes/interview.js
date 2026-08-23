@@ -66,6 +66,12 @@ router.post(
 );
 
 
+router.post(
+  '/ai-freeform',
+  authMiddleware,
+  interviewController.getAIFreeform
+);
+
 router.get(
   '/:sessionId',
   authMiddleware,

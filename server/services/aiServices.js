@@ -1366,11 +1366,11 @@ Return ONLY JSON.
     getErrorMessage(error)
   );
 
-  // On 503, try the lighter flash-8b model before falling back to static questions
+  // On 503, try the lighter flash-lite model before falling back to static questions
   if (error?.error?.code === 503 || error?.status === 503) {
     try {
       const retryResult = await generateWithRetry({
-        model: 'gemini-2.0-flash-lite',
+        model: 'gemini-3.6-flash',
         contents: prompt,
         config: { responseMimeType: 'application/json' },
       }, { maxRetries: 1 });
@@ -1844,6 +1844,48 @@ readiness numbers above.
  
 
  
+// ---------------------------------------------------------
+// Freeform Gemini generation
+// Used for authenticated AI UI features that need plain text
+// rather than the structured JSON returned by generateCoachAdvice.
+// ---------------------------------------------------------
+
+// REPLACE WITH:
+const generateFreeform = async (prompt, maxTokens = 400) => {
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    throw new Error('AI prompt is required.');
+  }
+
+  const safeMaxTokens = Math.min(
+    Math.max(Number(maxTokens) || 400, 16),
+    4096
+  );
+
+  const result = await generateWithRetry({
+    model: MODEL,
+    contents: prompt.trim(),
+    config: {
+      // FIX: responseMimeType is required for @google/genai v1.x to populate
+      // result.text. Without it, result.text is undefined even when Gemini
+      // returns content — it lives in candidates[0].content.parts[0].text instead.
+      responseMimeType: 'text/plain',
+      maxOutputTokens: safeMaxTokens,
+    },
+  });
+
+  // Safe text extraction: try the convenience getter first, then drill into
+  // the raw candidates structure as a fallback for edge cases.
+  const text = (
+    result?.text ||
+    result?.candidates?.[0]?.content?.parts?.[0]?.text ||
+    ''
+  ).trim();
+
+  // Don't throw on empty — the coach board or DNA panel handles gracefully.
+  // Throwing here causes a 500 which the frontend shows as a generic error.
+  return text;
+};
+
 
 module.exports = {
   generateQuestions,
@@ -1853,4 +1895,5 @@ module.exports = {
   getFallbackQuestions,
   getFallbackEvaluation,
   generateCoachAdvice,
+  generateFreeform,
 };

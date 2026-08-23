@@ -1642,6 +1642,41 @@ const getAICoach = async (req, res) => {
   }
 };
 
+// POST /interview/ai-freeform
+// Authenticated Gemini proxy for dashboard/analytics AI copy.
+const getAIFreeform = async (req, res) => {
+  try {
+    const { prompt, maxTokens = 400 } = req.body || {};
+
+    if (typeof prompt !== 'string' || !prompt.trim()) {
+      return res.status(400).json({
+        error: 'prompt is required.',
+      });
+    }
+
+    if (prompt.length > 12000) {
+      return res.status(413).json({
+        error: 'prompt is too long.',
+      });
+    }
+
+    const { generateFreeform } = require('../services/aiServices');
+
+    const text = await generateFreeform(
+      prompt,
+      maxTokens
+    );
+
+    return res.json({ text });
+  } catch (error) {
+    console.error('getAIFreeform error:', error);
+
+    return res.status(500).json({
+      error: 'AI unavailable.',
+    });
+  }
+};
+
 
 // ── GET /interview/session/last/breakdown — Phase 1B ──────────────────────
 // Returns per-question breakdown for the user's most recent completed session.
@@ -1806,6 +1841,7 @@ const getSessionWarmup = async (req, res) => {
   }
 };
 
+
 module.exports = {
   startInterview,
   getInterviewSession,
@@ -1823,4 +1859,5 @@ module.exports = {
   getLastSessionBreakdown,
   getBlindSpots,
   getSessionWarmup,
+  getAIFreeform,
 };

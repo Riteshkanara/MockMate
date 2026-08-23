@@ -1,10 +1,10 @@
-/* eslint-disable react-refresh/only-export-components */
 import API_BASE from '../config/api.js';
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
-import { getPerformanceAnalytics, startInterview, getAICoach } from '../Services/interviewService';
+import { getPerformanceAnalytics, startInterview } from '../Services/interviewService';
 import { getShareLink } from '../Services/profileServices';
+import PageLoader from '../components/PageLoader';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE — READINESS CONSOLE v5
@@ -299,6 +299,311 @@ const heatColor = (score, hasData) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
+// AI COACH MODAL
+// ═══════════════════════════════════════════════════════════════════════════
+const sectionAccents = {
+  'VERDICT':               '#00C8F0',
+  'CRITICAL GAPS':         '#DC2626',
+  'STRENGTHS TO LEVERAGE': '#059669',
+  '30-DAY BATTLE PLAN':    '#4D8FFF',
+  'MINDSET ALERT':         '#D97706',
+};
+const sectionIcons = {
+  'VERDICT':               '🎯',
+  'CRITICAL GAPS':         '🚨',
+  'STRENGTHS TO LEVERAGE': '✨',
+  '30-DAY BATTLE PLAN':    '📅',
+  'MINDSET ALERT':         '🧠',
+};
+
+const AICoachModal = ({ open, onClose, profile, irs, archetype, topTier, weakest, strongest, scoreTrend, totalSessions }) => {
+  const [analysis, setAnalysis] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const overlayRef = useRef(null);
+
+  const scores = (scoreTrend || []).map(s => s.score || 0);
+  const slope = scores.length >= 2 ? trendSlope(scores.slice(-6)) : 0;
+  const sd = scores.length >= 2 ? stdDev(scores) : 0;
+
+  const generateAnalysis = useCallback(async () => {
+    setLoading(true); setAnalysis(''); setDone(false);
+    try {
+      const prompt = `You are MockMate's AI placement coach for Indian CS/IT students. Give sharp, specific, actionable advice based on this student's real data.
+
+Verified stats:
+- Interview Readiness Score (IRS): ${irs}/100  |  Package tier: ${topTier?.label}
+- Archetype: ${archetype?.label} — ${archetype?.desc}
+- Strongest dimension: ${strongest?.label} (${strongest?.score}/100)
+- Weakest dimension:   ${weakest?.label} (${weakest?.score}/100)
+- Total sessions: ${totalSessions}
+- Score trend slope (last 6): ${slope.toFixed(2)} pts/session
+- Score StdDev: ${sd.toFixed(1)} (${sd > 18 ? 'HIGH variance' : sd > 10 ? 'moderate variance' : 'consistent'})
+- Dimensions: ${(profile || []).map(d => `${d.label}: ${d.score}`).join(' | ')}
+
+Write exactly this structure (plain text, no markdown, no emojis):
+
+VERDICT
+One direct sentence on where they truly stand entering placement season.
+
+CRITICAL GAPS
+3 specific things to fix before interviews. Name topics and numbers.
+
+STRENGTHS TO LEVERAGE
+2 real advantages they have over peers. Be specific.
+
+30-DAY BATTLE PLAN
+4 concrete weekly targets to jump one tier. Start each with a number.
+
+MINDSET ALERT
+One honest observation about their learning pattern that most coaches won't say. Reference their archetype.
+
+Under 300 words. Sharp, real, no padding.`;
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] }),
+      });
+      const d = await res.json();
+      setAnalysis(d.content?.[0]?.text || 'Unable to generate analysis. Try again.');
+    } catch {
+      setAnalysis('Could not reach AI coach. Please check your connection and try again.');
+    } finally {
+      setLoading(false); setDone(true);
+    }
+  }, [irs, archetype, strongest, weakest, totalSessions, slope, sd, profile, topTier]);
+
+  useEffect(() => { if (open && !done && !loading && !analysis) generateAnalysis(); }, [open]);
+  useEffect(() => {
+    if (open) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = '';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+
+  if (!open) return null;
+
+  const parsedSections = done
+    ? analysis.split(/\n(?=[A-Z][A-Z ]{3,}\n)/).filter(Boolean).map(s => {
+        const lines = s.trim().split('\n');
+        const heading = lines[0].trim();
+        const body = lines.slice(1).join('\n').trim();
+        return { heading, body, accent: sectionAccents[heading] || C.blue400, icon: sectionIcons[heading] || '•' };
+      }).filter(s => s.heading && s.body)
+    : [];
+
+  return (
+    <div
+      ref={overlayRef}
+      onClick={e => { if (e.target === overlayRef.current) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'rgba(10,22,40,0.65)', backdropFilter: 'blur(10px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+        animation: 'coachFadeIn 0.22s ease',
+      }}
+    >
+      <style>{`
+        @keyframes coachFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes coachSlideUp { from { opacity: 0; transform: translateY(28px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes coachSection { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+      <div style={{
+        width: '100%', maxWidth: 760, maxHeight: '90vh',
+        background: 'linear-gradient(145deg, #0A1628 0%, #001A50 45%, #002244 80%, #003355 100%)',
+        border: '1px solid rgba(0,200,240,0.22)', borderRadius: 28, overflow: 'hidden',
+        boxShadow: '0 32px 80px rgba(0,20,80,0.6)', display: 'flex', flexDirection: 'column',
+        animation: 'coachSlideUp 0.32s cubic-bezier(.16,1,.3,1)',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '22px 26px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
+          <div>
+            <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '1.8px', color: C.cyan400, marginBottom: 7 }}>⚡ AI READINESS COACH</div>
+            <h2 style={{ margin: 0, fontFamily: F.display, fontSize: 19, fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>Your personalised action plan</h2>
+            <p style={{ margin: '6px 0 0', color: 'rgba(255,255,255,0.48)', fontSize: 11.5, lineHeight: 1.6 }}>Built from your IRS components, score variance, and dimension gaps — not generic advice.</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {done && (
+              <button onClick={generateAnalysis} disabled={loading} style={{ border: '1px solid rgba(255,255,255,0.14)', borderRadius: 10, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.65)', padding: '8px 13px', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: F.body }}>
+                ↺ Re-analyse
+              </button>
+            )}
+            <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.65)', fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+        </div>
+
+        {/* Stats strip */}
+        <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          {[
+            { label: 'IRS', val: `${irs}/100`, color: scoreColor(irs) },
+            { label: 'TIER', val: topTier?.label || '—', color: C.cyan400 },
+            { label: 'ARCHETYPE', val: archetype?.label || '—', color: C.blue400 },
+            { label: 'TREND', val: slope >= 0 ? `+${slope.toFixed(1)}/s` : `${slope.toFixed(1)}/s`, color: slope >= 0 ? C.green : C.orange },
+          ].map((item, i) => (
+            <div key={i} style={{ flex: 1, padding: '11px 14px', borderRight: i < 3 ? '1px solid rgba(255,255,255,0.07)' : 'none', textAlign: 'center' }}>
+              <div style={{ fontFamily: F.mono, fontSize: 8, letterSpacing: '1.2px', color: 'rgba(255,255,255,0.32)', marginBottom: 4 }}>{item.label}</div>
+              <div style={{ fontFamily: F.display, fontSize: 12.5, fontWeight: 800, color: item.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.val}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div style={{ overflowY: 'auto', padding: '22px 26px', flex: 1 }}>
+          {loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+              {[
+                `Scanning IRS = ${irs}/100 across 6 dimensions…`,
+                `Computing score variance (StdDev: ${sd.toFixed(1)})…`,
+                `Mapping ${strongest?.label || '—'} strength vs ${weakest?.label || '—'} gap…`,
+                'Drafting your 30-day battle plan…',
+              ].map((msg, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 15px', borderRadius: 11, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(26,110,255,0.15)' }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: C.cyan400, flexShrink: 0, animation: `livePulse 1.4s ease ${i * 0.28}s infinite` }} />
+                  <div style={{ color: 'rgba(255,255,255,0.48)', fontSize: 12, fontFamily: F.mono }}>{msg}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {done && parsedSections.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {parsedSections.map((s, i) => (
+                <div key={i} style={{ padding: '15px 17px', borderRadius: 13, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderLeft: `3px solid ${s.accent}`, animation: `coachSection 0.38s ease ${i * 0.07}s both` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 }}>
+                    <span style={{ fontSize: 13 }}>{s.icon}</span>
+                    <div style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 800, letterSpacing: '1.4px', color: s.accent }}>{s.heading}</div>
+                  </div>
+                  <p style={{ margin: 0, color: 'rgba(255,255,255,0.82)', fontSize: 12.5, lineHeight: 1.75, whiteSpace: 'pre-line' }}>{s.body}</p>
+                </div>
+              ))}
+              <div style={{ marginTop: 4, padding: '13px 17px', borderRadius: 13, background: 'rgba(26,110,255,0.08)', border: '1px solid rgba(26,110,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>Deep-dive into skill velocity, confidence gaps, and blind spots on your Analytics page.</div>
+                <a href="/analytics" onClick={onClose} style={{ border: 'none', borderRadius: 10, background: `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`, color: '#fff', padding: '9px 16px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap', boxShadow: '0 4px 14px rgba(0,173,224,0.28)' }}>
+                  Open Full Analytics →
+                </a>
+              </div>
+            </div>
+          )}
+          {done && parsedSections.length === 0 && analysis && (
+            <p style={{ color: 'rgba(255,255,255,0.72)', fontSize: 13, lineHeight: 1.75, margin: 0, whiteSpace: 'pre-line' }}>{analysis}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FOCUS THIS WEEK CARD — AI-picked single priority
+// ═══════════════════════════════════════════════════════════════════════════
+const FocusThisWeekCard = ({ topicPerformance, dimensionProfile, weakestDim, scoreTrend, onDrill, starting }) => {
+  const [focus, setFocus] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const topWeakTopic = useMemo(() => {
+    if (!topicPerformance.length) return null;
+    return [...topicPerformance]
+      .map(t => {
+        const dim = DIMENSION_META.find(d => d.key === (dimensionProfile.find(dp => dp.contributingTopics?.includes(t.topic))?.key)) ?? {};
+        const roi = (dim.weight ?? 0.1) * (100 - (t.averageScore || 0));
+        return { ...t, roi };
+      })
+      .sort((a, b) => b.roi - a.roi)[0];
+  }, [topicPerformance, dimensionProfile]);
+
+  const slope = trendSlope((scoreTrend || []).slice(-6).map(s => s.score || 0));
+
+  useEffect(() => {
+    if (!topWeakTopic && !weakestDim) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const prompt = `You are a placement coach. In ONE sharp sentence (max 25 words), tell this Indian CS/IT student exactly what to focus on this week and why it will move their IRS the most.
+
+Context:
+- Weakest topic: ${topWeakTopic?.topic || '—'} (score: ${topWeakTopic?.averageScore || 0}/100)
+- Weakest dimension: ${weakestDim?.label || '—'} (score: ${weakestDim?.score || 0}/100)
+- Recent trend slope: ${slope.toFixed(1)} pts/session
+
+Reply with ONLY the one sentence. No preamble, no label.`;
+
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 80, messages: [{ role: 'user', content: prompt }] }),
+        });
+        const d = await res.json();
+        if (!cancelled) setFocus((d.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '') || null);
+      } catch { /* silent */ }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [topWeakTopic?.topic, weakestDim?.key]);
+
+  if (!topWeakTopic && !weakestDim) return null;
+
+  const topic = topWeakTopic?.topic || weakestDim?.label || '—';
+  const score = topWeakTopic?.averageScore ?? weakestDim?.score ?? 0;
+  const col = scoreColor(score);
+
+  return (
+    <section style={{ ...S.card, background: `linear-gradient(145deg, #fff 0%, ${C.blue50} 100%)`, border: `1.5px solid ${C.borderMd}`, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: -40, right: -40, width: 150, height: 150, borderRadius: '50%', background: `radial-gradient(circle, ${C.blue100} 0%, transparent 70%)`, pointerEvents: 'none' }} />
+      <div style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+          <div>
+            <div style={S.eyebrowDark}>FOCUS THIS WEEK</div>
+            <h2 style={S.cardH2}>Your highest-ROI move right now</h2>
+          </div>
+          <div style={{ padding: '5px 11px', borderRadius: 999, background: `${col}18`, border: `1px solid ${col}44`, fontFamily: F.mono, fontSize: 9.5, fontWeight: 800, color: col, flexShrink: 0 }}>
+            TOP PRIORITY
+          </div>
+        </div>
+        <div style={{ padding: '15px 17px', borderRadius: 14, background: '#fff', border: `1.5px solid ${C.borderMd}`, boxShadow: C.shadow, marginBottom: 13 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+            <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 800, color: C.text }}>{topic}</div>
+            <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 800, color: col }}>{score}/100</div>
+          </div>
+          <div style={{ height: 5, borderRadius: 999, background: C.border, overflow: 'hidden', marginBottom: 10 }}>
+            <div style={{ height: '100%', width: `${score}%`, background: col, borderRadius: 999, transition: 'width 1s ease' }} />
+          </div>
+          <div style={{ minHeight: 32, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {loading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.blue400, animation: 'livePulse 1.2s ease infinite' }} />
+                <span style={{ fontFamily: F.mono, fontSize: 10.5, color: C.muted }}>AI is picking your focus…</span>
+              </div>
+            ) : focus ? (
+              <p style={{ margin: 0, fontSize: 12.5, color: C.sub, lineHeight: 1.65, fontStyle: 'italic' }}>"{focus}"</p>
+            ) : (
+              <p style={{ margin: 0, fontSize: 12, color: C.sub, lineHeight: 1.6 }}>
+                Highest ROI score — fixing this moves your IRS more than anything else right now.
+              </p>
+            )}
+          </div>
+        </div>
+        {topicPerformance.length > 1 && (
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 13 }}>
+            {[...topicPerformance].sort((a, b) => (a.averageScore || 0) - (b.averageScore || 0)).slice(1, 4).map(t => {
+              const c = scoreColor(t.averageScore || 0);
+              return (
+                <div key={t.topic} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 999, background: C.cardAlt, border: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => onDrill(t.topic)}>
+                  <span style={{ fontFamily: F.mono, fontSize: 10.5, fontWeight: 700, color: c }}>{t.averageScore || 0}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: C.sub }}>{t.topic}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <button style={{ ...S.btnBlue, width: '100%', justifyContent: 'center', display: 'flex' }} className="mm-btn-blue" onClick={() => onDrill(topic)} disabled={starting}>
+          ⚡ Drill {topic} now →
+        </button>
+      </div>
+    </section>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DASHBOARD COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 const Dashboard = () => {
@@ -308,36 +613,23 @@ const Dashboard = () => {
 
   const [dashStats, setDashStats] = useState(null);
   const [analytics, setAnalytics] = useState(null);
-  const [leaderboard, setLeaderboard] = useState(null);
+
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [coachLoading, setCoachLoading] = useState(false);
-  const [coachTeaser, setCoachTeaser] = useState('');
+  const [coachOpen, setCoachOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const token = localStorage.getItem('token');
-        // /dashboard/stats is a fast query (10 sessions) — it resolves first
-        // and populates the header strip immediately while the heavier
-        // /performance call (all sessions + scoringModel) is still in flight.
         const statsPromise = fetch(`${API_BASE}/dashboard/stats`, {
-        credentials: 'include',
-      }).then(r => r.json());
+          credentials: 'include',
+        }).then(r => r.json());
 
-        const [analyticsData, lbRes] = await Promise.all([
-          getPerformanceAnalytics(),
-          fetch(`${API_BASE}/leaderboard`, {
-            credentials: 'include',
-          }),
-        ]);
+        const analyticsData = await getPerformanceAnalytics();
 
-        // Stats may resolve before or after — whichever lands, set it
         statsPromise.then(s => setDashStats(s)).catch(() => {});
-
         setAnalytics(analyticsData);
-        setLeaderboard(await lbRes.json());
       } catch (e) {
         console.error('Dashboard load:', e);
       } finally {
@@ -359,26 +651,7 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
-  // AI Coach teaser — fetches one-line hook, full board lives on Analytics
-  const handleCoachTeaser = async () => {
-    if (coachTeaser || coachLoading) {
-      navigate('/analytics');
-      return;
-    }
-    try {
-      setCoachLoading(true);
-      const response = await getAICoach();
-      const text = typeof response?.analysis === 'string' ? response.analysis : '';
-      const firstLine = text.split('\n').find(l => l.trim().length > 0) || '';
-      setCoachTeaser(firstLine.slice(0, 140) || 'Your personalised readiness analysis is ready.');
-    } catch (e) {
-      console.error('AI coach teaser failed:', e);
-      setCoachTeaser('');
-    } finally {
-      setCoachLoading(false);
-      navigate('/analytics');
-    }
-  };
+  // AI Coach modal is handled by AICoachModal component below
 
   // Fix-badges — recomputes badge state server-side against all completed
   // sessions, then re-fetches analytics so the badge showcase reflects the
@@ -426,8 +699,7 @@ const Dashboard = () => {
   const scoreTrend = analytics?.scoreTrend ?? [];
   const topicPerformance = useMemo(() => analytics?.topicPerformance ?? [], [analytics]);
   const badgesRaw = useMemo(() => analytics?.badges ?? [], [analytics]);
-  const leaderboardUsers = useMemo(() => leaderboard?.global ?? [], [leaderboard]);
-  const currentUser = leaderboard?.currentUser ?? null;
+
   // Streak: prefer live user object → /dashboard/stats (updated after each session)
   const streakDays = user?.streak?.current ?? dashStats?.stats?.currentStreak ?? 0;
   const avgTimePerQ = analytics?.timePerformance?.averageTimePerQuestion ?? null;
@@ -490,7 +762,7 @@ const Dashboard = () => {
   const hmStats = useMemo(() => heatmapStats(heatmap), [heatmap]);
 
   const nextPrediction = useMemo(() => predictNextScore(scoreTrend), [scoreTrend]);
-  const topicsWithMomentum = useMemo(() => topicMomentum(topicPerformance, scoreTrend), [topicPerformance, scoreTrend]);
+
 
   // Merge live badge unlock state onto the frontend catalogue (so copy/icons
   // stay in this file even if backend only returns id/unlocked/progress).
@@ -513,29 +785,31 @@ const Dashboard = () => {
     return locked.sort((a, b) => (b.progress || 0) - (a.progress || 0))[0] || null;
   }, [badges]);
 
-  const percentile = useMemo(() => {
-    if (!currentUser?.globalRank || !leaderboardUsers.length) return null;
-    return Math.max(1, Math.round(
-      ((leaderboardUsers.length - currentUser.globalRank + 1) / leaderboardUsers.length) * 100
-    ));
-  }, [currentUser, leaderboardUsers]);
+
 
   const sessionId = useMemo(() => Math.random().toString(36).slice(2, 8).toUpperCase(), []);
 
   // ── Loading ───────────────────────────────────────────────────────────────
-  if (loading) return (
-    <div style={S.page}>
-      <div style={S.loadingWrap}>
-        <div style={S.spinner} />
-        <div style={S.loadTitle}>Analysing your readiness profile…</div>
-        <div style={S.loadSub}>Pulling session history and computing IRS</div>
-      </div>
-    </div>
-  );
+  if (loading) {
+    return <PageLoader />;
+  }
 
   return (
     <div style={S.page} className="mm-page">
-      <div style={{ ...S.container, opacity: mounted ? 1 : 0, transform: mounted ? 'none' : 'translateY(10px)' }}>
+      <GlobalStyles />
+      <AICoachModal
+        open={coachOpen}
+        onClose={() => setCoachOpen(false)}
+        profile={dimensionProfile}
+        irs={irs}
+        archetype={archetype}
+        topTier={currentTier}
+        weakest={weakestDim}
+        strongest={strongestDim}
+        scoreTrend={scoreTrend}
+        totalSessions={totalInterviews}
+      />
+      <div style={{ ...S.container, opacity: mounted ? 1 : 0, transform: mounted ? 'none' : 'translateY(10px)', transition: 'opacity 0.55s ease, transform 0.55s cubic-bezier(.16,1,.3,1)' }}>
 
         {/* ── STATUS STRIP ──────────────────────────────────────────────── */}
         <div style={S.strip} className="mm-strip">
@@ -613,12 +887,21 @@ const Dashboard = () => {
                 </p>
               )}
               <div style={S.heroActions}>
-                <button style={S.btnPrimary} onClick={() => startQuick()} disabled={starting}>
+                <button style={S.btnPrimary} className="mm-btn-primary" onClick={() => startQuick()} disabled={starting}>
                   {starting ? 'Launching…' : hasData ? '⚡ New mock interview' : '🎯 Run first interview'}
                 </button>
                 {hasData && (
-                  <button style={S.btnGhost} onClick={() => navigate('/analytics')}>
+                  <button style={S.btnGhost} className="mm-btn-ghost" onClick={() => navigate('/analytics')}>
                     Full analytics →
+                  </button>
+                )}
+                {hasData && (
+                  <button
+                    style={{ ...S.btnGhost, background: 'rgba(0,200,240,0.12)', borderColor: 'rgba(0,200,240,0.35)', color: '#7FE8FF' }}
+                    className="mm-btn-ghost"
+                    onClick={() => setCoachOpen(true)}
+                  >
+                    🧠 AI Coach
                   </button>
                 )}
               </div>
@@ -630,16 +913,23 @@ const Dashboard = () => {
 
           {/* ── QUICK STATS ROW ─────────────────────────────────────────── */}
           <section style={S.statsRow} className="mm-stats">
-            <StatCard label="Avg score" value={averageScore} unit="/100" sub="Simple mean across all sessions" color={scoreColor(averageScore)} />
-            <StatCard label="Best session" value={bestScore} unit="/100" sub="Your personal ceiling" color={C.blue500} />
-            <StatCard label="Sessions" value={totalInterviews} unit="" sub={streakDays ? `${streakDays}-day streak 🔥` : 'No active streak'} color={C.green} />
-            <StatCard label="Trend (last session)" value={`${delta >= 0 ? '+' : ''}${delta}`} unit=" pts" sub={delta > 0 ? 'Moving up ↑' : delta < 0 ? 'Slipping — drill now' : 'Flat'} color={delta >= 0 ? C.green : C.orange} />
+            <StatCard label="Avg score" value={averageScore} unit="/100" sub="Simple mean across all sessions" color={scoreColor(averageScore)} onClick={() => navigate('/analytics')} />
+            <StatCard label="Best session" value={bestScore} unit="/100" sub="Your personal ceiling" color={C.blue500} onClick={() => navigate('/history')} />
+            <StatCard label="Sessions" value={totalInterviews} unit="" sub={streakDays ? `${streakDays}-day streak 🔥` : 'No active streak'} color={C.green} onClick={() => navigate('/history')} />
+            <StatCard label="Trend (last session)" value={`${delta >= 0 ? '+' : ''}${delta}`} unit=" pts" sub={delta > 0 ? 'Moving up ↑' : delta < 0 ? 'Slipping — drill now' : 'Flat'} color={delta >= 0 ? C.green : C.orange} onClick={() => startQuick()} />
           </section>
 
-          {/* ── NEXT SESSION PREDICTOR + WEEKLY DIGEST ──────────────────── */}
+          {/* ── NEXT SESSION PREDICTOR + FOCUS THIS WEEK ─────────────────── */}
           <section style={S.twoCol} className="mm-two-col">
             <PredictorCard prediction={nextPrediction} lastScore={latestScore} averageScore={averageScore} onStart={() => startQuick()} starting={starting} />
-            <WeeklyDigestCard scoreTrend={scoreTrend} hmStats={hmStats} totalInterviews={totalInterviews} longestStreak={dashStats?.stats?.longestStreak ?? hmStats.longestStreak} />
+            <FocusThisWeekCard
+              topicPerformance={topicPerformance}
+              dimensionProfile={dimensionProfile}
+              weakestDim={weakestDim}
+              scoreTrend={scoreTrend}
+              onDrill={startQuick}
+              starting={starting}
+            />
           </section>
 
           {/* ── IRS BREAKDOWN + FIX THIS NEXT ───────────────────────────── */}
@@ -654,13 +944,13 @@ const Dashboard = () => {
                     Gaps here are where readiness points are actually lost.
                   </p>
                 </div>
-                <button style={S.linkBtn} onClick={() => navigate('/analytics')}>Full radar →</button>
+                <button style={S.linkBtn} className="mm-link-btn" onClick={() => navigate('/analytics')}>Full radar →</button>
               </div>
               <div style={S.dimList}>
                 {dimensionProfile.map(d => {
                   const col = d.hasData ? scoreColor(d.score) : C.faint;
                   return (
-                    <div key={d.key} style={S.dimRow} title={d.tip}>
+                    <div key={d.key} style={S.dimRow} className="mm-dim-row" title={d.tip}>
                       <div style={S.dimMeta}>
                         <div style={S.dimLeft}>
                           <span style={S.dimIcon}>{d.icon}</span>
@@ -720,7 +1010,7 @@ const Dashboard = () => {
                     <div style={S.archetypeFix}>{archetype.fix}</div>
                   </div>
 
-                  <button style={{ ...S.btnBlue, marginTop: 'auto' }} onClick={() => startQuick(fixTarget.topic)} disabled={starting}>
+                  <button style={{ ...S.btnBlue, marginTop: 'auto' }} className="mm-btn-blue" onClick={() => startQuick(fixTarget.topic)} disabled={starting}>
                     ⚡ Drill {fixTarget.topic} now
                   </button>
                 </>
@@ -733,26 +1023,20 @@ const Dashboard = () => {
           {/* ── BADGE SHOWCASE ───────────────────────────────────────────── */}
           <BadgeShowcase badges={badges} unlockedCount={unlockedCount} nextBadge={nextBadge} mounted={mounted} onFixBadges={handleFixBadges} />
 
-          {/* ── RECENT SESSIONS — /dashboard/stats recentSessions ────────── */}
-          <RecentSessionsCard sessions={dashStats?.recentSessions} mounted={mounted} />
-
-          {/* ── TOPIC MOMENTUM (sparkline-style rows) ───────────────────── */}
-          <TopicMomentumCard topics={topicsWithMomentum} mounted={mounted} onDrill={startQuick} starting={starting} />
-
-          {/* ── PEER STANDING + AI COACH TEASER ──────────────────────────── */}
+          {/* ── AI COACH TEASER + WEEKLY CHALLENGES ──────────────────────── */}
           <section style={S.twoCol} className="mm-two-col">
-            <PeerCard percentile={percentile} currentUser={currentUser} leaderboardUsers={leaderboardUsers} mounted={mounted} onChallenge={() => startQuick()} starting={starting} />
-            <AICoachTeaserCard onOpen={handleCoachTeaser} loading={coachLoading} teaser={coachTeaser} weakestDim={weakestDim} />
+            <AICoachTeaserCard onOpen={() => setCoachOpen(true)} weakestDim={weakestDim} irs={irs} tier={currentTier} />
+            <WeeklyChallenges scoreTrend={scoreTrend} topicPerformance={topicPerformance} streakDays={streakDays} />
           </section>
 
-          {/* ── WEEKLY CHALLENGES + GROWTH VELOCITY ───────────────────────── */}
+          {/* ── WEEKLY DIGEST + GROWTH VELOCITY ──────────────────────────── */}
           <section style={S.twoCol} className="mm-two-col">
-            <WeeklyChallenges
+            <WeeklyDigestCard
               scoreTrend={scoreTrend}
-              topicPerformance={topicPerformance}
-              streakDays={streakDays}
+              hmStats={hmStats}
+              totalInterviews={totalInterviews}
+              longestStreak={dashStats?.stats?.longestStreak}
             />
-
             <GrowthVelocityCard scoreTrend={scoreTrend} />
           </section>
 
@@ -762,7 +1046,6 @@ const Dashboard = () => {
             irs={irs}
             tier={currentTier}
             strongest={strongestDim}
-            percentile={percentile}
             archetype={archetype}
             sessions={totalInterviews}
           />
@@ -774,9 +1057,6 @@ const Dashboard = () => {
             total={totalInterviews}
             mounted={mounted}
           />
-
-          {/* ── LEADERBOARD ──────────────────────────────────────────────── */}
-          <LeaderboardCard users={leaderboardUsers} currentUser={currentUser} onChallenge={() => startQuick()} starting={starting} />
 
           {/* ── NEXT TIER BANNER ─────────────────────────────────────────── */}
           {nextTier && (
@@ -795,7 +1075,7 @@ const Dashboard = () => {
                 </div>
                 <div style={S.bannerCaption}>{irs}/{nextTier.minScore} IRS needed</div>
               </div>
-              <button style={S.btnBannerCta} onClick={() => startQuick()} disabled={starting}>Keep climbing →</button>
+              <button style={S.btnBannerCta} className="mm-banner-cta" onClick={() => startQuick()} disabled={starting}>Keep climbing →</button>
             </section>
           )}
 
@@ -806,7 +1086,6 @@ const Dashboard = () => {
           <span style={S.mono}>IRS = weighted dimension avg · EWMA trend · breadth · consistency</span>
         </footer>
       </div>
-      <GlobalStyles />
     </div>
   );
 };
@@ -816,14 +1095,19 @@ const Dashboard = () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
-const StatCard = ({ label, value, unit, sub, color }) => (
-  <div style={S.statCard}>
+const StatCard = ({ label, value, unit, sub, color, onClick }) => (
+  <div
+    style={{ ...S.statCard, cursor: onClick ? 'pointer' : 'default' }}
+    className="mm-stat-card"
+    onClick={onClick}
+  >
     <div style={S.statLabel}>{label}</div>
     <div style={S.statValRow}>
       <span style={{ ...S.statVal, color }}>{value}</span>
       {unit && <span style={S.statUnit}>{unit}</span>}
     </div>
     <div style={S.statSub}>{sub}</div>
+    {onClick && <div style={{ marginTop: 8, fontSize: 10, color: C.blue500, fontWeight: 700, fontFamily: F.mono, letterSpacing: '0.3px' }}>Tap to explore →</div>}
   </div>
 );
 
@@ -871,7 +1155,7 @@ const PredictorCard = ({ prediction, lastScore, averageScore, onStart, starting 
           </p>
         </div>
       </div>
-      <button style={{ ...S.btnBlue, marginTop: 14 }} onClick={onStart} disabled={starting}>Beat the forecast →</button>
+      <button style={{ ...S.btnBlue, marginTop: 14 }} className="mm-btn-blue" onClick={onStart} disabled={starting}>Beat the forecast →</button>
     </div>
   );
 };
@@ -893,7 +1177,7 @@ const RecentSessionsCard = ({ sessions, mounted }) => {
           <div style={S.eyebrowDark}>RECENT SESSIONS</div>
           <h2 style={S.cardH2}>Last 5 completed interviews</h2>
         </div>
-        <button style={S.btnOutline} onClick={() => navigate('/history')}>Full history →</button>
+        <button style={S.btnSmall} className="mm-btn-small" onClick={() => navigate('/history')}>Full history →</button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
         {sessions.map((s, i) => (
@@ -1017,10 +1301,11 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted, onFixBadges 
           <button
             onClick={handleFix}
             disabled={fixing}
+            className="mm-recheck-btn"
             title="Recompute badges against all your completed sessions — use this if a badge looks wrong"
             style={{
-              border: `1px solid ${C.border}`, borderRadius: 9, background: C.card,
-              padding: '6px 12px', color: C.sub, cursor: fixing ? 'default' : 'pointer',
+              border: `1px solid ${C.border}`, borderRadius: 10, background: C.card,
+              padding: '7px 13px', color: C.sub, cursor: fixing ? 'default' : 'pointer',
               fontSize: 11, fontWeight: 700, opacity: fixing ? 0.6 : 1,
             }}
           >
@@ -1131,22 +1416,46 @@ const TopicMomentumCard = ({ topics, mounted, onDrill, starting }) => {
   );
 };
 
-// ─── AI Coach Teaser — small, honest hook into the full Analytics board ──────
-const AICoachTeaserCard = ({ onOpen, loading, teaser, weakestDim }) => (
+// ─── AI Coach Teaser ─────────────────────────────────────────────────────────
+const AICoachTeaserCard = ({ onOpen, weakestDim, irs, tier }) => (
   <div style={S.coachTeaserCard}>
     <div style={S.coachTeaserGlow} />
-    <div style={S.eyebrowLight}>AI READINESS COACH</div>
-    <h2 style={{ ...S.bannerH2, fontSize: 17, margin: '6px 0 8px' }}>
-      {teaser ? 'Your coach has thoughts.' : 'Get a real read on your prep.'}
-    </h2>
-    <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: 12, lineHeight: 1.65, minHeight: 38 }}>
-      {teaser
-        ? `"${teaser}${teaser.length >= 140 ? '…' : ''}"`
-        : `Full gap analysis, strengths, and a 30-day plan${weakestDim ? ` — starting with ${weakestDim.label}` : ''}. Lives on your Analytics page.`}
-    </p>
-    <button style={S.coachTeaserBtn} onClick={onOpen} disabled={loading}>
-      {loading ? 'Thinking…' : teaser ? 'Open full analysis →' : '⚡ Analyse my profile →'}
-    </button>
+    <div style={{ position: 'relative' }}>
+      <div style={S.eyebrowLight}>AI READINESS COACH</div>
+      <h2 style={{ ...S.bannerH2, fontSize: 18, margin: '8px 0 10px' }}>
+        Get your personalised 30-day battle plan.
+      </h2>
+      <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.68)', fontSize: 12.5, lineHeight: 1.7 }}>
+        Your coach studies your IRS components, score variance, strongest and weakest dimensions — then writes you a verdict, critical gaps, and a concrete 4-week plan. Specific to your numbers, not generic advice.
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+        {[
+          { label: 'VERDICT', icon: '🎯' },
+          { label: 'CRITICAL GAPS', icon: '🚨' },
+          { label: '30-DAY PLAN', icon: '📅' },
+          { label: 'MINDSET ALERT', icon: '🧠' },
+        ].map(item => (
+          <div key={item.label} style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '5px 10px', borderRadius: 8,
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            fontSize: 10, fontWeight: 700, fontFamily: F.mono,
+            color: 'rgba(255,255,255,0.65)', letterSpacing: '0.5px',
+          }}>
+            <span>{item.icon}</span><span>{item.label}</span>
+          </div>
+        ))}
+      </div>
+      {weakestDim && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.55 }}>
+          🎯 Biggest unlock: <strong style={{ color: '#fff' }}>{weakestDim.label}</strong> at {weakestDim.score}/100 — your coach will tell you exactly how to fix this.
+        </div>
+      )}
+      <button style={S.coachTeaserBtn} className="mm-coach-btn" onClick={onOpen}>
+        ⚡ Open AI Coach →
+      </button>
+    </div>
   </div>
 );
 
@@ -1224,7 +1533,7 @@ const WeeklyChallenges = ({ scoreTrend, topicPerformance, streakDays }) => {
           const done = challenge.current >= challenge.target;
 
           return (
-            <div key={challenge.title} style={S.challengeRow}>
+            <div key={challenge.title} style={S.challengeRow} className="mm-challenge-row">
               <div style={S.challengeIcon}>{challenge.icon}</div>
 
               <div style={S.challengeBody}>
@@ -1580,8 +1889,8 @@ const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions
             {' '}· {archetype.icon} {archetype.label}
           </p>
           <div>
-            <button style={S.btnShare} onClick={handleShare}>{copied ? '✓ Copied to clipboard' : '📤 Share your score'}</button>
-            <button style={S.btnShareLink} onClick={handleCopyProfileLink} disabled={linkLoading}>
+            <button style={S.btnShare} className="mm-share-btn" onClick={handleShare}>{copied ? '✓ Copied to clipboard' : '📤 Share your score'}</button>
+            <button style={S.btnShareLink} className="mm-share-link-btn" onClick={handleCopyProfileLink} disabled={linkLoading}>
               {linkLoading ? 'Generating link…' : linkError ? 'Couldn\u2019t copy — try again' : linkCopied ? '✓ Link copied' : '🔗 Copy public profile link'}
             </button>
           </div>
@@ -1651,19 +1960,182 @@ const GlobalStyles = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-    @keyframes spin       { to { transform: rotate(360deg); } }
-    @keyframes livePulse  { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
-    @keyframes hmScan     { 0% { transform:translateX(-100%); } 100% { transform:translateX(320%); } }
-    @keyframes badgePop   { from { opacity:0; transform:scale(0.9); } to { opacity:1; transform:scale(1); } }
+    /* ── Keyframes ── */
+    @keyframes spin        { to { transform: rotate(360deg); } }
+    @keyframes livePulse   { 0%,100% { opacity:1; } 50% { opacity:0.28; } }
+    @keyframes hmScan      { 0% { transform:translateX(-100%); } 100% { transform:translateX(320%); } }
+    @keyframes fadeUp      { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes fadeIn      { from { opacity:0; } to { opacity:1; } }
+    @keyframes scaleIn     { from { opacity:0; transform:scale(0.94); } to { opacity:1; transform:scale(1); } }
+    @keyframes slideInRight{ from { opacity:0; transform:translateX(12px); } to { opacity:1; transform:translateX(0); } }
+    @keyframes shimmer     { 0% { background-position:-400px 0; } 100% { background-position:400px 0; } }
+    @keyframes floatY      { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-4px); } }
+    @keyframes heroGlow    { 0%,100% { opacity:0.6; } 50% { opacity:1; } }
+    @keyframes barFill     { from { width:0; } }
+    @keyframes ringPulse   { 0% { box-shadow:0 0 0 0 rgba(26,110,255,0.35); } 70% { box-shadow:0 0 0 10px rgba(26,110,255,0); } 100% { box-shadow:0 0 0 0 rgba(26,110,255,0); } }
 
     *, *::before, *::after { box-sizing: border-box; }
+    ::selection { background: rgba(26,110,255,0.18); color: ${C.text}; }
 
-    .mm-page button:focus-visible { outline: 2px solid ${C.blue500}; outline-offset: 2px; }
-    .mm-badge-grid button { transition: opacity 0.35s ease, transform 0.35s cubic-bezier(.16,1,.3,1), box-shadow 0.15s ease; }
-    .mm-badge-grid button:hover { transform: translateY(-2px) !important; }
+    /* ── Focus ── */
+    .mm-page button:focus-visible, .mm-page a:focus-visible {
+      outline: 2px solid ${C.blue500}; outline-offset: 3px; border-radius: 6px;
+    }
 
-    @media (prefers-reduced-motion: reduce) { .mm-page * { animation: none !important; transition: none !important; } }
+    /* ── Scrollbar ── */
+    .mm-page ::-webkit-scrollbar { width: 5px; height: 5px; }
+    .mm-page ::-webkit-scrollbar-track { background: transparent; }
+    .mm-page ::-webkit-scrollbar-thumb { background: ${C.borderMd}; border-radius: 4px; }
+    .mm-page ::-webkit-scrollbar-thumb:hover { background: ${C.borderStr}; }
 
+    /* ── Page entrance ── */
+    .mm-container { animation: fadeUp 0.5s cubic-bezier(.16,1,.3,1) both; }
+
+    /* ── Stat cards ── */
+    .mm-stat-card {
+      transition: box-shadow 0.22s ease, transform 0.22s cubic-bezier(.16,1,.3,1), border-color 0.22s ease !important;
+      position: relative; overflow: hidden;
+    }
+    .mm-stat-card::before {
+      content: ''; position: absolute; inset: 0; opacity: 0;
+      background: linear-gradient(135deg, rgba(26,110,255,0.04) 0%, rgba(0,200,240,0.02) 100%);
+      transition: opacity 0.22s ease; border-radius: inherit; pointer-events: none;
+    }
+    .mm-stat-card:hover { box-shadow: 0 8px 32px rgba(26,110,255,0.14) !important; transform: translateY(-3px) !important; border-color: ${C.borderMd} !important; }
+    .mm-stat-card:hover::before { opacity: 1; }
+    .mm-stat-card:active { transform: translateY(-1px) !important; }
+
+    /* ── Card hover ── */
+    .mm-card-hover {
+      transition: box-shadow 0.22s ease, transform 0.22s cubic-bezier(.16,1,.3,1), border-color 0.22s ease !important;
+    }
+    .mm-card-hover:hover { box-shadow: 0 10px 36px rgba(26,110,255,0.11) !important; transform: translateY(-2px) !important; border-color: ${C.borderMd} !important; }
+
+    /* ── Badge grid ── */
+    .mm-badge-grid button {
+      transition: opacity 0.3s ease, transform 0.28s cubic-bezier(.16,1,.3,1), box-shadow 0.22s ease, border-color 0.22s ease !important;
+    }
+    .mm-badge-grid button:hover { transform: translateY(-4px) scale(1.04) !important; box-shadow: 0 8px 24px rgba(26,110,255,0.18) !important; }
+    .mm-badge-grid button:active { transform: translateY(-1px) scale(1.01) !important; }
+
+    /* ── Primary button ── */
+    .mm-btn-primary {
+      transition: transform 0.15s cubic-bezier(.16,1,.3,1), box-shadow 0.15s ease !important;
+    }
+    .mm-btn-primary:hover { transform: translateY(-2px) !important; box-shadow: 0 10px 28px rgba(0,0,0,0.2) !important; }
+    .mm-btn-primary:active { transform: translateY(0) !important; }
+
+    /* ── Ghost button ── */
+    .mm-btn-ghost {
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease !important;
+    }
+    .mm-btn-ghost:hover { background: rgba(255,255,255,0.18) !important; transform: translateY(-1px) !important; }
+
+    /* ── Blue button ── */
+    .mm-btn-blue {
+      transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important;
+    }
+    .mm-btn-blue:hover { box-shadow: 0 8px 24px rgba(26,110,255,0.42) !important; transform: translateY(-2px) !important; }
+    .mm-btn-blue:active { transform: translateY(0) !important; }
+    .mm-btn-blue:disabled { opacity: 0.6; transform: none !important; box-shadow: none !important; cursor: not-allowed; }
+
+    /* ── Small button ── */
+    .mm-btn-small {
+      transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease !important;
+    }
+    .mm-btn-small:hover { background: ${C.blue100} !important; transform: translateY(-1px) !important; }
+
+    /* ── Link button ── */
+    .mm-link-btn {
+      transition: color 0.15s ease, transform 0.15s ease !important; display: inline-flex; align-items: center; gap: 4px;
+    }
+    .mm-link-btn:hover { color: ${C.blue700} !important; transform: translateX(2px) !important; }
+
+    /* ── Coach button ── */
+    .mm-coach-btn {
+      transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important;
+    }
+    .mm-coach-btn:hover { box-shadow: 0 8px 28px rgba(0,173,224,0.45) !important; transform: translateY(-2px) !important; }
+
+    /* ── Dim rows ── */
+    .mm-dim-row {
+      transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease !important;
+    }
+    .mm-dim-row:hover { background: ${C.blue50} !important; border-color: ${C.borderMd} !important; transform: translateX(3px) !important; }
+
+    /* ── Challenge rows ── */
+    .mm-challenge-row {
+      transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease !important;
+    }
+    .mm-challenge-row:hover { background: ${C.blue50} !important; border-color: ${C.borderMd} !important; box-shadow: 0 2px 12px rgba(26,110,255,0.08) !important; }
+
+    /* ── Heatmap cell ── */
+    .mm-hm-cell {
+      transition: transform 0.1s cubic-bezier(.16,1,.3,1), box-shadow 0.1s ease !important;
+      cursor: default;
+    }
+    .mm-hm-cell.has-data {
+      cursor: pointer;
+    }
+    .mm-hm-cell.has-data:hover { transform: scale(1.8) !important; box-shadow: 0 2px 8px rgba(26,110,255,0.4) !important; z-index: 10 !important; position: relative; }
+
+    /* ── Strip ── */
+    .mm-strip {
+      transition: box-shadow 0.22s ease !important;
+    }
+    .mm-strip:hover { box-shadow: 0 4px 20px rgba(26,110,255,0.1) !important; }
+
+    /* ── Share buttons ── */
+    .mm-share-btn {
+      transition: box-shadow 0.18s ease, transform 0.18s ease !important;
+    }
+    .mm-share-btn:hover { transform: translateY(-2px) !important; box-shadow: 0 8px 22px rgba(0,173,224,0.4) !important; }
+    .mm-share-link-btn {
+      transition: background 0.18s ease, transform 0.18s ease !important;
+    }
+    .mm-share-link-btn:hover { background: rgba(255,255,255,0.14) !important; transform: translateY(-1px) !important; }
+
+    /* ── Banner CTA ── */
+    .mm-banner-cta {
+      transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important;
+    }
+    .mm-banner-cta:hover { box-shadow: 0 10px 28px rgba(26,110,255,0.38) !important; transform: translateY(-2px) !important; }
+
+    /* ── Fix badge recheck button ── */
+    .mm-recheck-btn {
+      transition: background 0.15s ease, border-color 0.15s ease !important;
+    }
+    .mm-recheck-btn:hover:not(:disabled) { background: ${C.blue50} !important; border-color: ${C.borderMd} !important; }
+
+    /* ── Velocity bar ── */
+    .mm-vel-bar { animation: fadeUp 0.5s ease both; }
+
+    /* ── Section stagger ── */
+    .mm-section { animation: fadeUp 0.45s cubic-bezier(.16,1,.3,1) both; }
+    .mm-section:nth-child(1) { animation-delay: 0.05s; }
+    .mm-section:nth-child(2) { animation-delay: 0.10s; }
+    .mm-section:nth-child(3) { animation-delay: 0.15s; }
+    .mm-section:nth-child(4) { animation-delay: 0.20s; }
+    .mm-section:nth-child(5) { animation-delay: 0.25s; }
+
+    /* ── Tier banner ── */
+    .mm-tier-banner {
+      transition: box-shadow 0.22s ease !important;
+    }
+    .mm-tier-banner:hover { box-shadow: 0 8px 32px rgba(26,110,255,0.12) !important; }
+
+    /* ── IRS bar fill animation ── */
+    .mm-irs-fill { animation: barFill 1.4s cubic-bezier(.16,1,.3,1) both 0.3s; }
+
+    /* ── Hero IRS number ── */
+    .mm-irs-num { animation: scaleIn 0.6s cubic-bezier(.16,1,.3,1) both 0.15s; }
+
+    /* ── Reduced motion ── */
+    @media (prefers-reduced-motion: reduce) {
+      .mm-page * { animation: none !important; transition-duration: 0.01ms !important; }
+    }
+
+    /* ── Responsive ── */
     @media (max-width: 1020px) {
       .mm-two-col { grid-template-columns: 1fr !important; }
       .mm-hero-grid { grid-template-columns: 1fr !important; gap: 28px !important; }
@@ -1699,7 +2171,7 @@ const S = {
   },
   container: { maxWidth: 1260, margin: '0 auto', transition: 'opacity 0.55s ease, transform 0.55s cubic-bezier(.16,1,.3,1)' },
 
-  strip: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 16px', marginBottom: 20, borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, boxShadow: C.shadow },
+  strip: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 18px', marginBottom: 22, borderRadius: 12, background: C.card, border: `1px solid ${C.border}`, boxShadow: C.shadow },
   stripL: { display: 'flex', alignItems: 'center', gap: 9 },
   stripR: { display: 'flex', alignItems: 'center', gap: 10 },
   liveDot: { width: 7, height: 7, borderRadius: '50%', background: C.green, animation: 'livePulse 2.4s ease-in-out infinite', boxShadow: `0 0 8px ${C.greenGlow}` },
@@ -1731,24 +2203,24 @@ const S = {
   heroSub: { margin: '13px 0 0', fontSize: 13, lineHeight: 1.72, color: 'rgba(255,255,255,0.75)', maxWidth: 560 },
   heroActions: { display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 22 },
 
-  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 12, background: '#fff', color: C.blue700, padding: '12px 20px', fontSize: 13, fontWeight: 800, fontFamily: F.body, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.14)', transition: 'transform 0.12s ease, box-shadow 0.12s ease' },
-  btnGhost: { border: '1px solid rgba(255,255,255,0.3)', borderRadius: 12, background: 'rgba(255,255,255,0.08)', color: '#fff', padding: '12px 18px', fontSize: 13, fontWeight: 600, fontFamily: F.body, cursor: 'pointer' },
-  btnBlue: { border: 'none', borderRadius: 12, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: '#fff', padding: '11px 18px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 4px 16px rgba(26,110,255,0.3)`, textAlign: 'center' },
-  btnSmall: { border: `1px solid ${C.borderMd}`, borderRadius: 10, background: C.blue50, color: C.blue600, padding: '9px 14px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: F.body },
-  btnShare: { marginTop: 14, border: 'none', borderRadius: 10, background: `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`, color: '#fff', padding: '10px 18px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,173,224,0.35)' },
-  btnShareLink: { marginTop: 14, marginLeft: 10, border: '1px solid rgba(255,255,255,0.28)', borderRadius: 10, background: 'rgba(255,255,255,0.06)', color: '#fff', padding: '10px 18px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
-  btnBannerCta: { flexShrink: 0, border: 'none', borderRadius: 12, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: '#fff', padding: '13px 22px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 6px 20px rgba(26,110,255,0.28)`, alignSelf: 'flex-start' },
+  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 13, background: '#fff', color: C.blue700, padding: '13px 22px', fontSize: 13.5, fontWeight: 800, fontFamily: F.body, cursor: 'pointer', boxShadow: '0 4px 18px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)', letterSpacing: '-0.1px' },
+  btnGhost: { border: '1px solid rgba(255,255,255,0.28)', borderRadius: 13, background: 'rgba(255,255,255,0.09)', backdropFilter: 'blur(8px)', color: '#fff', padding: '13px 20px', fontSize: 13, fontWeight: 600, fontFamily: F.body, cursor: 'pointer' },
+  btnBlue: { border: 'none', borderRadius: 12, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: '#fff', padding: '12px 20px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 4px 16px rgba(26,110,255,0.32)`, textAlign: 'center', letterSpacing: '-0.1px' },
+  btnSmall: { border: `1px solid ${C.borderMd}`, borderRadius: 10, background: C.blue50, color: C.blue600, padding: '8px 14px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: F.body },
+  btnShare: { marginTop: 14, border: 'none', borderRadius: 11, background: `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`, color: '#fff', padding: '11px 20px', fontSize: 13, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 16px rgba(0,173,224,0.32)' },
+  btnShareLink: { marginTop: 14, marginLeft: 10, border: '1px solid rgba(255,255,255,0.25)', borderRadius: 11, background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)', padding: '11px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  btnBannerCta: { flexShrink: 0, border: 'none', borderRadius: 13, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: '#fff', padding: '14px 24px', fontSize: 13.5, fontWeight: 800, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 6px 22px rgba(26,110,255,0.3)`, alignSelf: 'flex-start' },
 
   statsRow: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 },
-  statCard: { padding: '18px 20px', borderRadius: 16, background: C.card, border: `1px solid ${C.border}`, boxShadow: C.shadow },
-  statLabel: { fontSize: 11, fontWeight: 600, color: C.sub, letterSpacing: '0.3px' },
-  statValRow: { display: 'flex', alignItems: 'baseline', gap: 3, marginTop: 8 },
-  statVal: { fontFamily: F.display, fontSize: 32, fontWeight: 800, lineHeight: 1 },
+  statCard: { padding: '20px 22px', borderRadius: 18, background: C.card, border: `1px solid ${C.border}`, boxShadow: '0 2px 16px rgba(26,110,255,0.06)' },
+  statLabel: { fontSize: 11, fontWeight: 600, color: C.sub, letterSpacing: '0.4px', textTransform: 'uppercase' },
+  statValRow: { display: 'flex', alignItems: 'baseline', gap: 3, marginTop: 10 },
+  statVal: { fontFamily: F.display, fontSize: 34, fontWeight: 900, lineHeight: 1, letterSpacing: '-0.5px' },
   statUnit: { fontFamily: F.mono, fontSize: 13, color: C.muted },
-  statSub: { marginTop: 8, fontSize: 11, color: C.muted, lineHeight: 1.4 },
+  statSub: { marginTop: 8, fontSize: 11, color: C.muted, lineHeight: 1.45 },
 
-  card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: 24, boxShadow: C.shadow, marginBottom: 18 },
-  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20 },
+  card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 22, padding: 26, boxShadow: '0 2px 16px rgba(26,110,255,0.06)', marginBottom: 18 },
+  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 22 },
   eyebrowDark: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '1.5px', color: C.blue500, marginBottom: 6 },
   eyebrowLight: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '1.5px', color: C.blue400, marginBottom: 6 },
   cardH2: { margin: 0, fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.text },
@@ -1757,8 +2229,8 @@ const S = {
 
   twoCol: { display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 18, marginBottom: 18 },
 
-  dimList: { display: 'flex', flexDirection: 'column', gap: 14 },
-  dimRow: { padding: '12px 14px', borderRadius: 12, background: C.cardAlt, border: `1px solid ${C.border}` },
+  dimList: { display: 'flex', flexDirection: 'column', gap: 10 },
+  dimRow: { padding: '13px 15px', borderRadius: 13, background: C.cardAlt, border: `1px solid ${C.border}` },
   dimMeta: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   dimLeft: { display: 'flex', alignItems: 'center', gap: 10 },
   dimIcon: { fontSize: 16, width: 22, textAlign: 'center', flexShrink: 0 },
@@ -1816,7 +2288,7 @@ const S = {
   nextBadgePct: { fontFamily: F.mono, fontSize: 9.5, color: C.blue600, fontWeight: 700 },
 
   badgeGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10 },
-  badgeCell: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '14px 8px', borderRadius: 14, cursor: 'pointer', fontFamily: F.body, textAlign: 'center' },
+  badgeCell: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '16px 10px', borderRadius: 16, cursor: 'pointer', fontFamily: F.body, textAlign: 'center', position: 'relative', overflow: 'hidden' },
   badgeIcon: { fontSize: 24 },
   badgeName: { fontSize: 10, fontWeight: 700, lineHeight: 1.25 },
   badgeTierTag: { fontSize: 8.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, textTransform: 'uppercase', letterSpacing: '0.4px', fontFamily: F.mono },
@@ -1892,8 +2364,8 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     gap: 11,
-    padding: '11px 12px',
-    borderRadius: 12,
+    padding: '12px 14px',
+    borderRadius: 13,
     background: C.cardAlt,
     border: `1px solid ${C.border}`,
   },
@@ -2204,7 +2676,7 @@ const S = {
   lbDots: { textAlign: 'center', color: C.muted, fontSize: 18, letterSpacing: 3 },
   youTag: { fontSize: 9, fontWeight: 700, color: C.blue600, background: C.blue50, border: `1px solid ${C.borderMd}`, padding: '2px 7px', borderRadius: 5, flexShrink: 0, fontFamily: F.mono },
 
-  tierBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, padding: '28px 30px', marginBottom: 18, borderRadius: 20, background: `linear-gradient(135deg, ${C.blue50} 0%, ${C.cyanTint} 100%)`, border: `1px solid ${C.borderMd}`, boxShadow: `0 4px 20px rgba(26,110,255,0.08)` },
+  tierBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, padding: '30px 32px', marginBottom: 18, borderRadius: 22, background: `linear-gradient(135deg, ${C.blue50} 0%, ${C.cyanTint} 100%)`, border: `1.5px solid ${C.borderMd}`, boxShadow: `0 4px 24px rgba(26,110,255,0.09)` },
   bannerH2: { margin: '8px 0', fontFamily: F.display, fontSize: 22, fontWeight: 800, color: C.text },
   bannerSub: { margin: 0, fontSize: 12.5, color: C.sub, maxWidth: 540, lineHeight: 1.6 },
   bannerTrack: { marginTop: 14, width: 'min(440px, 100%)', height: 6, borderRadius: 999, background: C.borderMd, overflow: 'visible', position: 'relative' },

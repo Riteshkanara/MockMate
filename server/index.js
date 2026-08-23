@@ -41,14 +41,25 @@ const globalLimiter = rateLimit({
 });
 app.use(globalLimiter);
 
-// ── Stricter limit on AI-heavy interview routes ────────────────────────────
 const interviewLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
+  windowMs: 60 * 1000,
   max: 15,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Only limit AI-calling routes, skip all data-fetch GETs
+    if (req.method === 'GET') return true;
+
+    // POST routes that are AI-heavy
+    const aiPosts = ['/interview/start', '/interview/ai-coach'];
+    const isDynamicAiPost =
+      /^\/interview\/[^/]+\/(answer|complete)$/.test(req.path);
+
+    return !aiPosts.includes(req.path) && !isDynamicAiPost;
+  },
   message: { error: 'Too many interview requests. Slow down a bit.' },
 });
+
 app.use('/interview', interviewLimiter);
 
 // ── Passport ──────────────────────────────────────────────────────────────

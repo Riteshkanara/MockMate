@@ -13,6 +13,7 @@ import {
 
 import useAuth from '../hooks/useAuth';
 import { useInterview } from '../hooks/useInterview';
+import InterviewLoader from '../components/InterviewLoader';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE — INTERVIEW v5
@@ -175,6 +176,7 @@ const DIFFICULTIES = [
 ];
 
 const COMPANIES = ['TCS', 'Infosys', 'Wipro', 'Zoho', 'Razorpay', 'FAANG'];
+
 const TOPICS = [
   'DSA',
   'System Design',
@@ -295,8 +297,11 @@ const Interview = () => {
   }, []);
 
   const currentQuestion = questions?.[currentIndex];
+
   const mode = MODE_META[selectedMode] || MODE_META.quick;
+
   const totalQuestions = questions.length;
+
   const progress = totalQuestions
     ? ((currentIndex + 1) / totalQuestions) * 100
     : 0;
@@ -306,6 +311,7 @@ const Interview = () => {
     ['mcq', 'aptitude'].includes(currentQuestion.questionType);
 
   const questionDifficulty = difficultyMeta(currentQuestion?.difficulty);
+
   const isLastQuestion = currentIndex === totalQuestions - 1;
 
   // ── Restore a dashboard-created session ───────────────────────────────
@@ -314,6 +320,7 @@ const Interview = () => {
 
     if (incoming?.sessionId && incoming?.questions?.length) {
       hydrateSession(incoming.sessionId, incoming.questions);
+
       setSelectedMode(incoming.mode || selectedMode);
       setSelectedCompany(incoming.company || '');
       setSelectedTopic(incoming.topic || '');
@@ -335,37 +342,14 @@ const Interview = () => {
   }, [isSubmitted]);
 
   // ── Reset per-question state ────────────────────────────────────────────
-  //
-  // IMPORTANT:
-  // The old implementation immediately did:
-  //
-  //   setSecondsLeft(...)
-  //   setTimerStarted(true)
-  //
-  // while the previous question could still have secondsLeft === 0.
-  //
-  // That allowed the timer effect to see the new question with 0 seconds
-  // and trigger handleTimeUp/handleSubmit immediately.
-  //
-  // We now:
-  //   1. Lock the timer immediately.
-  //   2. Turn timerStarted OFF.
-  //   3. Reset secondsLeft for the new question.
-  //   4. Wait until the next animation frame.
-  //   5. Unlock and start the timer.
-  //
-  // This guarantees the old timeout cannot leak into the next question.
   useEffect(() => {
     setTextAnswer('');
     setQuestionKey((k) => k + 1);
 
-    // Block timer execution during the transition.
     transitionRef.current = true;
 
-    // Reset the timeout lock for the new question.
     submitLockRef.current = false;
 
-    // Explicitly stop the timer while the new question is being installed.
     setTimerStarted(false);
 
     if (!currentQuestion) {
@@ -373,11 +357,8 @@ const Interview = () => {
       return undefined;
     }
 
-    // Set the new question's timer value first.
     setSecondsLeft(Number(currentQuestion.timeLimit) || 120);
 
-    // Wait for the state update/render cycle to complete before arming
-    // the timer for the new question.
     const frameId = window.requestAnimationFrame(() => {
       transitionRef.current = false;
       setTimerStarted(true);
@@ -402,7 +383,6 @@ const Interview = () => {
     }
 
     if (secondsLeft <= 0) {
-      // Prevent duplicate timeout handling.
       if (submitLockRef.current) {
         return undefined;
       }
@@ -412,8 +392,6 @@ const Interview = () => {
       const timeTaken = currentQuestion.timeLimit;
 
       if (isObjective) {
-        // MCQ/aptitude: if the user already selected an option, submit
-        // that answer instead of treating it as skipped.
         if (
           selectedAnswerIndex !== null &&
           selectedAnswerIndex !== undefined
@@ -432,7 +410,6 @@ const Interview = () => {
           });
         }
       } else if (textAnswer.trim()) {
-        // Preserve partially typed open-answer responses.
         handleSubmit(
           textAnswer,
           null,
@@ -516,7 +493,6 @@ const Interview = () => {
     secondsLeft,
   ]);
 
-  // handleNext() already owns the "is this the last question" branching.
   const doAdvance = useCallback(() => {
     if (isAdvancing || isLoading) {
       return;
@@ -526,7 +502,6 @@ const Interview = () => {
       setIsAdvancing(true);
     }
 
-    // Immediately block the timer of the outgoing question.
     transitionRef.current = true;
 
     handleNext();
@@ -642,6 +617,30 @@ const Interview = () => {
   // CONFIG / START SCREEN
   // ─────────────────────────────────────────────────────────────────────
   if (!sessionStarted) {
+    // ───────────────────────────────────────────────────────────────────
+    // NEW: immediately replace the configuration screen while the
+    // interview is being generated.
+    // ───────────────────────────────────────────────────────────────────
+    if (isLoading) {
+      return (
+        <div style={S.page} className="iv-page">
+          <GlobalStyles />
+
+          <div style={S.emptyWrap}>
+            <InterviewLoader />
+
+            <h2 style={S.emptyTitle}>
+              Preparing your interview
+            </h2>
+
+            <p style={S.emptySub}>
+              Generating your questions — almost there…
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div style={S.page} className="iv-page">
         <GlobalStyles />
@@ -659,6 +658,7 @@ const Interview = () => {
           <div style={S.strip} className="iv-strip">
             <div style={S.stripL}>
               <span style={S.liveDot} />
+
               <span style={S.mono}>
                 MOCKMATE SESSION BUILDER
               </span>
@@ -735,12 +735,14 @@ const Interview = () => {
               <div style={S.verdictBlock}>
                 <div style={S.eyebrow}>
                   <span style={S.eyebrowDot} />
+
                   YOUR NEXT INTERVIEW REP
                 </div>
 
                 <h1 style={S.heroH1}>
                   Walk in prepared.
                   <br />
+
                   <span style={{ color: C.cyan400 }}>
                     Walk out better.
                   </span>
@@ -1031,6 +1033,7 @@ const Interview = () => {
                       ? 'Balanced difficulty'
                       : `${selectedDifficulty} difficulty`}
                     {' · '}
+
                     {user?.name
                       ? `${user.name.split(' ')[0]}'s session`
                       : 'Personalized session'}
@@ -1085,7 +1088,7 @@ const Interview = () => {
   }
 
   // ─────────────────────────────────────────────────────────────────────
-  // SAFETY
+  // SAFETY / LOADING
   // ─────────────────────────────────────────────────────────────────────
   if (!currentQuestion || isAdvancing) {
     return (
@@ -1093,7 +1096,7 @@ const Interview = () => {
         <GlobalStyles />
 
         <div style={S.emptyWrap}>
-          <div style={S.emptySpinner} />
+          <InterviewLoader />
 
           <h2 style={S.emptyTitle}>
             {isAdvancing
@@ -1130,6 +1133,7 @@ const Interview = () => {
         >
           <div style={S.stripL}>
             <span style={S.liveDot} />
+
             <span style={S.mono}>
               LIVE INTERVIEW ROOM
             </span>
@@ -1302,6 +1306,7 @@ const Interview = () => {
               const isPast = i < currentIndex;
               const isCurrent =
                 i === currentIndex;
+
               const col = isPast
                 ? mode.accent
                 : C.border;
@@ -1633,6 +1638,7 @@ const Interview = () => {
             <strong>
               Something went wrong
             </strong>
+
             <span>{error}</span>
           </div>
         )}
@@ -2196,7 +2202,8 @@ const S = {
   page: {
     minHeight: '100vh',
     background: C.bg,
-    backgroundImage: `radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.07) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(0,173,224,0.05) 0%, transparent 42%)`,
+    backgroundImage:
+      `radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.07) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(0,173,224,0.05) 0%, transparent 42%)`,
     padding: '20px 24px 64px',
     fontFamily: F.body,
   },
@@ -2254,7 +2261,8 @@ const S = {
     padding: '28px 28px',
     marginBottom: 14,
     borderRadius: 22,
-    background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 45%, ${C.blue600} 75%, ${C.cyan600} 100%)`,
+    background:
+      `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 45%, ${C.blue600} 75%, ${C.cyan600} 100%)`,
     boxShadow:
       '0 20px 56px rgba(0,31,107,0.30)',
   },
@@ -2671,7 +2679,6 @@ const S = {
     fontWeight: 700,
   },
 
-  // Room
   roomTop: {
     display: 'flex',
     alignItems: 'center',

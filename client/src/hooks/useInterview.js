@@ -130,11 +130,7 @@ export const useInterview = () => {
       setIsLoading(true);
       setError('');
 
-      const toastId =
-        toast.loading(
-          'Building your interview...'
-        );
-
+      
       try {
         const data =
           await startInterview({

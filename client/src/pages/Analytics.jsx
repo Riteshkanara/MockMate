@@ -12,6 +12,7 @@ import {
   Legend,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
+import PencilLoader from '../components/PencilLoader'
 import { getAnalytics, getLastSessionBreakdown, getBlindSpots, getSessionWarmup } from "../Services/interviewService";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -40,6 +41,7 @@ const C = {
   blue50:   "#EBF2FF",
   blue100:  "#C7DAFF",
   blue200:  "#9DBFFF",
+  blue300:  "#6FA5FF",
   blue400:  "#4D8FFF",
   blue500:  "#1A6EFF",
   blue600:  "#0057E8",
@@ -750,6 +752,7 @@ Under 120 words total. Write as behavioral observations, not advice.`;
     </div>
   );
 };
+// ─── (DeepPersonalityProfile kept as internal sub-renderer above) ─────────────
 
 // ─── Skill Velocity Graph — rate of improvement per dimension over time ───────
 // Uses scoreTrend[].topicScores (added by upgraded getAnalytics backend) to
@@ -830,13 +833,14 @@ const SkillVelocityGraph = ({ scoreTrend }) => {
             <button
               key={key}
               onClick={() => toggleDim(key)}
+              className={`an-tab${active ? " an-tab-active" : ""}`}
               style={{
                 border: `1.5px solid ${active ? color : C.border}`,
-                borderRadius: 999, padding: "4px 12px",
+                borderRadius: 999, padding: "5px 13px",
                 background: active ? `${color}15` : C.cardAlt,
                 color: active ? color : C.muted,
                 fontSize: 11, fontWeight: 700, cursor: "pointer",
-                fontFamily: F.body, transition: "all 0.15s",
+                fontFamily: F.body,
               }}
             >
               {VELOCITY_LABELS[key]}
@@ -955,7 +959,7 @@ const SessionQualityCard = () => {
   }, []);
 
   if (loading) return (
-    <div style={S.card}>
+    <div style={S.card} className="an-card">
       <div style={S.eyebrow}>LAST SESSION QUALITY</div>
       <div style={{ color: C.muted, fontSize: 12, padding: "16px 0" }}>Loading session data…</div>
     </div>
@@ -974,7 +978,7 @@ const SessionQualityCard = () => {
   const date = sessionDate ? new Date(sessionDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "";
 
   return (
-    <div style={S.card}>
+    <div style={S.card} className="an-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <div>
           <div style={S.eyebrow}>LAST SESSION QUALITY</div>
@@ -1280,21 +1284,22 @@ const ConfidenceChart = ({ topics, avgTimePerQ }) => {
 
 // ─── Metric card ─────────────────────────────────────────────────────────────
 const MetricCard = ({ icon, label, value, sub, color }) => (
-  <div style={{
-    display: "flex", alignItems: "center", gap: 13,
-    padding: "18px 16px", background: C.card,
+  <div className="an-stat-card" style={{
+    display: "flex", alignItems: "center", gap: 14,
+    padding: "20px 18px", background: C.card,
     border: `1px solid ${C.border}`, borderRadius: 18,
-    boxShadow: C.shadow,
+    boxShadow: "0 2px 16px rgba(26,110,255,0.06)",
   }}>
     <div style={{
-      width: 46, height: 46, borderRadius: 14, flexShrink: 0,
-      background: C.blue50, border: `1px solid ${C.borderMd}`,
-      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+      width: 48, height: 48, borderRadius: 14, flexShrink: 0,
+      background: `linear-gradient(135deg, ${C.blue50}, ${C.cyanTint})`,
+      border: `1px solid ${C.borderMd}`,
+      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21,
     }}>{icon}</div>
     <div>
-      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, color: C.muted, letterSpacing: "0.4px", marginBottom: 3 }}>{label}</div>
-      <div style={{ fontFamily: F.display, fontSize: 22, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 10.5, color: C.sub, marginTop: 3, lineHeight: 1.4 }}>{sub}</div>}
+      <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: C.muted, letterSpacing: "0.8px", marginBottom: 4, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontFamily: F.display, fontSize: 23, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-0.3px" }}>{value}</div>
+      {sub && <div style={{ fontSize: 10.5, color: C.sub, marginTop: 4, lineHeight: 1.4 }}>{sub}</div>}
     </div>
   </div>
 );
@@ -1344,33 +1349,83 @@ const IRSComponentBar = ({ label, value, weight, color }) => (
   </div>
 );
 
-// ─── AI Readiness Board — blue dark panel ────────────────────────────────────
-const AIReadinessBoard = ({ profile, irs, archetype, topTier, weakest, strongest, scoreTrend, totalSessions }) => {
-  const [analysis,  setAnalysis]  = useState("");
-  const [loading,   setLoading]   = useState(false);
-  const [done,      setDone]      = useState(false);
+// ═══════════════════════════════════════════════════════════════════════════
+// FULL AI PROFILE — Readiness Board + Interview DNA merged into one section
+// One button generates both simultaneously. Two panels, one story.
+// ═══════════════════════════════════════════════════════════════════════════
+const FullAIProfileSection = ({ dimensionProfile, scoreTrend, archetype, totalSessions, irs, topTier, weakest, strongest }) => {
+  // Board state
+  const [boardSections, setBoardSections] = useState([]);
+  const [boardRaw,      setBoardRaw]      = useState("");
+  const [boardDone,     setBoardDone]     = useState(false);
 
-  const slope  = trendSlope(scoreTrend.slice(-6).map(s => s.score || 0));
-  const sd     = stdDev(scoreTrend.map(s => s.score || 0));
+  // DNA state
+  const [dnaSections,   setDnaSections]   = useState([]);
+  const [dnaRaw,        setDnaRaw]        = useState("");
+  const [dnaDone,       setDnaDone]       = useState(false);
 
-  const generateAnalysis = async () => {
+  // Shared loading
+  const [loading, setLoading] = useState(false);
+  const [done,    setDone]    = useState(false);
+
+  const slope = trendSlope((scoreTrend || []).slice(-6).map(s => s.score || 0));
+  const sd    = stdDev((scoreTrend || []).map(s => s.score || 0));
+
+  const boardAccents = {
+    "VERDICT":               C.cyan400,
+    "CRITICAL GAPS":         C.red,
+    "STRENGTHS TO LEVERAGE": C.green,
+    "30-DAY BATTLE PLAN":    C.blue400,
+    "MINDSET ALERT":         C.amber,
+  };
+  const boardIcons = {
+    "VERDICT":               "🎯",
+    "CRITICAL GAPS":         "🚨",
+    "STRENGTHS TO LEVERAGE": "✨",
+    "30-DAY BATTLE PLAN":    "📅",
+    "MINDSET ALERT":         "🧠",
+  };
+  const dnaColors = {
+    "RESPONSE STYLE":   C.blue500,
+    "PRESSURE RESPONSE":C.cyan500,
+    "KNOWLEDGE PATTERN":C.green,
+    "GROWTH EDGE":      C.amber,
+  };
+  const dnaIcons = {
+    "RESPONSE STYLE":   "💬",
+    "PRESSURE RESPONSE":"🔥",
+    "KNOWLEDGE PATTERN":"📚",
+    "GROWTH EDGE":      "🎯",
+  };
+
+  const parseSections = (text, accentMap) =>
+    text.split(/\n(?=[A-Z][A-Z ]{3,}\n)/).filter(Boolean).map(s => {
+      const lines   = s.trim().split("\n");
+      const heading = lines[0].trim();
+      const body    = lines.slice(1).join("\n").trim();
+      return { heading, body, accent: accentMap[heading] || C.blue400 };
+    }).filter(s => s.heading && s.body);
+
+  const generateBoth = async () => {
     setLoading(true);
-    setAnalysis("");
+    setBoardDone(false); setDnaDone(false);
+    setBoardSections([]); setDnaSections([]);
+    setBoardRaw(""); setDnaRaw("");
     setDone(false);
-    try {
-      const prompt = `You are MockMate's AI placement coach. Analyze this Indian CS/IT student's mock interview performance profile and give sharp, specific, actionable advice.
+
+    const boardPrompt = `You are MockMate's AI placement coach. Analyze this Indian CS/IT student's mock interview performance and give sharp, actionable advice.
 
 Verified stats:
-- Interview Readiness Score (IRS): ${irs}/100  |  Package tier: ${topTier?.label}
+- IRS: ${irs}/100  |  Package tier: ${topTier?.label}
 - Archetype: ${archetype?.label} — ${archetype?.desc}
-- Strongest dimension: ${strongest?.label} (${strongest?.score}/100)
-- Weakest dimension:   ${weakest?.label} (${weakest?.score}/100)
-- Total sessions: ${totalSessions}
-- Score trend slope (last 6): ${slope.toFixed(2)} pts/session
-- Score StdDev: ${sd.toFixed(1)} (${sd > 18 ? "HIGH variance" : sd > 10 ? "moderate variance" : "consistent"})
-- Dimensions: ${profile.map(d => `${d.label}: ${d.score}`).join(" | ")}
+- Strongest: ${strongest?.label} (${strongest?.score}/100)
+- Weakest: ${weakest?.label} (${weakest?.score}/100)
+- Sessions: ${totalSessions}
+- Trend slope (last 6): ${slope.toFixed(2)} pts/session
+- StdDev: ${sd.toFixed(1)} (${sd > 18 ? "HIGH variance" : sd > 10 ? "moderate" : "consistent"})
+- Dimensions: ${(dimensionProfile || []).filter(d => d.hasData).map(d => `${d.label}: ${d.score}`).join(" | ")}
 
-Write exactly this structure (plain text, no markdown, no emojis):
+Write exactly this structure (plain text, no markdown):
 
 VERDICT
 One direct sentence on where they truly stand entering placement season.
@@ -1389,133 +1444,253 @@ One honest observation about their learning pattern that most coaches won't say.
 
 Under 300 words. Sharp, real, no padding.`;
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }],
+    const dnaPrompt = `You are MockMate's behavioral intelligence engine. Based on ${totalSessions} mock interview sessions of an Indian CS/IT student, generate a precise Interview DNA profile.
+
+Performance data:
+- IRS: ${irs}/100
+- Archetype: ${archetype?.label} (${archetype?.desc})
+- Score StdDev: ${sd.toFixed(1)} (${sd > 18 ? "HIGH variance" : sd > 10 ? "moderate" : "consistent"})
+- Trend slope (last 6 sessions): ${slope.toFixed(2)} pts/session
+- Dimensions: ${(dimensionProfile || []).filter(d => d.hasData).map(d => `${d.label}: ${d.score}/100`).join(" | ")}
+- Session count: ${totalSessions}
+
+Generate a behavioral fingerprint with EXACTLY these 4 sections, plain text, no markdown:
+
+RESPONSE STYLE
+One precise sentence about how they communicate answers — pace, structure, confidence pattern.
+
+PRESSURE RESPONSE
+One precise sentence about how their performance shifts under timed or high-stakes conditions.
+
+KNOWLEDGE PATTERN
+One precise sentence about how they distribute knowledge — broad generalist vs deep specialist tendencies.
+
+GROWTH EDGE
+One precise sentence naming the single behavioral habit that, if changed, would move their IRS fastest.
+
+Under 120 words total. Write as behavioral observations, not advice.`;
+
+    try {
+      // Fire both API calls in parallel
+      const [boardRes, dnaRes] = await Promise.all([
+        fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: boardPrompt }] }),
         }),
-      });
-      const d    = await res.json();
-      const text = d.content?.[0]?.text || "Unable to generate analysis. Try again.";
-      setAnalysis(text);
-      setDone(true);
+        totalSessions >= 10
+          ? fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: dnaPrompt }] }),
+            })
+          : Promise.resolve(null),
+      ]);
+
+      const boardData = await boardRes.json();
+      const boardText = boardData.content?.[0]?.text || "Unable to generate analysis.";
+      setBoardRaw(boardText);
+      setBoardSections(parseSections(boardText, boardAccents));
+      setBoardDone(true);
+
+      if (dnaRes) {
+        const dnaData = await dnaRes.json();
+        const dnaText = dnaData.content?.[0]?.text || "";
+        setDnaRaw(dnaText);
+        setDnaSections(parseSections(dnaText, dnaColors));
+        setDnaDone(true);
+      }
     } catch {
-      setAnalysis("Could not reach AI coach. Please check your connection and try again.");
-      setDone(true);
+      setBoardRaw("Could not reach AI. Please check your connection and try again.");
+      setBoardDone(true);
     } finally {
       setLoading(false);
+      setDone(true);
     }
   };
 
-  const sectionAccents = {
-    "VERDICT":              C.cyan400,
-    "CRITICAL GAPS":        C.red,
-    "STRENGTHS TO LEVERAGE":C.green,
-    "30-DAY BATTLE PLAN":   C.blue400,
-    "MINDSET ALERT":        C.amber,
-  };
-
-  const parsedSections = done
-    ? analysis.split(/\n(?=[A-Z][A-Z ]{3,}\n)/).filter(Boolean).map(s => {
-        const lines   = s.trim().split("\n");
-        const heading = lines[0].trim();
-        const body    = lines.slice(1).join("\n").trim();
-        return { heading, body, accent: sectionAccents[heading] || C.blue400 };
-      })
-    : [];
+  const loadingMessages = [
+    `Scanning IRS = ${irs}/100 across 6 dimensions…`,
+    `Computing score variance (StdDev: ${sd.toFixed(1)})…`,
+    `Mapping ${strongest?.label || "—"} strength vs ${weakest?.label || "—"} gap…`,
+    "Drafting your 30-day battle plan…",
+    "Mapping your behavioral fingerprint…",
+  ];
 
   return (
     <section style={{
-      background: `linear-gradient(135deg, ${C.blue900} 0%, #001A50 45%, #002244 80%, #003355 100%)`,
-      borderRadius: 24, padding: "28px 28px 24px",
-      boxShadow: C.shadowLg, border: `1px solid rgba(26,110,255,0.25)`,
+      background: `linear-gradient(145deg, #080F1E 0%, #0A1628 35%, #001A4A 70%, #002040 100%)`,
+      borderRadius: 24, padding: "28px",
+      boxShadow: "0 24px 72px rgba(0,20,80,0.45)",
+      border: "1px solid rgba(0,200,240,0.18)",
       marginBottom: 18,
     }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 14 }}>
-        <div>
-          <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.6px", color: C.cyan400, marginBottom: 7 }}>
-            AI READINESS BOARD
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 14 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.8px", color: C.cyan400, marginBottom: 8 }}>
+            ⚡ FULL AI PROFILE
           </div>
-          <h2 style={{ margin: 0, fontFamily: F.display, fontSize: 21, fontWeight: 800, color: "#fff" }}>
-            Your AI placement coach just analysed your data.
+          <h2 style={{ margin: 0, fontFamily: F.display, fontSize: 22, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>
+            Placement Coach + Behavioral DNA
           </h2>
-          <p style={{ margin: "7px 0 0", color: "rgba(255,255,255,0.52)", fontSize: 12.5, lineHeight: 1.65, maxWidth: 560 }}>
-            Gaps, strengths, your 30-day battle plan — all derived from your real IRS components, not generic advice.
+          <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.5)", fontSize: 12.5, lineHeight: 1.65, maxWidth: 560 }}>
+            Two AI analyses, one click. Left panel: your 30-day action plan from the placement coach. Right panel: your behavioral fingerprint derived from {totalSessions} sessions.
+            {totalSessions < 10 && (
+              <span style={{ display: "block", marginTop: 6, color: C.amber, fontSize: 11.5 }}>
+                ⚠ Interview DNA unlocks at 10 sessions — you have {totalSessions}. The coach analysis is available now.
+              </span>
+            )}
           </p>
         </div>
-        <button
-          onClick={generateAnalysis}
-          disabled={loading}
-          style={{
-            border: "none", borderRadius: 12, flexShrink: 0,
-            background: loading ? "rgba(255,255,255,0.08)" : `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`,
-            color: "#fff", padding: "12px 20px", fontSize: 13, fontWeight: 800,
-            cursor: loading ? "not-allowed" : "pointer",
-            boxShadow: loading ? "none" : `0 4px 20px rgba(0,173,224,0.35)`,
-            display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap",
-            fontFamily: F.body,
-          }}
-        >
-          {loading ? (
-            <><span style={{ display: "inline-block", width: 14, height: 14, border: "2px solid rgba(255,255,255,0.25)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /> Analysing…</>
-          ) : done ? "↺ Re-analyse" : "⚡ Analyse My Profile"}
-        </button>
+
+        {/* Stats strip */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end", flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[
+              { label: "IRS", val: `${irs}/100`, color: irs >= 75 ? C.green : irs >= 55 ? C.blue400 : C.amber },
+              { label: "ARCHETYPE", val: archetype?.label || "—", color: C.blue300 },
+              { label: "VARIANCE", val: sd > 18 ? "HIGH" : sd > 10 ? "MED" : "LOW", color: sd > 18 ? C.red : sd > 10 ? C.amber : C.green },
+            ].map((item, i) => (
+              <div key={i} style={{ padding: "6px 11px", borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center" }}>
+                <div style={{ fontFamily: F.mono, fontSize: 7.5, letterSpacing: "0.8px", color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>{item.label}</div>
+                <div style={{ fontFamily: F.display, fontSize: 11, fontWeight: 800, color: item.color, whiteSpace: "nowrap" }}>{item.val}</div>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={generateBoth}
+            disabled={loading}
+            className="an-ai-generate-btn"
+            style={{
+              border: "none", borderRadius: 13,
+              background: loading ? "rgba(255,255,255,0.07)" : `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`,
+              color: "#fff", padding: "13px 24px", fontSize: 13.5, fontWeight: 800,
+              cursor: loading ? "not-allowed" : "pointer",
+              boxShadow: loading ? "none" : "0 4px 22px rgba(0,173,224,0.36)",
+              display: "flex", alignItems: "center", gap: 9, whiteSpace: "nowrap",
+              fontFamily: F.body,
+            }}
+          >
+            {loading ? (
+              <><span style={{ display: "inline-block", width: 14, height: 14, border: "2px solid rgba(255,255,255,0.22)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /> Generating both…</>
+            ) : done ? "↺ Regenerate Profile" : "⚡ Generate Full AI Profile"}
+          </button>
+        </div>
       </div>
 
-      {!analysis && !loading && (
-        <div style={{ padding: "40px 20px", textAlign: "center", border: `1.5px dashed rgba(26,110,255,0.3)`, borderRadius: 14 }}>
-          <div style={{ fontSize: 34, marginBottom: 10 }}>🎯</div>
-          <p style={{ color: "rgba(255,255,255,0.42)", fontSize: 13, margin: 0, maxWidth: 420, marginLeft: "auto", marginRight: "auto" }}>
-            Click "Analyse My Profile" — the AI will study your IRS components, spot patterns in your variance, and give you a real 30-day battle plan.
+      {/* Empty state */}
+      {!done && !loading && (
+        <div style={{ padding: "44px 20px", textAlign: "center", border: "1.5px dashed rgba(0,200,240,0.2)", borderRadius: 16 }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>⚡</div>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, margin: "0 auto", maxWidth: 480, lineHeight: 1.7 }}>
+            Click <strong style={{ color: "rgba(255,255,255,0.7)" }}>Generate Full AI Profile</strong> to get your placement coach's action plan and your behavioral fingerprint — both computed from your real session data in parallel.
           </p>
-        </div>
-      )}
-
-      {loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
-          {[
-            `Scanning IRS = ${irs}/100 across 6 dimensions…`,
-            `Computing score variance (StdDev: ${sd.toFixed(1)})…`,
-            `Mapping ${strongest?.label} strength vs ${weakest?.label} gap…`,
-            "Drafting your 30-day battle plan…"
-          ].map((msg, i) => (
-            <div key={i} style={{
-              padding: "10px 14px", borderRadius: 10,
-              background: "rgba(255,255,255,0.05)",
-              border: `1px solid rgba(26,110,255,0.15)`,
-              color: "rgba(255,255,255,0.48)", fontSize: 12, fontFamily: F.mono,
-            }}>{msg}</div>
-          ))}
-        </div>
-      )}
-
-      {done && parsedSections.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginTop: 4 }}>
-          {parsedSections.map((s, i) => (
-            <div key={i} style={{
-              padding: "15px 16px", borderRadius: 14,
-              background: "rgba(255,255,255,0.045)",
-              border: `1px solid rgba(255,255,255,0.07)`,
-              borderLeft: `3px solid ${s.accent}`,
-            }}>
-              <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: "1.4px", color: s.accent, marginBottom: 9 }}>
-                {s.heading}
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 20, flexWrap: "wrap" }}>
+            {[
+              { icon: "🎯", label: "VERDICT", desc: "Where you truly stand" },
+              { icon: "🚨", label: "CRITICAL GAPS", desc: "Top 3 things to fix" },
+              { icon: "📅", label: "30-DAY PLAN", desc: "Concrete weekly targets" },
+              { icon: "🧬", label: "INTERVIEW DNA", desc: "Behavioral fingerprint" },
+            ].map(item => (
+              <div key={item.label} style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", textAlign: "center", minWidth: 100 }}>
+                <div style={{ fontSize: 18, marginBottom: 5 }}>{item.icon}</div>
+                <div style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.8px", color: C.cyan400, marginBottom: 3 }}>{item.label}</div>
+                <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.38)" }}>{item.desc}</div>
               </div>
-              <p style={{ margin: 0, color: "rgba(255,255,255,0.82)", fontSize: 12.5, lineHeight: 1.72, whiteSpace: "pre-line" }}>
-                {s.body}
-              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Loading state */}
+      {loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          {loadingMessages.map((msg, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(26,110,255,0.14)" }}>
+              <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.cyan400, flexShrink: 0, animation: `livePulse 1.4s ease ${i * 0.22}s infinite` }} />
+              <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 11.5, fontFamily: F.mono }}>{msg}</div>
             </div>
           ))}
         </div>
       )}
 
-      {done && parsedSections.length === 0 && (
-        <p style={{ color: "rgba(255,255,255,0.72)", fontSize: 12.5, lineHeight: 1.72, marginTop: 8, whiteSpace: "pre-line" }}>
-          {analysis}
-        </p>
+      {/* Results — two panel layout */}
+      {done && (
+        <div style={{ display: "grid", gridTemplateColumns: totalSessions >= 10 ? "1fr 1fr" : "1fr", gap: 18, marginTop: 4 }} className="an-two-col">
+
+          {/* Left — Placement Coach Board */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>⚡</div>
+              <div>
+                <div style={{ fontFamily: F.mono, fontSize: 8.5, letterSpacing: "1.2px", color: C.blue300, fontWeight: 700 }}>PLACEMENT COACH</div>
+                <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: "#fff" }}>Action plan from your data</div>
+              </div>
+            </div>
+            {boardSections.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {boardSections.map((s, i) => (
+                  <div key={i} style={{ padding: "13px 15px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderLeft: `3px solid ${s.accent}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                      <span style={{ fontSize: 12 }}>{boardIcons[s.heading] || "•"}</span>
+                      <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 800, letterSpacing: "1.3px", color: s.accent }}>{s.heading}</div>
+                    </div>
+                    <p style={{ margin: 0, color: "rgba(255,255,255,0.8)", fontSize: 12, lineHeight: 1.72, whiteSpace: "pre-line" }}>{s.body}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, lineHeight: 1.72, margin: 0, whiteSpace: "pre-line" }}>{boardRaw}</p>
+            )}
+          </div>
+
+          {/* Right — Interview DNA */}
+          {totalSessions >= 10 && (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${C.cyan600}, ${C.cyan500})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>🧬</div>
+                <div>
+                  <div style={{ fontFamily: F.mono, fontSize: 8.5, letterSpacing: "1.2px", color: C.cyan400, fontWeight: 700 }}>INTERVIEW DNA</div>
+                  <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: "#fff" }}>Behavioral fingerprint — {totalSessions} sessions</div>
+                </div>
+              </div>
+              {dnaSections.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {dnaSections.map((s, i) => (
+                    <div key={i} style={{ padding: "13px 15px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderLeft: `3px solid ${s.accent}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                        <span style={{ fontSize: 12 }}>{dnaIcons[s.heading] || "🧬"}</span>
+                        <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 800, letterSpacing: "1.3px", color: s.accent }}>{s.heading}</div>
+                      </div>
+                      <p style={{ margin: 0, color: "rgba(255,255,255,0.8)", fontSize: 12, lineHeight: 1.72, whiteSpace: "pre-line" }}>{s.body}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : dnaDone ? (
+                <p style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, lineHeight: 1.72, margin: 0, whiteSpace: "pre-line" }}>{dnaRaw}</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {["Reading session variance patterns…", "Mapping response style indicators…", "Identifying pressure response signals…", "Writing behavioral fingerprint…"].map((msg, i) => (
+                    <div key={i} style={{ padding: "9px 13px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(0,200,240,0.12)", color: "rgba(255,255,255,0.38)", fontSize: 11, fontFamily: F.mono, animation: `livePulse 1.5s ease ${i * 0.25}s infinite` }}>{msg}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Divider + note */}
+      {done && (
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.3)", lineHeight: 1.6 }}>
+            Both analyses are re-generated fresh on each click. DNA unlocks at 10 sessions.
+          </p>
+          <button onClick={generateBoth} disabled={loading} style={{ border: "1px solid rgba(255,255,255,0.14)", borderRadius: 9, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: F.body }}>
+            ↺ Regenerate both
+          </button>
+        </div>
       )}
     </section>
   );
@@ -1532,11 +1707,37 @@ const Analytics = () => {
   const [mounted,  setMounted]  = useState(false);
   const [drillDim,        setDrillDim]        = useState(null);  // radar axis drill
   const [selectedCompany, setSelectedCompany] = useState(null);   // company overlay on radar
+const hasFetched = useRef(false);
+
+useEffect(() => {
+  if (hasFetched.current) return;
+  hasFetched.current = true;
+
+  (async () => {
+    try {
+      const [result] = await Promise.all([
+        getAnalytics(),
+        new Promise(resolve => setTimeout(resolve, 1500)),
+      ]);
+      setData(result);
+    } catch (err) {
+      console.error("Analytics load failed:", err);
+      setError("Unable to load your performance data.");
+    } finally {
+      setLoading(false);
+      requestAnimationFrame(() => setTimeout(() => setMounted(true), 50));
+    }
+  })();
+}, []);
+
 
   useEffect(() => {
     (async () => {
       try {
-        const result = await getAnalytics();
+        const [result] = await Promise.all([
+          getAnalytics(),
+          new Promise(resolve => setTimeout(resolve, 1500)),
+        ]);
         setData(result);
       } catch (err) {
         console.error("Analytics load failed:", err);
@@ -1659,7 +1860,8 @@ const Analytics = () => {
   if (loading) return (
     <div style={S.page}>
       <div style={S.center}>
-        <div style={S.spinner} />
+        <PencilLoader/>
+        
         <p style={{ color: C.sub, marginTop: 14, fontSize: 13, fontFamily: F.body }}>Building your readiness profile…</p>
       </div>
     </div>
@@ -1671,7 +1873,7 @@ const Analytics = () => {
         <div style={{ fontSize: 44, marginBottom: 14 }}>⚠️</div>
         <h2 style={S.emptyTitle}>Something went wrong</h2>
         <p style={S.emptyText}>{error}</p>
-        <button style={S.btnPrimary} onClick={() => window.location.reload()}>Try Again</button>
+        <button style={S.btnPrimary} className="an-btn-primary" onClick={() => window.location.reload()}>Try Again</button>
       </div>
     </div>
   );
@@ -1683,7 +1885,7 @@ const Analytics = () => {
         <div style={S.eyebrow}>READINESS INTELLIGENCE</div>
         <h1 style={S.emptyTitle}>Your interview fingerprint starts here.</h1>
         <p style={S.emptyText}>Complete your first mock interview and MockMate will compute your IRS, map your dimensions, and show you exactly which package tier you're ready for.</p>
-        <button style={S.btnPrimary} onClick={() => navigate("/interview")}>Start First Interview →</button>
+        <button style={S.btnPrimary} className="an-btn-primary" onClick={() => navigate("/interview")}>Start First Interview →</button>
       </div>
     </div>
   );
@@ -1693,14 +1895,142 @@ const Analytics = () => {
     <div style={S.page}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-        @keyframes spin    { to { transform: rotate(360deg); } }
-        @keyframes fadeUp  { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+        /* ── Keyframes ── */
+        @keyframes spin        { to { transform: rotate(360deg); } }
+        @keyframes fadeUp      { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes fadeIn      { from { opacity:0; } to { opacity:1; } }
+        @keyframes scaleIn     { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:scale(1); } }
+        @keyframes livePulse   { 0%,100% { opacity:1; } 50% { opacity:0.28; } }
+        @keyframes slideRight  { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
+        @keyframes barFill     { from { width:0; } }
+        @keyframes shimmer     { 0% { background-position:-400px 0; } 100% { background-position:400px 0; } }
+
         *, *::before, *::after { box-sizing: border-box; }
-        .an-page button:focus-visible { outline: 2px solid ${C.blue500}; outline-offset: 2px; }
-        @media (prefers-reduced-motion: reduce) { .an-page * { animation: none !important; transition: none !important; } }
-        @media (max-width: 960px)  { .an-two-col { grid-template-columns: 1fr !important; } .an-hero-grid { grid-template-columns: 1fr !important; } }
-        @media (max-width: 760px)  { .an-stats { grid-template-columns: repeat(2,1fr) !important; } .an-tiers { grid-template-columns: repeat(2,1fr) !important; } .an-dims { grid-template-columns: repeat(2,1fr) !important; } }
-        @media (max-width: 480px)  { .an-page { padding: 16px 12px 60px !important; } .an-stats { grid-template-columns: 1fr !important; } .an-dims { grid-template-columns: 1fr !important; } }
+        ::selection { background: rgba(26,110,255,0.16); color: ${C.text}; }
+
+        /* ── Focus ── */
+        .an-page button:focus-visible, .an-page a:focus-visible {
+          outline: 2px solid ${C.blue500}; outline-offset: 3px; border-radius: 6px;
+        }
+
+        /* ── Scrollbar ── */
+        .an-page ::-webkit-scrollbar { width: 5px; height: 5px; }
+        .an-page ::-webkit-scrollbar-track { background: transparent; }
+        .an-page ::-webkit-scrollbar-thumb { background: ${C.borderMd}; border-radius: 4px; }
+        .an-page ::-webkit-scrollbar-thumb:hover { background: ${C.borderStr}; }
+
+        /* ── Page entrance ── */
+        .an-page-inner { animation: fadeUp 0.5s cubic-bezier(.16,1,.3,1) both; }
+
+        /* ── Cards ── */
+        .an-card {
+          transition: box-shadow 0.22s ease, transform 0.22s cubic-bezier(.16,1,.3,1), border-color 0.22s ease !important;
+        }
+        .an-card:hover { box-shadow: 0 10px 36px rgba(26,110,255,0.1) !important; transform: translateY(-2px) !important; border-color: ${C.borderMd} !important; }
+
+        /* ── Stat cards ── */
+        .an-stat-card {
+          transition: box-shadow 0.22s ease, transform 0.22s cubic-bezier(.16,1,.3,1), border-color 0.22s ease !important;
+          position: relative; overflow: hidden;
+        }
+        .an-stat-card::before {
+          content: ''; position: absolute; inset: 0; opacity: 0;
+          background: linear-gradient(135deg, rgba(26,110,255,0.04), rgba(0,200,240,0.02));
+          transition: opacity 0.22s ease; border-radius: inherit; pointer-events: none;
+        }
+        .an-stat-card:hover { box-shadow: 0 8px 32px rgba(26,110,255,0.13) !important; transform: translateY(-3px) !important; border-color: ${C.borderMd} !important; }
+        .an-stat-card:hover::before { opacity: 1; }
+
+        /* ── Tier cards ── */
+        .an-tier-card {
+          transition: box-shadow 0.2s ease, transform 0.2s cubic-bezier(.16,1,.3,1), border-color 0.2s ease !important;
+        }
+        .an-tier-card:hover { box-shadow: 0 6px 24px rgba(26,110,255,0.12) !important; transform: translateY(-2px) !important; }
+        .an-tier-card-active:hover { box-shadow: 0 8px 28px rgba(26,110,255,0.22) !important; }
+
+        /* ── Dimension rows ── */
+        .an-dim-row {
+          transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease !important;
+          cursor: default;
+        }
+        .an-dim-row:hover { background: ${C.blue50} !important; border-color: ${C.borderMd} !important; transform: translateX(3px) !important; }
+
+        /* ── Topic ROI rows ── */
+        .an-roi-row {
+          transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease !important;
+        }
+        .an-roi-row:hover { background: ${C.blue50} !important; border-color: ${C.borderMd} !important; box-shadow: 0 2px 12px rgba(26,110,255,0.07) !important; }
+
+        /* ── Buttons ── */
+        .an-btn-primary {
+          transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important;
+        }
+        .an-btn-primary:hover { box-shadow: 0 10px 28px rgba(26,110,255,0.38) !important; transform: translateY(-2px) !important; }
+        .an-btn-primary:active { transform: translateY(0) !important; }
+
+        .an-btn-secondary {
+          transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease !important;
+        }
+        .an-btn-secondary:hover { background: ${C.blue100} !important; border-color: ${C.blue300} !important; transform: translateY(-1px) !important; }
+
+        .an-btn-blue {
+          transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important;
+        }
+        .an-btn-blue:hover { box-shadow: 0 8px 24px rgba(26,110,255,0.4) !important; transform: translateY(-2px) !important; }
+        .an-btn-blue:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+        /* ── Nav tabs ── */
+        .an-tab {
+          transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease !important;
+          position: relative;
+        }
+        .an-tab:hover:not(.an-tab-active) { color: ${C.blue500} !important; background: ${C.blue50} !important; }
+
+        /* ── Bar fills ── */
+        .an-bar-fill { transition: width 1.1s cubic-bezier(.16,1,.3,1) !important; }
+
+        /* ── Velocity bars ── */
+        .an-vel-column { animation: fadeUp 0.45s ease both; }
+
+        /* ── Score card with ring ── */
+        .an-irs-ring {
+          transition: box-shadow 0.3s ease !important;
+        }
+        .an-irs-ring:hover { box-shadow: 0 0 0 4px rgba(26,110,255,0.18), 0 16px 48px rgba(0,31,107,0.24) !important; }
+
+        /* ── Section stagger ── */
+        .an-section { animation: fadeUp 0.45s cubic-bezier(.16,1,.3,1) both; }
+
+        /* ── Full AI section ── */
+        .an-ai-generate-btn {
+          transition: box-shadow 0.2s ease, transform 0.2s cubic-bezier(.16,1,.3,1) !important;
+        }
+        .an-ai-generate-btn:hover:not(:disabled) { box-shadow: 0 10px 30px rgba(0,173,224,0.4) !important; transform: translateY(-2px) !important; }
+
+        /* ── Recharts tooltip ── */
+        .recharts-tooltip-wrapper { transition: transform 0.12s ease !important; }
+
+        /* ── Reduced motion ── */
+        @media (prefers-reduced-motion: reduce) {
+          .an-page * { animation: none !important; transition-duration: 0.01ms !important; }
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 960px) {
+          .an-two-col { grid-template-columns: 1fr !important; }
+          .an-hero-grid { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 760px) {
+          .an-stats { grid-template-columns: repeat(2,1fr) !important; }
+          .an-tiers { grid-template-columns: repeat(2,1fr) !important; }
+          .an-dims  { grid-template-columns: repeat(2,1fr) !important; }
+        }
+        @media (max-width: 480px) {
+          .an-page  { padding: 16px 12px 60px !important; }
+          .an-stats { grid-template-columns: 1fr !important; }
+          .an-dims  { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
       <div style={{ ...S.container, opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(10px)", transition: "opacity 0.55s ease, transform 0.55s cubic-bezier(.16,1,.3,1)" }} className="an-page">
@@ -1715,7 +2045,7 @@ const Analytics = () => {
               Every number here is from the same formula your Dashboard uses.
             </p>
           </div>
-          <button style={S.btnPrimary} onClick={() => navigate("/interview")}>🎯 New Interview</button>
+          <button style={S.btnPrimary} className="an-btn-primary" onClick={() => navigate("/interview")}>🎯 New Interview</button>
         </div>
 
         {/* ── HERO: LIVING AURA + IRS BREAKDOWN ───────────────────────── */}
@@ -1765,15 +2095,15 @@ const Analytics = () => {
           {/* Right column */}
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {/* IRS ring + tier */}
-            <div style={{ ...S.card, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+            <div className="an-card an-irs-ring" style={{ ...S.card, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
               <div style={S.eyebrow}>INTERVIEW READINESS SCORE</div>
               <p style={{ margin: "4px 0 14px", color: C.sub, fontSize: 11, fontFamily: F.mono, letterSpacing: "0.3px" }}>
                 4-component weighted composite
               </p>
               <AnimatedRing score={irs} size={150} strokeWidth={13} />
-              <div style={{ marginTop: 12, width: "100%", padding: "10px 14px", borderRadius: 12, background: `${currentTier.color}15`, border: `1px solid ${currentTier.color}40`, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ marginTop: 12, width: "100%", padding: "11px 14px", borderRadius: 13, background: `${currentTier.color}15`, border: `1px solid ${currentTier.color}40`, display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ textAlign: "left", flex: 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: currentTier.color, fontFamily: F.display }}>{currentTier.label} eligible</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: currentTier.color, fontFamily: F.display }}>{currentTier.label} eligible</div>
                   {nextTierApi?.desc && <div style={{ fontSize: 10.5, color: C.sub, marginTop: 2 }}>{nextTierApi.desc}</div>}
                 </div>
               </div>
@@ -1785,7 +2115,7 @@ const Analytics = () => {
             </div>
 
             {/* Archetype */}
-            <div style={{ ...S.card, flex: 1 }}>
+            <div className="an-card" style={{ ...S.card, flex: 1 }}>
               <div style={S.eyebrow}>INTERVIEW ARCHETYPE</div>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginTop: 10 }}>
                 <div style={{ width: 46, height: 46, borderRadius: 13, fontSize: 22, background: C.blue50, border: `1px solid ${C.borderMd}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -1873,11 +2203,11 @@ const Analytics = () => {
               const isCurrent = tier.label === currentTierLabel;
               const pct       = Math.min(100, tier.minIRS === 0 ? 100 : (irs / tier.minIRS) * 100);
               return (
-                <div key={tier.label} style={{
-                  padding: "16px 15px", borderRadius: 16,
+                <div key={tier.label} className={`an-tier-card${isCurrent ? " an-tier-card-active" : ""}`} style={{
+                  padding: "18px 16px", borderRadius: 18,
                   border: `2px solid ${isCurrent ? meta.color : C.border}`,
                   background: isCurrent ? `${meta.color}12` : C.cardAlt,
-                  position: "relative", transition: "all 0.2s",
+                  position: "relative",
                 }}>
                   {isCurrent && (
                     <div style={{ position: "absolute", top: 9, right: 9, fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: meta.color, color: "#fff", fontFamily: F.mono, letterSpacing: "0.5px" }}>CURRENT</div>
@@ -1898,7 +2228,7 @@ const Analytics = () => {
 
         {/* ── DNA FINGERPRINT + STREAK CALENDAR ───────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
-          <div style={S.card}>
+          <div style={S.card} className="an-card">
             <div style={S.eyebrow}>PERFORMANCE DNA</div>
             <h2 style={S.cardH2}>Your unique score fingerprint</h2>
             <p style={{ ...S.cardSub, marginBottom: 14 }}>
@@ -1915,7 +2245,7 @@ const Analytics = () => {
             </div>
           </div>
 
-          <div style={S.card}>
+          <div style={S.card} className="an-card">
             <div style={S.eyebrow}>PRACTICE ACTIVITY</div>
             <h2 style={S.cardH2}>15-week session log</h2>
             <p style={{ ...S.cardSub, marginBottom: 16 }}>
@@ -1939,7 +2269,7 @@ const Analytics = () => {
 
         {/* ── PERFORMANCE TRAJECTORY + TOPIC MOMENTUM ─────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
-          <div style={S.card}>
+          <div style={S.card} className="an-card">
             <div style={S.eyebrow}>SCORE TRAJECTORY</div>
             <h2 style={S.cardH2}>Your readiness evolution</h2>
             <p style={S.cardSub}>Every completed session reshapes your IRS. The dashed line is your average.</p>
@@ -1973,21 +2303,25 @@ const Analytics = () => {
             )}
           </div>
 
-          <div style={S.card}>
+          <div style={S.card} className="an-card">
             <div style={S.eyebrow}>TOPIC MOMENTUM</div>
             <h2 style={S.cardH2}>Rising, stable, or falling?</h2>
             <p style={S.cardSub}>Trend tells more than a snapshot score.</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
               {topicPerformance.slice(0, 7).map(t => {
                 const momentum = getMomentum(scoreTrend, t.topic);
                 const score    = t.averageScore || 0;
                 return (
-                  <div key={t.topic} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div key={t.topic} className="an-roi-row" style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "10px 12px", borderRadius: 11,
+                    background: C.cardAlt, border: `1px solid ${C.border}`,
+                  }}>
                     <div style={{ width: 92, fontSize: 11.5, fontWeight: 700, color: C.text, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {t.topic}
                     </div>
-                    <div style={{ flex: 1, height: 8, borderRadius: 999, background: C.border, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${mounted ? score : 0}%`, background: scoreColor(score), borderRadius: 999, transition: "width 1s ease" }} />
+                    <div style={{ flex: 1, height: 7, borderRadius: 999, background: C.border, overflow: "hidden" }}>
+                      <div className="an-bar-fill" style={{ height: "100%", width: `${mounted ? score : 0}%`, background: scoreColor(score), borderRadius: 999 }} />
                     </div>
                     <div style={{ fontFamily: F.display, fontSize: 12, fontWeight: 800, color: scoreColor(score), width: 28, textAlign: "right", flexShrink: 0 }}>{score}</div>
                     <MomentumBadge momentum={momentum} />
@@ -2004,7 +2338,7 @@ const Analytics = () => {
 
         {/* ── CONFIDENCE vs ACCURACY + POINT-LOSS MAP ─────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
-          <div style={S.card}>
+          <div style={S.card} className="an-card">
             <div style={S.eyebrow}>CONFIDENCE vs ACCURACY</div>
             <h2 style={S.cardH2}>Are you fast but wrong?</h2>
             <p style={S.cardSub}>
@@ -2017,7 +2351,7 @@ const Analytics = () => {
             )}
           </div>
 
-          <div style={S.card}>
+          <div style={S.card} className="an-card">
             <div style={S.eyebrow}>ROI POINT-LOSS MAP</div>
             <h2 style={S.cardH2}>Where you're leaking readiness points</h2>
             <p style={S.cardSub}>
@@ -2074,25 +2408,24 @@ const Analytics = () => {
             {dimensionProfile.map(dim => {
               const col = dim.hasData ? scoreColor(dim.score) : C.faint;
               return (
-                <div key={dim.key} title={dim.tip} style={{
-                  padding: "16px 15px", borderRadius: 16,
+                <div key={dim.key} title={dim.tip} className="an-dim-row" style={{
+                  padding: "17px 16px", borderRadius: 17,
                   border: `1.5px solid ${dim.hasData && dim.score >= 80 ? col + "55" : C.border}`,
                   background: dim.hasData && dim.score >= 80 ? `${col}0A` : C.cardAlt,
-                  transition: "all 0.2s", cursor: "default",
                 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                    <div>
-                      <span style={{ fontSize: 16, marginRight: 6 }}>{dim.icon}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      <span style={{ fontSize: 17 }}>{dim.icon}</span>
                       <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{dim.label}</span>
                     </div>
-                    <span style={{ fontFamily: F.display, fontSize: 17, fontWeight: 900, color: dim.hasData ? col : C.faint }}>
+                    <span style={{ fontFamily: F.display, fontSize: 18, fontWeight: 900, color: dim.hasData ? col : C.faint }}>
                       {dim.hasData ? dim.score : "—"}
                     </span>
                   </div>
                   <div style={{ height: 7, borderRadius: 999, background: C.border, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${mounted && dim.hasData ? dim.score : 0}%`, background: col, borderRadius: 999, transition: "width 1.2s cubic-bezier(.16,1,.3,1)" }} />
+                    <div className="an-bar-fill" style={{ height: "100%", width: `${mounted && dim.hasData ? dim.score : 0}%`, background: col, borderRadius: 999 }} />
                   </div>
-                  <div style={{ marginTop: 7, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 10, fontWeight: 700, color: dim.hasData ? col : C.faint }}>
                       {!dim.hasData ? "No data yet" : dim.score >= 80 ? "✓ Strong" : dim.score >= 60 ? "→ Developing" : "↑ Focus needed"}
                     </span>
@@ -2106,25 +2439,16 @@ const Analytics = () => {
           </div>
         </section>
 
-        {/* ── DEEP PERSONALITY PROFILE (10+ sessions) ─────────────────── */}
-        <DeepPersonalityProfile
+        {/* ── FULL AI PROFILE (Readiness Board + Interview DNA merged) ─── */}
+        <FullAIProfileSection
           dimensionProfile={dimensionProfile}
           scoreTrend={scoreTrend}
           archetype={archetype}
           totalSessions={totalSessions}
           irs={irs}
-        />
-
-        {/* ── AI READINESS BOARD ───────────────────────────────────────── */}
-        <AIReadinessBoard
-          profile={dimensionProfile}
-          irs={irs}
-          archetype={archetype}
           topTier={currentTier}
           weakest={weakestDim}
           strongest={strongestDim}
-          scoreTrend={scoreTrend}
-          totalSessions={totalSessions}
         />
 
         {/* ── COLD START vs WARM UP ────────────────────────────────────── */}
@@ -2134,7 +2458,7 @@ const Analytics = () => {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
 
           {/* Smart Focus — upgraded action map */}
-          <div style={S.card}>
+          <div style={S.card} className="an-card">
             <div style={S.eyebrow}>SMART FOCUS RECOMMENDER</div>
             <h2 style={S.cardH2}>Where to put your next hour</h2>
             <p style={S.cardSub}>Sorted by ROI — specific action, mode, and estimated sessions to close the gap.</p>
@@ -2157,9 +2481,9 @@ const Analytics = () => {
                 const sessionsLabel = sessionsEst <= 3 ? `~${sessionsEst} sessions` : sessionsEst <= 8 ? `~${sessionsEst} sessions` : "10+ sessions";
 
                 return (
-                  <div key={t.topic} style={{
-                    display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 14px",
-                    borderRadius: 12,
+                  <div key={t.topic} className="an-roi-row" style={{
+                    display: "flex", alignItems: "flex-start", gap: 12, padding: "13px 15px",
+                    borderRadius: 14,
                     background: i === 0 ? C.redTint : i === 1 ? C.amberTint : C.blue50,
                     border: `1px solid ${i === 0 ? "#FECACA" : i === 1 ? "#FDE68A" : C.borderMd}`,
                   }}>
@@ -2176,7 +2500,8 @@ const Analytics = () => {
                         <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>ROI {t.roi.toFixed(1)}</div>
                         <button
                           onClick={() => navigate("/interview")}
-                          style={{ border: "none", borderRadius: 7, background: i === 0 ? C.red : i === 1 ? C.amber : C.blue500, color: "#fff", padding: "4px 10px", fontSize: 10.5, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: F.body }}>
+                          className="an-btn-blue"
+                          style={{ border: "none", borderRadius: 8, background: i === 0 ? C.red : i === 1 ? C.amber : C.blue500, color: "#fff", padding: "5px 11px", fontSize: 10.5, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: F.body }}>
                           {modeIcon} Start {modeLabel} →
                         </button>
                       </div>
@@ -2270,7 +2595,7 @@ const S = {
   page: {
     minHeight: "100vh",
     background: C.bg,
-    backgroundImage: `radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.07) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(0,173,224,0.05) 0%, transparent 42%)`,
+    backgroundImage: `radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.08) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(0,173,224,0.055) 0%, transparent 42%), radial-gradient(ellipse at 50% 100%, rgba(26,110,255,0.04) 0%, transparent 55%)`,
     padding: "36px 28px 80px",
     fontFamily: F.body,
   },
@@ -2281,15 +2606,15 @@ const S = {
   eyebrow: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.6px", color: C.blue500, marginBottom: 6 },
   pageTitle: { margin: 0, fontFamily: F.display, fontSize: "clamp(26px, 4vw, 38px)", lineHeight: 1.1, fontWeight: 800, letterSpacing: "-0.8px", color: C.text },
 
-  card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: 22, boxShadow: C.shadow },
-  cardH2:  { margin: 0, fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.text },
-  cardSub: { margin: "6px 0 0", color: C.sub, fontSize: 12, lineHeight: 1.6 },
+  card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 22, padding: 24, boxShadow: "0 2px 16px rgba(26,110,255,0.06)" },
+  cardH2:  { margin: 0, fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.text, letterSpacing: "-0.2px" },
+  cardSub: { margin: "6px 0 0", color: C.sub, fontSize: 12, lineHeight: 1.65 },
 
-  btnPrimary: { border: "none", borderRadius: 12, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: "#fff", padding: "12px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: `0 6px 20px rgba(26,110,255,0.28)`, fontFamily: F.body },
-  btnSecondary: { width: "100%", padding: "11px 14px", borderRadius: 10, border: `1px solid ${C.borderMd}`, background: C.blue50, color: C.blue600, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: F.body },
+  btnPrimary: { border: "none", borderRadius: 13, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: "#fff", padding: "13px 22px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", boxShadow: `0 6px 22px rgba(26,110,255,0.30)`, fontFamily: F.body, letterSpacing: "-0.1px" },
+  btnSecondary: { width: "100%", padding: "11px 14px", borderRadius: 11, border: `1px solid ${C.borderMd}`, background: C.blue50, color: C.blue600, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: F.body },
   btnBlue: { display: "flex", alignItems: "center", gap: 6, border: "none", borderRadius: 12, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: "#fff", padding: "12px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: `0 4px 16px rgba(26,110,255,0.3)`, fontFamily: F.body },
 
-  emptyCard: { maxWidth: 620, margin: "80px auto", padding: "56px 28px", textAlign: "center", background: C.card, border: `1px solid ${C.border}`, borderRadius: 24, boxShadow: C.shadowMd },
+  emptyCard: { maxWidth: 620, margin: "80px auto", padding: "56px 28px", textAlign: "center", background: C.card, border: `1px solid ${C.border}`, borderRadius: 24, boxShadow: "0 8px 40px rgba(26,110,255,0.09)" },
   emptyTitle: { margin: "10px 0 0", fontFamily: F.display, fontSize: 22, fontWeight: 800, color: C.text },
   emptyText: { maxWidth: 480, margin: "10px auto 22px", color: C.sub, lineHeight: 1.7, fontSize: 13.5 },
 };

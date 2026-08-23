@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import MainLoader from './components/MainLoader'; 
 
 import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -68,8 +69,34 @@ const NotFound = () => (
   </div>
 );
 
+const AppLoader = ({ children }) => {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#F0F4FF',       // matches your NotFound bg, change if needed
+      }}>
+        <MainLoader />
+      </div>
+    );
+  }
+
+  return children;
+};
+
 function App() {
   return (
+    <AppLoader>
     <BrowserRouter>
       <ErrorBoundary>
         <TitleUpdater />
@@ -94,6 +121,7 @@ function App() {
         </Routes>
       </ErrorBoundary>
     </BrowserRouter>
+    </AppLoader>
   );
 }
 

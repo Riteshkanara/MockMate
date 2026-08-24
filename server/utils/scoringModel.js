@@ -21,7 +21,8 @@
  *   const dimensionProfile = buildDimensionProfile(topicPerformance);
  *   const irs = computeIRS({ dimensionProfile, scoreTrend, topicPerformance, averageScore });
  *   const currentTier = tierForScore(irs);
- *   const nextTier = TIERS[TIERS.indexOf(currentTier) + 1] || null;
+ *   const currentTierIndex = TIERS.findIndex(t => t.label === currentTier.label);
+const nextTier = TIERS[currentTierIndex + 1] || null;
  *   const tierReadiness = nextTier ? computeTierReadiness(dimensionProfile, nextTier) : null;
  */
 

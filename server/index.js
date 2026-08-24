@@ -67,9 +67,11 @@ app.use(passport.initialize());
 
 // ── MongoDB connection ─────────────────────────────────────────────────────
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('MongoDB connected successfully'))
+  .then(() => {
+    console.log('MongoDB connected successfully');
+    console.log('Database name:', mongoose.connection.name);
+  })
   .catch((err) => console.error('MongoDB connection error:', err));
-
 // ── Health check ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'MockMate API is running' });

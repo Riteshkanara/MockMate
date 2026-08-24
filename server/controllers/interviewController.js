@@ -1599,7 +1599,8 @@ const getAICoach = async (req, res) => {
       difficultyMix,
     });
     const { tier: currentTier } = tierForScoreGated(irs, sessions.length);
-    const nextTier = TIERS[TIERS.indexOf(currentTier) + 1] || null;
+    const currentTierIndex = TIERS.findIndex(t => t.label === currentTier.label);
+const nextTier = TIERS[currentTierIndex + 1] || null;
 
     const dimensionTimeSeries = buildDimensionTimeSeries(chronological);
     const nextTierReadiness = nextTier

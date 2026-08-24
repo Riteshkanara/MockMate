@@ -15,6 +15,7 @@ import Dashboard from './pages/Dashboard';
 import Leaderboard from './pages/Leaderboard';
 import History from './pages/History';
 import Analytics from './pages/Analytics';
+import Coach from './pages/Coach';
 import PublicProfile from './pages/publicProfile';
 
 // ── Page titles — keeps browser tabs and history readable ─────────────────
@@ -25,7 +26,8 @@ const PAGE_TITLES = {
   '/result':     'Results — MockMate',
   '/leaderboard':'Leaderboard — MockMate',
   '/history':    'History — MockMate',
-  '/analytics':  'Analytics — MockMate',
+   '/analytics':  'Analytics — MockMate',
+  '/coach':      'Coach — MockMate',
   '/onboarding': 'Setup — MockMate',
 };
 
@@ -113,7 +115,8 @@ function App() {
           <Route path="/result"     element={<ProtectedRoute><Result /></ProtectedRoute>} />
           <Route path="/dashboard"  element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/history"    element={<ProtectedRoute><History /></ProtectedRoute>} />
-          <Route path="/analytics"  element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+                    <Route path="/analytics"  element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+          <Route path="/coach"      element={<ProtectedRoute><Coach /></ProtectedRoute>} />
           <Route path="/leaderboard"element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
 
           {/* Catch-all 404 */}

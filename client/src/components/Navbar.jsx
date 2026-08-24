@@ -75,6 +75,7 @@ const NAV_LINKS = [
   { label: 'History',     path: '/history'     },
   { label: 'Leaderboard', path: '/leaderboard' },
   { label: 'Analytics',   path: '/analytics'   },
+  { label: 'Coach', path: '/coach' }
 ];
 
 const HIDDEN_ROUTES = ['/auth/callback', '/onboarding'];

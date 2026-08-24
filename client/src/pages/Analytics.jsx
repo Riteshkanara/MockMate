@@ -1441,68 +1441,97 @@ const FullAIProfileSection = ({
 
     setDone(false);
 
-    const boardPrompt = `You are MockMate's AI placement coach. Analyze this Indian CS/IT student's mock interview performance and give sharp, actionable advice.
+   const topicLines = (dimensionProfile || [])
+  .filter(d => d.hasData)
+  .sort((a, b) => a.score - b.score)
+  .map(d => {
+    const gap = 100 - d.score;
+    const urgency = d.score < 40 ? "🔴 critical" : d.score < 60 ? "🟠 weak" : d.score < 75 ? "🟡 developing" : "🟢 solid";
+    const topics = (d.contributingTopics || []).slice(0, 3).join(", ");
+    return `  ${d.label}: ${d.score}/100 [${urgency}] — IRS weight ${Math.round((d.weight ?? 0) * 100)}%, gap ${gap} pts${topics ? ` — covers: ${topics}` : ""}`;
+  })
+  .join("\n");
 
-Verified stats:
-- IRS: ${irs}/100  |  Package tier: ${topTier?.label}
+const recentTrend = scoreTrend.slice(-5).map((s, i) => `S${scoreTrend.length - 4 + i}: ${s.score}`).join(" → ");
+const trendVerdict = slope > 3 ? "accelerating upward" : slope > 0.5 ? "slowly improving" : slope > -0.5 ? "flatlined" : "declining — needs urgent reset";
+const varianceVerdict = sd > 18 ? "dangerously inconsistent (high variance means interviewers will see a bad day)" : sd > 10 ? "moderately inconsistent" : "consistent — a real strength";
+const tierGap = topTier ? `currently at ${topTier.label}` : "tier not yet determined";
+const sessionVerdict = totalSessions < 5 ? "early stage — not enough data to trust patterns yet" : totalSessions < 15 ? "building — patterns are becoming clear" : "established — full behavioral picture available";
+
+const boardPrompt = `You are coach, MockMate's senior placement coach. You have coached 200+ Indian CS students through campus placements at companies ranging from TCS to Google. You speak directly, honestly, and personally — like a senior who genuinely wants this student to succeed, not a bot generating a report.
+
+You are looking at this student's real data right now. Talk to them like you're sitting across the table.
+
+STUDENT DATA:
+- Sessions completed: ${totalSessions} (${sessionVerdict})
+- Current IRS: ${irs}/100 | Package tier: ${topTier?.label}
+- ${tierGap}
+- Best ever score: ${strongest?.score ?? "—"}/100 | Weakest dimension: ${weakest?.label ?? "—"} at ${weakest?.score ?? "—"}/100
+- Score trend (last 5): ${recentTrend || "not enough data"}
+- Trend direction: ${trendVerdict}
+- Score consistency: ${varianceVerdict} (std-dev: ${sd.toFixed(1)})
 - Archetype: ${archetype?.label} — ${archetype?.desc}
-- Strongest: ${strongest?.label} (${strongest?.score}/100)
-- Weakest: ${weakest?.label} (${weakest?.score}/100)
-- Sessions: ${totalSessions}
-- Trend slope (last 6): ${slope.toFixed(2)} pts/session
-- StdDev: ${sd.toFixed(1)} (${sd > 18 ? "HIGH variance" : sd > 10 ? "moderate" : "consistent"})
-- Dimensions: ${(dimensionProfile || [])
-      .filter((d) => d.hasData)
-      .map((d) => `${d.label}: ${d.score}`)
-      .join(" | ")}
 
-Write exactly this structure (plain text, no markdown):
+DIMENSION BREAKDOWN (sorted weakest → strongest):
+${topicLines || "  No dimension data yet"}
 
-VERDICT
-One direct sentence on where they truly stand entering placement season.
+YOUR TASK:
+Write a personal coaching message to this student. Not a report. Not bullet points. Not sections with CAPS headings. Talk to them.
 
-CRITICAL GAPS
-3 specific things to fix before interviews. Name topics and numbers.
+Structure your response EXACTLY like this — use these exact heading names, each on its own line, followed by your message in plain conversational prose:
 
-STRENGTHS TO LEVERAGE
-2 real advantages they have over peers. Be specific.
+HONEST VERDICT
+[2-3 sentences. Tell them exactly where they stand. Use their actual IRS number and tier. Don't soften it — if they're stuck, say so and why. If they're close to a breakthrough, name it specifically.]
 
-30-DAY BATTLE PLAN
-4 concrete weekly targets to jump one tier. Start each with a number.
+THE REAL PROBLEM
+[3-4 sentences. Identify the single root cause holding their IRS back most. Name the specific dimension, score, and why that particular gap matters in actual interviews. Connect it to the archetype — what does being an "${archetype?.label}" mean for how THIS gap shows up on an interview day?]
 
-MINDSET ALERT
-One honest observation about their learning pattern that most coaches won't say. Reference their archetype.
+WHAT'S ACTUALLY WORKING
+[2-3 sentences. Find the genuine strength — not just "you have potential." Reference their strongest dimension or best score. Tell them exactly how to weaponize it in interviews — which companies, which round of interviews, which type of question plays to this strength.]
 
-Under 300 words. Sharp, real, no padding.`;
+YOUR NEXT 30 DAYS
+[4 specific actions. Each starts with a number and timeframe. Be concrete — name the topic, the mode (topic/full/mcq), and the target score. Example: "Week 1: 3 DSA sessions in topic mode, aim to move from ${weakest?.score ?? 40} → 55 before touching anything else."]
 
-    const dnaPrompt = `You are MockMate's behavioral intelligence engine. Based on ${totalSessions} mock interview sessions of an Indian CS/IT student, generate a precise Interview DNA profile.
+ONE THING MOST COACHES WON'T SAY
+[2-3 sentences. The uncomfortable truth about their pattern. Reference their archetype and variance directly. What does this pattern predict about their real interview performance if nothing changes?]
 
-Performance data:
-- IRS: ${irs}/100
-- Archetype: ${archetype?.label} (${archetype?.desc})
-- Score StdDev: ${sd.toFixed(1)} (${sd > 18 ? "HIGH variance" : sd > 10 ? "moderate" : "consistent"})
-- Trend slope (last 6 sessions): ${slope.toFixed(2)} pts/session
-- Dimensions: ${(dimensionProfile || [])
-      .filter((d) => d.hasData)
-      .map((d) => `${d.label}: ${d.score}/100`)
-      .join(" | ")}
-- Session count: ${totalSessions}
+Rules:
+- Every number you mention must come from the data above — never invent stats
+- Write as coach speaking to the student directly ("you scored", "your DSA", "what I'm seeing")  
+- No markdown, no asterisks, no bullet dashes, no generic advice
+- Total length: 350-450 words
+- Sound like a human who read their data, not a model completing a template`;
 
-Generate a behavioral fingerprint with EXACTLY these 4 sections, plain text, no markdown:
+const dnaPrompt = `You are MockMate's behavioral analysis system. You have just finished reading ${totalSessions} completed mock interview sessions from one student. This is not a generic profile — this is derived from actual performance patterns.
+
+BEHAVIORAL SIGNALS:
+- Score std-dev: ${sd.toFixed(1)} → ${sd > 18 ? "HIGH variance (brilliant peaks, concerning troughs)" : sd > 10 ? "moderate variance (somewhat unpredictable)" : "LOW variance (consistent, reliable)"}
+- Trend slope over last 6 sessions: ${slope.toFixed(2)} pts/session → ${slope > 2 ? "strong upward momentum" : slope > 0 ? "slight improvement" : slope > -1 ? "stagnating" : "declining"}
+- Archetype classification: ${archetype?.label} — ${archetype?.desc}
+- Archetype fix: ${archetype?.fix}
+- Strongest area: ${strongest?.label ?? "unclear"} (${strongest?.score ?? "—"}/100) — ${strongest?.score >= 75 ? "genuinely strong, should be leaned on" : "stronger than others but not interview-ready"}
+- Biggest gap: ${weakest?.label ?? "unclear"} (${weakest?.score ?? "—"}/100) — ${(weakest?.score ?? 0) < 50 ? "critical gap that will cost them in interviews" : "needs work but not fatal"}
+- Session count: ${totalSessions} — ${totalSessions < 10 ? "limited data, observations are preliminary" : totalSessions < 20 ? "enough data for reliable pattern detection" : "strong behavioral history — high confidence observations"}
+
+Write EXACTLY 4 behavioral observations, using EXACTLY these headings:
 
 RESPONSE STYLE
-One precise sentence about how they communicate answers — pace, structure, confidence pattern.
+[One precise sentence — NOT advice. Describe HOW they communicate answers based on the data. Include something specific about pace, structure, or confidence inferred from their scores and archetype. Example of wrong: "They should practice being more concise." Example of right: "Their answers tend to be front-loaded with definition but trail off before landing the conclusion, which tracks with the ${archetype?.label} pattern of strong bursts followed by incomplete follow-through."]
 
 PRESSURE RESPONSE
-One precise sentence about how their performance shifts under timed or high-stakes conditions.
+[One precise sentence about what the variance data reveals about their performance under time/pressure conditions. High std-dev = breaks down under pressure. Low std-dev with low score = consistently underperforms. Reference the actual numbers.]
 
 KNOWLEDGE PATTERN
-One precise sentence about how they distribute knowledge — broad generalist vs deep specialist tendencies.
+[One precise sentence about how their dimension scores reveal their knowledge structure — are they a specialist or generalist? Where is knowledge deep vs shallow? Use the actual dimension names and scores.]
 
 GROWTH EDGE
-One precise sentence naming the single behavioral habit that, if changed, would move their IRS fastest.
+[One precise sentence naming the single behavioral change — not a topic — that would move their IRS fastest. This is about HOW they practice or perform, not WHAT they study. Make it behavioral and specific to their archetype pattern.]
 
-Under 120 words total. Write as behavioral observations, not advice.`;
+Rules:
+- Write as an observer describing what you see, not as a coach giving advice
+- Reference actual numbers from the data
+- Each observation must be ONE sentence only
+- No markdown, no asterisks, total under 150 words`;
 
     try {
       // Run both Gemini requests independently.

@@ -9,20 +9,17 @@ import {
   YAxis,
   Tooltip,
   ReferenceLine,
-  Legend,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
-import PencilLoader from '../components/PencilLoader'
+import BookLoader from "../components/BookLoader";
 import { getAIFreeform, getAnalytics, getLastSessionBreakdown, getBlindSpots, getSessionWarmup } from "../Services/interviewService";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MOCKMATE ANALYTICS — READINESS INTELLIGENCE v4
-// Blueprint blue system — exact tokens shared with Dashboard so both pages
-// are visually the same product, not siblings from different families.
-// Every number is computed by the same IRS formula as Dashboard.
+// MOCKMATE ANALYTICS — READINESS INTELLIGENCE v5
+// War-room aesthetic — deep indigo/violet accent distinguishes this page
+// from Dashboard's blueprint-blue. Same IRS formula, distinct visual identity.
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ─── Design tokens — EXACT mirror of Dashboard C ─────────────────────────────
 const C = {
   bg:       "#F0F4FF",
   bgDeep:   "#E8EEFF",
@@ -48,6 +45,13 @@ const C = {
   blue700:  "#0044C4",
   blue900:  "#001F6B",
 
+  // War-room violet accent — differentiates Analytics from Dashboard's cyan
+  violet:     "#1A6EFF",
+  violetLight:"#00C8F0",
+  violetTint: "#EBF2FF",
+  violetMid:  "#0057E8",
+  violetDeep: "#0044C4",
+
   cyan400:  "#00C8F0",
   cyan500:  "#00ADE0",
   cyan600:  "#0093C4",
@@ -65,6 +69,16 @@ const C = {
   red:      "#DC2626",
   redTint:  "#FEF2F2",
 
+  // Per-dimension vivid colors — each dimension gets its own identity
+  dimColors: {
+    technical:      "#1A6EFF",
+    problemSolving: "#1A6EFF",
+    communication:  "#059669",
+    behavioral:     "#D97706",
+    design:         "#0093C4",
+    fundamentals:   "#DC2626",
+  },
+
   shadow:   "0 1px 12px rgba(26,110,255,0.07)",
   shadowMd: "0 6px 28px rgba(26,110,255,0.12)",
   shadowLg: "0 16px 56px rgba(0,31,107,0.18)",
@@ -76,9 +90,6 @@ const F = {
   mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
 };
 
-// ─── Dimension display metadata — icons, tips, weights for rendering only.
-// Scores, hasData, contributingTopics come from the API (scoringModel.js
-// with the real synonym resolver). This array is NEVER used to compute IRS.
 const DIMENSION_META = [
   { key: "technical",      label: "Technical Depth", icon: "⚙",  weight: 0.28, tip: "Core CS fundamentals — the first thing technical screeners test." },
   { key: "problemSolving", label: "Problem Solving", icon: "🔍", weight: 0.22, tip: "How you break down unknowns — decisive in live coding rounds." },
@@ -88,16 +99,13 @@ const DIMENSION_META = [
   { key: "fundamentals",   label: "CS Fundamentals", icon: "📚", weight: 0.10, tip: "Breadth of core knowledge — separates prepared from lucky." },
 ];
 
-// ─── Tier display metadata — colors/bg only. Thresholds + readiness logic
-// live in scoringModel.js (backend). Frontend reads computed values from API.
 const TIER_META = {
-  "₹3–6 LPA":   { color: "#7A8BAF", bg: C.blue50    },
-  "₹6–12 LPA":  { color: C.amber,   bg: C.amberTint },
-  "₹12–20 LPA": { color: C.blue500, bg: C.blue50    },
-  "₹20 LPA+":   { color: C.cyan500, bg: C.cyanTint  },
+  "₹3–6 LPA":   { color: "#7A8BAF", bg: C.blue50,    gradient: "linear-gradient(135deg, #EBF2FF, #F0F4FF)" },
+  "₹6–12 LPA":  { color: C.amber,   bg: C.amberTint, gradient: "linear-gradient(135deg, #FFFBEB, #FEF3C7)" },
+  "₹12–20 LPA": { color: C.blue500, bg: C.blue50,    gradient: "linear-gradient(135deg, #EBF2FF, #DBEAFE)" },
+  "₹20 LPA+":   { color: C.violet,  bg: C.violetTint,gradient: "linear-gradient(135deg, #EBF2FF, #DBEAFE)" },
 };
 
-// ─── Archetypes ───────────────────────────────────────────────────────────────
 const ARCHETYPES = [
   { id: "inconsistentGenius", label: "Inconsistent Genius", icon: "🎲", desc: "High variance — brilliant when in flow, needs to build a floor.", fix: "Consistency drills: hold 65+ on every session before chasing 90+." },
   { id: "consistentClimber",  label: "Consistent Climber",  icon: "📈", desc: "Steady, reliable improvement — the archetype that wins campus placements.", fix: "Keep the streak; add harder topic rotations to keep growing." },
@@ -106,77 +114,45 @@ const ARCHETYPES = [
   { id: "pressureCooker",     label: "Pressure Cooker",     icon: "🔥", desc: "Scores improve under timed, competitive conditions.", fix: "Channel this by joining live contest platforms weekly." },
 ];
 
-// ─── Company target profiles — expected dimension polygon per archetype.
-// Values are minimum desired scores per dimension for that company tier.
-// These are directional benchmarks, not verified market data.
 const COMPANY_PROFILES = [
-  {
-    id: "service",
-    label: "Service (TCS / Infosys / Wipro)",
-    icon: "🏢",
-    scores: { technical: 55, problemSolving: 50, communication: 65, behavioral: 60, design: 25, fundamentals: 55 },
-  },
-  {
-    id: "product_mid",
-    label: "Mid Product (Flipkart / Swiggy / PhonePe)",
-    icon: "🚀",
-    scores: { technical: 72, problemSolving: 70, communication: 60, behavioral: 55, design: 55, fundamentals: 65 },
-  },
-  {
-    id: "faang",
-    label: "FAANG-adjacent (Google / Amazon / Microsoft)",
-    icon: "🏆",
-    scores: { technical: 85, problemSolving: 88, communication: 65, behavioral: 62, design: 75, fundamentals: 78 },
-  },
-  {
-    id: "startup",
-    label: "Early-Stage Startup",
-    icon: "⚡",
-    scores: { technical: 68, problemSolving: 65, communication: 72, behavioral: 65, design: 45, fundamentals: 58 },
-  },
+  { id: "service",     label: "Service (TCS / Infosys / Wipro)",           icon: "🏢", scores: { technical: 55, problemSolving: 50, communication: 65, behavioral: 60, design: 25, fundamentals: 55 } },
+  { id: "product_mid", label: "Mid Product (Flipkart / Swiggy / PhonePe)", icon: "🚀", scores: { technical: 72, problemSolving: 70, communication: 60, behavioral: 55, design: 55, fundamentals: 65 } },
+  { id: "faang",       label: "FAANG-adjacent (Google / Amazon / Microsoft)",icon: "🏆", scores: { technical: 85, problemSolving: 88, communication: 65, behavioral: 62, design: 75, fundamentals: 78 } },
+  { id: "startup",     label: "Early-Stage Startup",                        icon: "⚡", scores: { technical: 68, problemSolving: 65, communication: 72, behavioral: 65, design: 45, fundamentals: 58 } },
 ];
 
-// ─── Shared maths helpers (read-only — used only for archetype derivation
-//     and chart annotations, NOT for IRS/tier computation) ──────────────────
+// ─── Maths helpers ────────────────────────────────────────────────────────────
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(v || 0)));
-
 const ewma = (values, alpha = 0.35) => {
   if (!values.length) return 0;
   return values.reduce((acc, v, i) => (i === 0 ? v : alpha * v + (1 - alpha) * acc), values[0]);
 };
-
 const stdDev = (values) => {
   if (values.length < 2) return 0;
   const mean = values.reduce((a, v) => a + v, 0) / values.length;
-  const variance = values.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / (values.length - 1);
-  return Math.sqrt(variance);
+  return Math.sqrt(values.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / (values.length - 1));
 };
-
 const trendSlope = (values) => {
   const n = values.length;
   if (n < 2) return 0;
   const xMean = (n - 1) / 2;
   const yMean = values.reduce((a, v) => a + v, 0) / n;
-  const num   = values.reduce((a, v, i) => a + (i - xMean) * (v - yMean), 0);
-  const den   = values.reduce((a, _, i) => a + Math.pow(i - xMean, 2), 0);
+  const num = values.reduce((a, v, i) => a + (i - xMean) * (v - yMean), 0);
+  const den = values.reduce((a, _, i) => a + Math.pow(i - xMean, 2), 0);
   return den ? num / den : 0;
 };
-
 const deriveArchetype = (scoreTrend, avgTimePerQ, avgScore) => {
   const scores = scoreTrend.map(s => s.score || 0);
   if (scores.length < 2) return ARCHETYPES[1];
-  const sd    = stdDev(scores);
+  const sd = stdDev(scores);
   const slope = trendSlope(scores);
-  if (sd > 18)   return ARCHETYPES[0];
+  if (sd > 18) return ARCHETYPES[0];
   if (slope > 2) return ARCHETYPES[1];
   if (avgTimePerQ != null && avgTimePerQ < 22) return ARCHETYPES[2];
   if (avgTimePerQ != null && avgTimePerQ > 52) return ARCHETYPES[3];
   return ARCHETYPES[4];
 };
-
-/** Topic ROI — uses DIMENSION_META weights (display only, consistent with API weights) */
 const topicROI = (topic, dimensionProfile) => {
-  // find which dimension this topic contributes to via the API's contributingTopics field
   const dim = dimensionProfile.find(d =>
     (d.contributingTopics || []).some(ct => ct.toLowerCase() === topic.toLowerCase())
   );
@@ -184,30 +160,28 @@ const topicROI = (topic, dimensionProfile) => {
   const score = dim ? (dimensionProfile.find(d => d.key === dim.key)?.score ?? 0) : 0;
   return w * (100 - score);
 };
-
 const scoreColor = (s) =>
   s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.orange;
-
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SUB-COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ─── Animated ring — recoloured to blue system ───────────────────────────────
+// ─── Animated ring ────────────────────────────────────────────────────────────
 const AnimatedRing = ({ score, size = 160, strokeWidth = 14 }) => {
   const [displayed, setDisplayed] = useState(0);
-  const r    = size / 2 - strokeWidth;
+  const r = size / 2 - strokeWidth;
   const circ = 2 * Math.PI * r;
   const offset = circ - (displayed / 100) * circ;
-  const color  = scoreColor(score);
+  const color = scoreColor(score);
 
   useEffect(() => {
     let start = null;
     const duration = 1400;
-    const animate  = (ts) => {
+    const animate = (ts) => {
       if (!start) start = ts;
-      const p    = Math.min((ts - start) / duration, 1);
+      const p = Math.min((ts - start) / duration, 1);
       const ease = 1 - Math.pow(1 - p, 3);
       setDisplayed(Math.round(lerp(0, score, ease)));
       if (p < 1) requestAnimationFrame(animate);
@@ -219,43 +193,34 @@ const AnimatedRing = ({ score, size = 160, strokeWidth = 14 }) => {
     <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
       <defs>
         <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stopColor={C.blue400}  stopOpacity="0.5" />
-          <stop offset="100%" stopColor={C.cyan400} />
+          <stop offset="0%" stopColor={C.violet} stopOpacity="0.6" />
+          <stop offset="100%" stopColor={C.blue400} />
         </linearGradient>
         <filter id="ringGlow">
           <feGaussianBlur stdDeviation="3" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
       </defs>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.border} strokeWidth={strokeWidth} />
-      <circle
-        cx={size/2} cy={size/2} r={r} fill="none"
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={C.border} strokeWidth={strokeWidth} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none"
         stroke="url(#ringGrad)" strokeWidth={strokeWidth}
         strokeDasharray={circ} strokeDashoffset={offset}
         strokeLinecap="round"
         style={{ transition: "stroke-dashoffset 0.05s linear", filter: "url(#ringGlow)" }}
       />
-      <g transform={`rotate(90, ${size/2}, ${size/2})`}>
-        <text x={size/2} y={size/2 - 10} textAnchor="middle"
-          fill={color} fontSize={34} fontWeight={900}
-          fontFamily={F.display} dominantBaseline="middle"
+      <g transform={`rotate(90, ${size / 2}, ${size / 2})`}>
+        <text x={size / 2} y={size / 2 - 10} textAnchor="middle"
+          fill={color} fontSize={34} fontWeight={900} fontFamily={F.display} dominantBaseline="middle"
         >{displayed}</text>
-        <text x={size/2} y={size/2 + 18} textAnchor="middle"
-          fill={C.muted} fontSize={9} fontWeight={700} letterSpacing="1.5"
-          fontFamily={F.mono}
+        <text x={size / 2} y={size / 2 + 18} textAnchor="middle"
+          fill={C.muted} fontSize={9} fontWeight={700} letterSpacing="1.5" fontFamily={F.mono}
         >IRS SCORE</text>
       </g>
     </svg>
   );
 };
 
-// ─── Living Skill Aura — blue edition ────────────────────────────────────────
-// Props:
-//   data          — current dimensionProfile (array of dim objects with .score)
-//   irs           — headline IRS number shown in centre badge
-//   scoreTrend    — full scoreTrend from API (array of {date, score})
-//                   used to compute "14 days ago" ghost polygon
-//   onDrillDimension — called with dim object when user clicks an axis label
+// ─── Living Skill Aura ────────────────────────────────────────────────────────
 const LivingAura = ({ data: radarData, irs, scoreTrend = [], onDrillDimension, companyOverlay = null }) => {
   const [pulse, setPulse] = useState(0);
   const [hoveredDim, setHoveredDim] = useState(null);
@@ -272,33 +237,19 @@ const LivingAura = ({ data: radarData, irs, scoreTrend = [], onDrillDimension, c
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
-  // ── Ghost polygon: approximate dimension scores 14 days ago ──────────────
-  // Strategy: find sessions that happened 14–28 days ago, compute per-dimension
-  // average score from those sessions' scores relative to overall trend delta,
-  // then nudge current dim scores backward by that delta.
   const ghostScores = useMemo(() => {
     const now = Date.now();
     const msDay = 86400000;
-    const recentWindow = scoreTrend.filter(s => {
-      const age = now - new Date(s.date).getTime();
-      return age >= 0 && age <= 7 * msDay;
-    });
-    const oldWindow = scoreTrend.filter(s => {
-      const age = now - new Date(s.date).getTime();
-      return age > 14 * msDay && age <= 28 * msDay;
-    });
+    const recentWindow = scoreTrend.filter(s => { const age = now - new Date(s.date).getTime(); return age >= 0 && age <= 7 * msDay; });
+    const oldWindow = scoreTrend.filter(s => { const age = now - new Date(s.date).getTime(); return age > 14 * msDay && age <= 28 * msDay; });
     if (!oldWindow.length || !recentWindow.length) return null;
-
     const recentAvg = recentWindow.reduce((a, s) => a + (s.score || 0), 0) / recentWindow.length;
     const oldAvg = oldWindow.reduce((a, s) => a + (s.score || 0), 0) / oldWindow.length;
-    const delta = recentAvg - oldAvg; // overall improvement in last 14 days
-
-    // Apply the inverse delta proportionally to each dimension score
+    const delta = recentAvg - oldAvg;
     return radarData.map(d => Math.max(0, Math.min(100, (d.score || 0) - delta)));
   }, [scoreTrend, radarData]);
 
   const hasGhost = ghostScores !== null;
-
   const N = radarData.length;
   const cx = 200, cy = 200, maxR = 142;
 
@@ -316,23 +267,18 @@ const LivingAura = ({ data: radarData, irs, scoreTrend = [], onDrillDimension, c
       return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
     });
 
-  // Company overlay: map DIMENSION_META order to companyOverlay scores
-  // Must be after pointsForScaleData is defined
   const companyPts = companyOverlay
-    ? pointsForScaleData(
-        radarData.map(d => companyOverlay.scores[d.key] ?? 50),
-        1
-      )
+    ? pointsForScaleData(radarData.map(d => companyOverlay.scores[d.key] ?? 50), 1)
     : null;
 
   const toPath = (pts) =>
     pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ") + "Z";
 
-  const outerPts  = pointsForScale(1);
-  const midPts    = pointsForScale(0.70 + pulse * 0.022);
-  const innerPts  = pointsForScale(0.42 + pulse * 0.016);
-  const corePts   = pointsForScale(0.22);
-  const ghostPts  = hasGhost ? pointsForScaleData(ghostScores, 1) : null;
+  const outerPts = pointsForScale(1);
+  const midPts = pointsForScale(0.70 + pulse * 0.022);
+  const innerPts = pointsForScale(0.42 + pulse * 0.016);
+  const corePts = pointsForScale(0.22);
+  const ghostPts = hasGhost ? pointsForScaleData(ghostScores, 1) : null;
 
   const labelPts = radarData.map((d, i) => {
     const angle = (2 * Math.PI * i) / N - Math.PI / 2;
@@ -350,10 +296,9 @@ const LivingAura = ({ data: radarData, irs, scoreTrend = [], onDrillDimension, c
 
   return (
     <div style={{ position: "relative", width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
-      {/* Legend */}
       <div style={{ display: "flex", gap: 14, marginBottom: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <div style={{ width: 18, height: 3, borderRadius: 2, background: C.blue500 }} />
+          <div style={{ width: 18, height: 3, borderRadius: 2, background: C.violet }} />
           <span style={{ fontFamily: F.mono, fontSize: 9, color: C.sub }}>NOW</span>
         </div>
         {hasGhost && (
@@ -368,30 +313,28 @@ const LivingAura = ({ data: radarData, irs, scoreTrend = [], onDrillDimension, c
             <span style={{ fontFamily: F.mono, fontSize: 9, color: C.green }}>{companyOverlay.icon} TARGET</span>
           </div>
         )}
-        {onDrillDimension && (
-          <div style={{ fontSize: 9, color: C.muted, fontFamily: F.mono }}>· Click label to drill</div>
-        )}
+        {onDrillDimension && <div style={{ fontSize: 9, color: C.muted, fontFamily: F.mono }}>· Click label to drill</div>}
       </div>
 
       <svg viewBox="0 0 400 400" width="100%" style={{ maxWidth: 420, overflow: "visible" }}>
         <defs>
           <linearGradient id="auraRingGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%"   stopColor={C.blue400} stopOpacity="0.5" />
-            <stop offset="100%" stopColor={C.cyan400} />
+            <stop offset="0%" stopColor={C.violet} stopOpacity="0.7" />
+            <stop offset="100%" stopColor={C.blue400} />
           </linearGradient>
           <radialGradient id="auraCore" cx="50%" cy="50%" r="50%">
-            <stop offset="0%"   stopColor={C.blue500}  stopOpacity="0.5" />
-            <stop offset="100%" stopColor={C.blue700}  stopOpacity="0.04" />
+            <stop offset="0%" stopColor={C.violet} stopOpacity="0.4" />
+            <stop offset="100%" stopColor={C.violetMid} stopOpacity="0.04" />
           </radialGradient>
           <radialGradient id="auraMid" cx="50%" cy="50%" r="50%">
-            <stop offset="0%"   stopColor={C.blue400}  stopOpacity="0.25" />
-            <stop offset="100%" stopColor={C.cyan500}  stopOpacity="0.03" />
+            <stop offset="0%" stopColor={C.violetLight} stopOpacity="0.2" />
+            <stop offset="100%" stopColor={C.blue400} stopOpacity="0.02" />
           </radialGradient>
           <radialGradient id="auraOuter" cx="50%" cy="50%" r="50%">
-            <stop offset="0%"   stopColor={C.cyan400}  stopOpacity="0.12" />
-            <stop offset="100%" stopColor={C.blue200}  stopOpacity="0.01" />
+            <stop offset="0%" stopColor={C.blue300} stopOpacity="0.1" />
+            <stop offset="100%" stopColor={C.blue200} stopOpacity="0.01" />
           </radialGradient>
-          <filter id="auraGlow"  x="-30%" y="-30%" width="160%" height="160%">
+          <filter id="auraGlow" x="-30%" y="-30%" width="160%" height="160%">
             <feGaussianBlur stdDeviation="7" result="blur" />
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
@@ -401,164 +344,333 @@ const LivingAura = ({ data: radarData, irs, scoreTrend = [], onDrillDimension, c
           </filter>
         </defs>
 
-        {/* Grid rings */}
         {gridRings.map((s, i) => (
-          <polygon key={i} points={gridPolygon(s)}
-            fill="none" stroke={C.border}
-            strokeWidth={i === gridRings.length - 1 ? 1.5 : 0.8}
-            strokeOpacity={0.8}
-          />
+          <polygon key={i} points={gridPolygon(s)} fill="none" stroke={C.border}
+            strokeWidth={i === gridRings.length - 1 ? 1.5 : 0.8} strokeOpacity={0.8} />
         ))}
-        {/* Ring labels */}
         {gridRings.map((s, i) => {
           const angle = -Math.PI / 2;
-          return (
-            <text key={i}
-              x={cx + maxR * s * Math.cos(angle) + 4}
-              y={cy + maxR * s * Math.sin(angle)}
-              fill={C.faint} fontSize={7} fontFamily={F.mono}
-            >{s * 100}</text>
-          );
+          return <text key={i} x={cx + maxR * s * Math.cos(angle) + 4} y={cy + maxR * s * Math.sin(angle)}
+            fill={C.faint} fontSize={7} fontFamily={F.mono}>{s * 100}</text>;
         })}
-
-        {/* Spokes */}
         {radarData.map((_, i) => {
           const angle = (2 * Math.PI * i) / N - Math.PI / 2;
-          return (
-            <line key={i}
-              x1={cx} y1={cy}
-              x2={cx + maxR * Math.cos(angle)}
-              y2={cy + maxR * Math.sin(angle)}
-              stroke={C.border} strokeWidth={0.8} strokeOpacity={0.7}
-            />
-          );
+          return <line key={i} x1={cx} y1={cy} x2={cx + maxR * Math.cos(angle)} y2={cy + maxR * Math.sin(angle)}
+            stroke={C.border} strokeWidth={0.8} strokeOpacity={0.7} />;
         })}
 
-        {/* Ghost polygon — 14 days ago */}
         {hasGhost && ghostPts && (
-          <path
-            d={toPath(ghostPts)}
-            fill={C.amber} fillOpacity={0.06}
-            stroke={C.amber} strokeWidth={1.5} strokeOpacity={0.55}
-            strokeDasharray="5 3"
-          />
+          <path d={toPath(ghostPts)} fill={C.amber} fillOpacity={0.06}
+            stroke={C.amber} strokeWidth={1.5} strokeOpacity={0.55} strokeDasharray="5 3" />
         )}
-
-        {/* Company target overlay — dotted green polygon */}
         {companyPts && (
-          <path
-            d={toPath(companyPts)}
-            fill={C.green} fillOpacity={0.05}
-            stroke={C.green} strokeWidth={2} strokeOpacity={0.75}
-            strokeDasharray="3 4"
-          />
+          <path d={toPath(companyPts)} fill={C.green} fillOpacity={0.05}
+            stroke={C.green} strokeWidth={2} strokeOpacity={0.75} strokeDasharray="3 4" />
         )}
 
-        {/* Aura layers */}
-        <path d={toPath(outerPts)} fill="url(#auraOuter)" stroke={C.cyan400} strokeWidth={1} strokeOpacity={0.25 + pulse * 0.05} />
-        <path d={toPath(midPts)}   fill="url(#auraMid)"   stroke={C.blue400} strokeWidth={1.5} strokeOpacity={0.4 + pulse * 0.1} filter="url(#softGlow)" />
-        <path d={toPath(innerPts)} fill="url(#auraCore)"  stroke={C.blue500} strokeWidth={2} strokeOpacity={0.65 + pulse * 0.15} filter="url(#auraGlow)" />
-        <path d={toPath(corePts)}  fill={C.blue500} fillOpacity={0.18} stroke={C.blue600} strokeWidth={1.5} />
-
-        {/* Outer data line */}
+        <path d={toPath(outerPts)} fill="url(#auraOuter)" stroke={C.blue300} strokeWidth={1} strokeOpacity={0.25 + pulse * 0.05} />
+        <path d={toPath(midPts)} fill="url(#auraMid)" stroke={C.violetLight} strokeWidth={1.5} strokeOpacity={0.4 + pulse * 0.1} filter="url(#softGlow)" />
+        <path d={toPath(innerPts)} fill="url(#auraCore)" stroke={C.violet} strokeWidth={2} strokeOpacity={0.65 + pulse * 0.15} filter="url(#auraGlow)" />
+        <path d={toPath(corePts)} fill={C.violet} fillOpacity={0.18} stroke={C.violetMid} strokeWidth={1.5} />
         <path d={toPath(outerPts)} fill="none" stroke="url(#auraRingGrad)" strokeWidth={2.5} strokeOpacity={0.95} filter="url(#softGlow)" />
 
-        {/* Data dots */}
         {outerPts.map(([x, y], i) => (
           <circle key={i} cx={x} cy={y} r={4.5}
-            fill={scoreColor(radarData[i]?.score || 0)}
-            stroke="#fff" strokeWidth={1.5}
-            filter="url(#softGlow)"
-          />
+            fill={C.dimColors[radarData[i]?.key] || scoreColor(radarData[i]?.score || 0)}
+            stroke="#fff" strokeWidth={1.5} filter="url(#softGlow)" />
         ))}
 
-        {/* Clickable axis labels */}
         {labelPts.map(({ x, y, label, score, icon, key, contributingTopics }, i) => {
           const isHovered = hoveredDim === key;
           const canDrill = onDrillDimension && (contributingTopics?.length > 0);
+          const dimColor = C.dimColors[key] || scoreColor(score);
           return (
-            <g
-              key={i}
-              style={{ cursor: canDrill ? "pointer" : "default" }}
+            <g key={i} style={{ cursor: canDrill ? "pointer" : "default" }}
               onClick={() => canDrill && onDrillDimension(radarData[i])}
               onMouseEnter={() => setHoveredDim(key)}
-              onMouseLeave={() => setHoveredDim(null)}
-            >
-              {/* Hover hit area */}
+              onMouseLeave={() => setHoveredDim(null)}>
               {canDrill && (
-                <ellipse
-                  cx={x} cy={y}
-                  rx={34} ry={14}
-                  fill={isHovered ? C.blue50 : "transparent"}
-                  stroke={isHovered ? C.borderMd : "transparent"}
-                  strokeWidth={1}
-                />
+                <ellipse cx={x} cy={y} rx={34} ry={14}
+                  fill={isHovered ? `${dimColor}18` : "transparent"}
+                  stroke={isHovered ? `${dimColor}60` : "transparent"} strokeWidth={1} />
               )}
               <text x={x} y={y - 8} textAnchor="middle" dominantBaseline="middle"
-                fill={isHovered ? C.blue500 : C.text}
-                fontSize={10} fontWeight={800} fontFamily={F.body}
-              >{icon} {label}{canDrill && isHovered ? " ↗" : ""}</text>
+                fill={isHovered ? dimColor : C.text}
+                fontSize={10} fontWeight={800} fontFamily={F.body}>
+                {icon} {label}{canDrill && isHovered ? " ↗" : ""}
+              </text>
               <text x={x} y={y + 8} textAnchor="middle" dominantBaseline="middle"
-                fill={scoreColor(score)} fontSize={11} fontWeight={700} fontFamily={F.display}
-              >{score}</text>
+                fill={dimColor} fontSize={11} fontWeight={700} fontFamily={F.display}>{score}</text>
             </g>
           );
         })}
 
-        {/* Centre badge */}
-        <circle cx={cx} cy={cy} r={38}
-          fill="white" fillOpacity={0.96}
+        <circle cx={cx} cy={cy} r={38} fill="white" fillOpacity={0.96}
           stroke={C.borderStr} strokeWidth={1.5}
-          style={{ filter: `drop-shadow(0 4px 16px rgba(26,110,255,0.20))` }}
-        />
+          style={{ filter: "drop-shadow(0 4px 16px rgba(26,110,255,0.18))" }} />
         <text x={cx} y={cy - 8} textAnchor="middle" dominantBaseline="middle"
-          fill={C.blue600} fontSize={22} fontWeight={900} fontFamily={F.display}
-        >{irs}</text>
+          fill={C.violet} fontSize={22} fontWeight={900} fontFamily={F.display}>{irs}</text>
         <text x={cx} y={cy + 10} textAnchor="middle" dominantBaseline="middle"
-          fill={C.muted} fontSize={7} fontWeight={800} letterSpacing="1.4" fontFamily={F.mono}
-        >IRS</text>
+          fill={C.muted} fontSize={7} fontWeight={800} letterSpacing="1.4" fontFamily={F.mono}>IRS</text>
       </svg>
     </div>
   );
 };
 
-// ─── Cold Start vs Warm Up Card — session-position performance pattern ────────
+// ─── Topic Heat Grid — replaces Confidence vs Accuracy + ROI Point-Loss Map ──
+// A single richer section: colored tiles per topic, score-colored + ROI-sized,
+// with calibration label and drill CTA. Unique to Analytics, not on Dashboard.
+const TopicHeatGrid = ({ topicPerformance, dimensionProfile, avgTimePerQ, navigate, mounted }) => {
+  const [hoveredTopic, setHoveredTopic] = useState(null);
+
+  const enriched = useMemo(() => {
+    return topicPerformance.map(t => {
+      const score = t.averageScore || 0;
+      const timePerQ = t.avgTimePerQ || avgTimePerQ || 40;
+      const confidence = Math.max(0, Math.min(100, 100 - (timePerQ / 90) * 100));
+      const divergence = Math.round(confidence - score);
+      const calibration = divergence > 15
+        ? { label: "Overconfident", color: C.orange, bg: C.orangeTint, icon: "⚠" }
+        : divergence < -10
+        ? { label: "Underrated", color: C.blue500, bg: C.blue50, icon: "🎯" }
+        : { label: "Calibrated", color: C.green, bg: C.greenTint, icon: "✓" };
+      const dim = dimensionProfile.find(d =>
+        (d.contributingTopics || []).some(ct => ct.toLowerCase() === t.topic.toLowerCase())
+      );
+      const roi = topicROI(t.topic, dimensionProfile);
+      const dimColor = dim ? (C.dimColors[dim.key] || scoreColor(score)) : scoreColor(score);
+      return { ...t, score, confidence: Math.round(confidence), divergence, calibration, dim, roi, dimColor };
+    }).sort((a, b) => b.roi - a.roi);
+  }, [topicPerformance, dimensionProfile, avgTimePerQ]);
+
+  if (!enriched.length) return null;
+
+  const maxROI = Math.max(...enriched.map(t => t.roi), 1);
+  const hovered = enriched.find(t => t.topic === hoveredTopic);
+
+  return (
+    <section style={{ ...S.card, marginBottom: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ ...S.eyebrow, color: C.violet }}>TOPIC INTELLIGENCE GRID</div>
+          <h2 style={S.cardH2}>Every topic you've touched — ranked by impact</h2>
+          <p style={S.cardSub}>
+            Tile size reflects ROI = dimension weight × score gap. Darker tile = lower score = more IRS to unlock.
+            Speed vs accuracy calibration is shown per topic.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 8, background: C.orangeTint, border: `1px solid ${C.orange}30` }}>
+            <span style={{ fontSize: 10 }}>⚠</span>
+            <span style={{ fontFamily: F.mono, fontSize: 9, color: C.orange, fontWeight: 700 }}>OVERCONFIDENT</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 8, background: C.greenTint, border: `1px solid ${C.green}30` }}>
+            <span style={{ fontSize: 10 }}>✓</span>
+            <span style={{ fontFamily: F.mono, fontSize: 9, color: C.green, fontWeight: 700 }}>CALIBRATED</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 8, background: C.blue50, border: `1px solid ${C.blue500}30` }}>
+            <span style={{ fontSize: 10 }}>🎯</span>
+            <span style={{ fontFamily: F.mono, fontSize: 9, color: C.blue500, fontWeight: 700 }}>UNDERRATED</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Heat grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 18 }}>
+        {enriched.map((t, i) => {
+          const isHovered = hoveredTopic === t.topic;
+          const roiPct = t.roi / maxROI;
+          // Opacity maps score: low score = darker/more opaque
+          const bgOpacity = 0.08 + (1 - t.score / 100) * 0.22;
+          const rankLabel = i === 0 ? "TOP PRIORITY" : i === 1 ? "2ND" : i === 2 ? "3RD" : `#${i + 1}`;
+          return (
+            <div
+              key={t.topic}
+              onMouseEnter={() => setHoveredTopic(t.topic)}
+              onMouseLeave={() => setHoveredTopic(null)}
+              onClick={() => navigate("/interview")}
+              style={{
+                position: "relative",
+                padding: "14px 13px",
+                borderRadius: 14,
+                background: isHovered ? `${t.dimColor}18` : `${t.dimColor}${Math.round(bgOpacity * 255).toString(16).padStart(2, "0")}`,
+                border: `1.5px solid ${isHovered ? t.dimColor : `${t.dimColor}40`}`,
+                cursor: "pointer",
+                transition: "all 0.18s ease",
+                transform: isHovered ? "translateY(-3px) scale(1.02)" : "none",
+                boxShadow: isHovered ? `0 8px 24px ${t.dimColor}30` : "none",
+                overflow: "hidden",
+              }}
+            >
+              {/* ROI bar — bottom fill */}
+              <div style={{
+                position: "absolute", bottom: 0, left: 0, right: 0,
+                height: `${Math.round(roiPct * 5)}px`,
+                background: `${t.dimColor}55`,
+                borderRadius: "0 0 12px 12px",
+              }} />
+
+              {/* Rank badge */}
+              {i < 3 && (
+                <div style={{
+                  position: "absolute", top: 8, right: 8,
+                  fontSize: 7.5, fontWeight: 800, fontFamily: F.mono,
+                  color: i === 0 ? "#fff" : t.dimColor,
+                  background: i === 0 ? t.dimColor : `${t.dimColor}20`,
+                  padding: "2px 5px", borderRadius: 4, letterSpacing: "0.4px",
+                }}>{rankLabel}</div>
+              )}
+
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: C.text, marginBottom: 8, paddingRight: i < 3 ? 36 : 0, lineHeight: 1.3 }}>
+                {t.topic}
+              </div>
+
+              {/* Score big */}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 3, marginBottom: 6 }}>
+                <span style={{ fontFamily: F.display, fontSize: 26, fontWeight: 900, color: t.dimColor, lineHeight: 1 }}>{t.score}</span>
+                <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>/100</span>
+              </div>
+
+              {/* Score bar */}
+              <div style={{ height: 4, borderRadius: 999, background: `${t.dimColor}25`, overflow: "hidden", marginBottom: 8 }}>
+                <div style={{
+                  height: "100%", borderRadius: 999,
+                  width: mounted ? `${t.score}%` : "0%",
+                  background: t.dimColor,
+                  transition: "width 1.1s cubic-bezier(.16,1,.3,1)",
+                }} />
+              </div>
+
+              {/* Calibration + dim chip */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{
+                  fontSize: 9, fontWeight: 800, fontFamily: F.mono,
+                  color: t.calibration.color,
+                  background: t.calibration.bg,
+                  padding: "2px 6px", borderRadius: 4,
+                }}>
+                  {t.calibration.icon} {t.calibration.label.toUpperCase()}
+                </span>
+                {t.dim && (
+                  <span style={{ fontSize: 8, color: C.muted, fontFamily: F.mono, textAlign: "right", lineHeight: 1.2 }}>
+                    {t.dim.icon}
+                  </span>
+                )}
+              </div>
+
+              {/* ROI on hover */}
+              {isHovered && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${t.dimColor}30`, fontSize: 9, color: C.sub, fontFamily: F.mono }}>
+                  ROI {t.roi.toFixed(1)} · {100 - t.score} pts headroom · Drill →
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Detail panel — shows on hover */}
+      {hovered && (
+        <div style={{
+          padding: "16px 18px", borderRadius: 14,
+          background: `linear-gradient(135deg, ${hovered.dimColor}10, ${hovered.dimColor}05)`,
+          border: `1.5px solid ${hovered.dimColor}40`,
+          display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap",
+          transition: "all 0.2s ease",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+            <div style={{
+              width: 48, height: 48, borderRadius: 13, flexShrink: 0,
+              background: `${hovered.dimColor}18`,
+              border: `1.5px solid ${hovered.dimColor}50`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontFamily: F.display, fontSize: 20, fontWeight: 900, color: hovered.dimColor,
+            }}>{hovered.score}</div>
+            <div>
+              <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: C.text }}>{hovered.topic}</div>
+              <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>
+                {hovered.dim ? `${hovered.dim.icon} ${hovered.dim.label} · ${Math.round((hovered.dim.weight ?? 0) * 100)}% IRS weight` : "Unmapped topic"}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {[
+              { label: "SCORE", val: `${hovered.score}/100`, color: hovered.dimColor },
+              { label: "SPEED CONFIDENCE", val: `${hovered.confidence}/100`, color: C.amber },
+              { label: "CALIBRATION", val: `${hovered.calibration.icon} ${hovered.calibration.label}`, color: hovered.calibration.color },
+              { label: "IRS ROI", val: hovered.roi.toFixed(1), color: C.violet },
+            ].map(item => (
+              <div key={item.label} style={{ textAlign: "center", minWidth: 72 }}>
+                <div style={{ fontFamily: F.mono, fontSize: 8, color: C.muted, letterSpacing: "0.5px", marginBottom: 3 }}>{item.label}</div>
+                <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: item.color }}>{item.val}</div>
+              </div>
+            ))}
+          </div>
+          <button onClick={() => navigate("/interview")} style={{
+            border: "none", borderRadius: 10, flexShrink: 0,
+            background: `linear-gradient(135deg, ${hovered.dimColor}, ${hovered.dimColor}CC)`,
+            color: "#fff", padding: "9px 16px", fontSize: 12, fontWeight: 800, cursor: "pointer",
+            fontFamily: F.body, boxShadow: `0 4px 14px ${hovered.dimColor}40`,
+          }}>
+            ⚡ Drill {hovered.topic} →
+          </button>
+        </div>
+      )}
+
+      {/* Footer — top 3 priorities summary */}
+      <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        {enriched.slice(0, 3).map((t, i) => (
+          <div key={t.topic} style={{
+            padding: "11px 13px", borderRadius: 11,
+            background: i === 0 ? C.redTint : i === 1 ? C.amberTint : C.blue50,
+            border: `1px solid ${i === 0 ? "#FECACA" : i === 1 ? "#FDE68A" : C.borderMd}`,
+            display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <div style={{
+              width: 24, height: 24, borderRadius: 7, flexShrink: 0,
+              background: i === 0 ? C.red : i === 1 ? C.amber : C.blue500,
+              color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 900, fontFamily: F.mono,
+            }}>{i + 1}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.topic}</div>
+              <div style={{ fontSize: 9.5, color: C.sub, fontFamily: F.mono, marginTop: 2 }}>{t.score}/100 · ROI {t.roi.toFixed(1)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+// ─── Cold Start vs Warm Up ────────────────────────────────────────────────────
 const ColdStartWarmUpCard = () => {
-  const [data,    setData]    = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      try {
-        const result = await getSessionWarmup();
-        setData(result);
-      } catch {
-        // silently fail — non-critical card
-      } finally {
-        setLoading(false);
-      }
+      try { setData(await getSessionWarmup()); }
+      catch { /* silently fail */ }
+      finally { setLoading(false); }
     })();
   }, []);
 
   if (loading || !data?.available) return null;
-
   const { positions, pattern } = data;
-
   const patternConfig = {
-    warmup:     { label: "Warm-Up Performer",  icon: "🔥", color: C.orange,  desc: "You consistently score higher in your 2nd+ session of the day. Let your brain warm up before high-stakes practice." },
-    coldstart:  { label: "Cold Start Performer",icon: "⚡", color: C.blue500, desc: "You actually score highest in your 1st session. Your freshest brain is your sharpest — use mornings for hard topics." },
-    consistent: { label: "Consistent Performer", icon: "⚖️", color: C.green, desc: "Session order doesn't affect your performance much. You're mentally well-calibrated regardless of timing." },
+    warmup:     { label: "Warm-Up Performer",   icon: "🔥", color: C.orange,  desc: "You score higher in your 2nd+ session. Let your brain warm up before high-stakes practice." },
+    coldstart:  { label: "Cold Start Performer", icon: "⚡", color: C.blue500, desc: "You score highest in your 1st session. Use mornings for the hardest topics." },
+    consistent: { label: "Consistent Performer", icon: "⚖️", color: C.green,  desc: "Session order doesn't affect your performance. You're mentally well-calibrated." },
   };
   const cfg = patternConfig[pattern] || patternConfig.consistent;
   const maxScore = Math.max(...positions.map(p => p.avgScore));
 
   return (
     <div style={{ ...S.card, marginBottom: 18 }}>
-      <div style={S.eyebrow}>COLD START vs WARM UP</div>
+      <div style={{ ...S.eyebrow, color: C.violet }}>COLD START vs WARM UP</div>
       <h2 style={S.cardH2}>Does session order affect your score?</h2>
-      <p style={{ ...S.cardSub, marginBottom: 14 }}>Based on your multi-session days — comparing performance by position within the day.</p>
-
-      {/* Pattern verdict */}
+      <p style={{ ...S.cardSub, marginBottom: 14 }}>Based on your multi-session days.</p>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 14, background: `${cfg.color}10`, border: `1.5px solid ${cfg.color}35`, marginBottom: 16 }}>
         <span style={{ fontSize: 24 }}>{cfg.icon}</span>
         <div>
@@ -566,8 +678,6 @@ const ColdStartWarmUpCard = () => {
           <div style={{ fontSize: 11.5, color: C.sub, marginTop: 3, lineHeight: 1.5 }}>{cfg.desc}</div>
         </div>
       </div>
-
-      {/* Bar comparison */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {positions.map(p => {
           const isMax = p.avgScore === maxScore;
@@ -577,12 +687,8 @@ const ColdStartWarmUpCard = () => {
               <div style={{ flex: 1, height: 10, borderRadius: 999, background: C.border, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${p.avgScore}%`, background: isMax ? cfg.color : C.blue200, borderRadius: 999, transition: "width 1s ease" }} />
               </div>
-              <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: isMax ? cfg.color : C.muted, width: 34, textAlign: "right", flexShrink: 0 }}>
-                {p.avgScore}
-              </div>
-              <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, width: 48, flexShrink: 0 }}>
-                {p.count} session{p.count !== 1 ? "s" : ""}
-              </div>
+              <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: isMax ? cfg.color : C.muted, width: 34, textAlign: "right", flexShrink: 0 }}>{p.avgScore}</div>
+              <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, width: 48, flexShrink: 0 }}>{p.count} session{p.count !== 1 ? "s" : ""}</div>
             </div>
           );
         })}
@@ -591,190 +697,24 @@ const ColdStartWarmUpCard = () => {
   );
 };
 
-// ─── Deep Personality Profile — AI-generated behavioral fingerprint ───────────
-// Only activates after 10+ sessions (per Phase 3 spec). Sends full session
-// history summary to Claude and displays a structured behavioral analysis.
-const DeepPersonalityProfile = ({ dimensionProfile, scoreTrend, archetype, totalSessions, irs }) => {
-  const [profile,  setProfile]  = useState(null);
-  const [loading,  setLoading]  = useState(false);
-  const [done,     setDone]     = useState(false);
-  const [sections, setSections] = useState([]);
-
-  if (totalSessions < 10) return null; // gate: only show after 10 sessions
-
-  const slope = trendSlope(scoreTrend.slice(-6).map(s => s.score || 0));
-  const sd    = stdDev(scoreTrend.map(s => s.score || 0));
-
-  const generateProfile = async () => {
-    setLoading(true);
-    setProfile(null);
-    setDone(false);
-    setSections([]);
-    try {
-      const prompt = `You are MockMate's behavioral intelligence engine. Based on ${totalSessions} mock interview sessions of an Indian CS/IT student, generate a precise Interview DNA profile.
-
-Performance data:
-- IRS: ${irs}/100
-- Archetype: ${archetype?.label} (${archetype?.desc})
-- Score std-dev: ${sd.toFixed(1)} (${sd > 18 ? "HIGH variance" : sd > 10 ? "moderate" : "consistent"})
-- Trend slope (last 6 sessions): ${slope.toFixed(2)} pts/session
-- Dimensions: ${dimensionProfile.filter(d => d.hasData).map(d => `${d.label}: ${d.score}/100`).join(" | ")}
-- Session count: ${totalSessions}
-
-Generate a behavioral fingerprint with EXACTLY these 4 sections, plain text, no markdown, no emojis:
-
-RESPONSE STYLE
-One precise sentence about how they communicate answers — pace, structure, confidence pattern.
-
-PRESSURE RESPONSE
-One precise sentence about how their performance shifts under timed or high-stakes conditions.
-
-KNOWLEDGE PATTERN
-One precise sentence about how they distribute knowledge — broad generalist vs. deep specialist tendencies.
-
-GROWTH EDGE
-One precise sentence naming the single behavioral habit that, if changed, would move their IRS fastest.
-
-Under 120 words total. Write as behavioral observations, not advice.`;
-
-      const text = await getAIFreeform(prompt, 1000);
-      setProfile(text);
-
-      const parsed = text
-        .split(/\n(?=[A-Z][A-Z ]{3,}\n)/)
-        .filter(Boolean)
-        .map(s => {
-          const lines   = s.trim().split("\n");
-          const heading = lines[0].trim();
-          const body    = lines.slice(1).join("\n").trim();
-          return { heading, body };
-        })
-        .filter(s => s.heading && s.body);
-      setSections(parsed);
-      setDone(true);
-    } catch (err) {
-      const msg = err?.isQuota
-        ? "Gemini quota exhausted (20 req/day limit). Set GEMINI_MODEL=gemini-2.5-flash in server/.env and restart."
-        : "Could not generate profile. Check your connection and try again.";
-      setProfile(msg);
-      setDone(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const sectionColors = {
-    "RESPONSE STYLE":  C.blue500,
-    "PRESSURE RESPONSE": C.cyan500,
-    "KNOWLEDGE PATTERN": C.green,
-    "GROWTH EDGE":     C.amber,
-  };
-
-  return (
-    <div style={{
-      background: `linear-gradient(135deg, #0D1F3C 0%, #0A1A30 50%, #071525 100%)`,
-      border: `1px solid rgba(0,200,240,0.2)`,
-      borderRadius: 22, padding: "24px 26px", marginBottom: 18,
-      boxShadow: "0 8px 40px rgba(0,20,80,0.35)",
-    }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.6px", color: C.cyan400, marginBottom: 7 }}>
-            🧬 YOUR INTERVIEW DNA
-          </div>
-          <h2 style={{ margin: 0, fontFamily: F.display, fontSize: 20, fontWeight: 800, color: "#fff" }}>
-            Behavioral Fingerprint — {totalSessions} sessions analyzed
-          </h2>
-          <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,0.5)", fontSize: 12, lineHeight: 1.6 }}>
-            Four behavioral observations derived from your full session history. No two students have the same profile.
-          </p>
-        </div>
-        <button
-          onClick={generateProfile}
-          disabled={loading}
-          style={{
-            border: "none", borderRadius: 11, flexShrink: 0,
-            background: loading ? "rgba(255,255,255,0.06)" : `linear-gradient(135deg, ${C.cyan600}, ${C.blue600})`,
-            color: "#fff", padding: "11px 18px", fontSize: 12.5, fontWeight: 800,
-            cursor: loading ? "not-allowed" : "pointer",
-            boxShadow: loading ? "none" : "0 4px 16px rgba(0,173,224,0.3)",
-            fontFamily: F.body, whiteSpace: "nowrap",
-            display: "flex", alignItems: "center", gap: 8,
-          }}
-        >
-          {loading
-            ? <><span style={{ display: "inline-block", width: 13, height: 13, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /> Profiling…</>
-            : done ? "↺ Regenerate" : "🧬 Generate My DNA"}
-        </button>
-      </div>
-
-      {!done && !loading && (
-        <div style={{ padding: "32px 20px", textAlign: "center", border: "1.5px dashed rgba(0,200,240,0.2)", borderRadius: 14 }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>🧬</div>
-          <p style={{ color: "rgba(255,255,255,0.38)", fontSize: 12.5, margin: 0 }}>
-            Unlocked at 10 sessions. Click above — the AI will read your full performance pattern and write your behavioral fingerprint.
-          </p>
-        </div>
-      )}
-
-      {loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {["Reading session variance patterns…", "Mapping response style indicators…", "Identifying pressure response signals…", "Writing your behavioral fingerprint…"].map((msg, i) => (
-            <div key={i} style={{ padding: "9px 13px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(0,200,240,0.1)", color: "rgba(255,255,255,0.4)", fontSize: 11.5, fontFamily: F.mono }}>{msg}</div>
-          ))}
-        </div>
-      )}
-
-      {done && sections.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-          {sections.map((s, i) => {
-            const color = sectionColors[s.heading] || C.blue400;
-            return (
-              <div key={i} style={{ padding: "14px 16px", borderRadius: 13, background: "rgba(255,255,255,0.04)", border: `1px solid rgba(255,255,255,0.06)`, borderLeft: `3px solid ${color}` }}>
-                <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: "1.2px", color, marginBottom: 8 }}>{s.heading}</div>
-                <p style={{ margin: 0, color: "rgba(255,255,255,0.82)", fontSize: 12.5, lineHeight: 1.7 }}>{s.body}</p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {done && sections.length === 0 && profile && (
-        <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12.5, lineHeight: 1.7, margin: 0 }}>{profile}</p>
-      )}
-    </div>
-  );
-};
-// ─── (DeepPersonalityProfile kept as internal sub-renderer above) ─────────────
-
-// ─── Skill Velocity Graph — rate of improvement per dimension over time ───────
-// Uses scoreTrend[].topicScores (added by upgraded getAnalytics backend) to
-// plot each dimension as a separate line. Falls back gracefully when the field
-// isn't present (older sessions without topicScores).
+// ─── Skill Velocity Graph ─────────────────────────────────────────────────────
 const VELOCITY_COLORS = {
-  technical:      "#1A6EFF",
-  problemSolving: "#00ADE0",
-  communication:  "#059669",
-  behavioral:     "#D97706",
-  design:         "#7C3AED",
-  fundamentals:   "#DC2626",
+  technical:      C.dimColors.technical,
+  problemSolving: C.dimColors.problemSolving,
+  communication:  C.dimColors.communication,
+  behavioral:     C.dimColors.behavioral,
+  design:         C.dimColors.design,
+  fundamentals:   C.dimColors.fundamentals,
 };
-
 const VELOCITY_LABELS = {
-  technical:      "Technical",
-  problemSolving: "Problem Solving",
-  communication:  "Communication",
-  behavioral:     "Behavioral",
-  design:         "System Design",
-  fundamentals:   "CS Fundamentals",
+  technical: "Technical", problemSolving: "Problem Solving",
+  communication: "Communication", behavioral: "Behavioral",
+  design: "System Design", fundamentals: "CS Fundamentals",
 };
 
 const SkillVelocityGraph = ({ scoreTrend }) => {
-  const [activeDims, setActiveDims] = useState(
-    new Set(["technical", "problemSolving", "communication"])
-  );
+  const [activeDims, setActiveDims] = useState(new Set(["technical", "problemSolving", "communication"]));
 
-  // Build chart data — one row per session, columns per dimension
   const chartData = useMemo(() => {
     if (!scoreTrend?.length) return [];
     return scoreTrend.map((s, i) => {
@@ -783,19 +723,14 @@ const SkillVelocityGraph = ({ scoreTrend }) => {
         date: s.date ? new Date(s.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : `S${i + 1}`,
       };
       const ts = s.topicScores || {};
-      Object.keys(VELOCITY_LABELS).forEach(key => {
-        row[key] = ts[key] ?? null; // null = no data this session, recharts skips the point
-      });
+      Object.keys(VELOCITY_LABELS).forEach(key => { row[key] = ts[key] ?? null; });
       return row;
     });
   }, [scoreTrend]);
 
-  // Only show dims that have at least 2 data points
-  const dimsWithData = useMemo(() => {
-    return Object.keys(VELOCITY_LABELS).filter(key =>
-      chartData.filter(r => r[key] !== null).length >= 2
-    );
-  }, [chartData]);
+  const dimsWithData = useMemo(() =>
+    Object.keys(VELOCITY_LABELS).filter(key => chartData.filter(r => r[key] !== null).length >= 2),
+    [chartData]);
 
   const toggleDim = (key) => {
     setActiveDims(prev => {
@@ -810,60 +745,42 @@ const SkillVelocityGraph = ({ scoreTrend }) => {
 
   return (
     <div style={{ ...S.card, marginBottom: 18 }}>
-      <div style={S.eyebrow}>SKILL VELOCITY</div>
+      <div style={{ ...S.eyebrow, color: C.violet }}>SKILL VELOCITY</div>
       <h2 style={S.cardH2}>Rate of improvement per dimension</h2>
-      <p style={{ ...S.cardSub, marginBottom: 14 }}>
-        Each line tracks one dimension's score across sessions — steeper = faster growth.
-        Toggle dimensions below to focus.
-      </p>
-
-      {/* Dimension toggles */}
+      <p style={{ ...S.cardSub, marginBottom: 14 }}>Steeper = faster growth. Toggle dimensions to focus.</p>
       <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
         {dimsWithData.map(key => {
           const active = activeDims.has(key);
-          const color  = VELOCITY_COLORS[key];
+          const color = VELOCITY_COLORS[key];
           return (
-            <button
-              key={key}
-              onClick={() => toggleDim(key)}
+            <button key={key} onClick={() => toggleDim(key)}
               className={`an-tab${active ? " an-tab-active" : ""}`}
               style={{
                 border: `1.5px solid ${active ? color : C.border}`,
                 borderRadius: 999, padding: "5px 13px",
                 background: active ? `${color}15` : C.cardAlt,
                 color: active ? color : C.muted,
-                fontSize: 11, fontWeight: 700, cursor: "pointer",
-                fontFamily: F.body,
-              }}
-            >
+                fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: F.body,
+              }}>
               {VELOCITY_LABELS[key]}
             </button>
           );
         })}
       </div>
-
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={chartData} margin={{ top: 8, right: 12, left: -22, bottom: 0 }}>
-          <XAxis dataKey="date" axisLine={false} tickLine={false}
-            tick={{ fill: C.muted, fontSize: 9, fontFamily: F.mono }} />
-          <YAxis domain={[0, 100]} axisLine={false} tickLine={false}
-            tick={{ fill: C.muted, fontSize: 9, fontFamily: F.mono }} />
+          <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: C.muted, fontSize: 9, fontFamily: F.mono }} />
+          <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fill: C.muted, fontSize: 9, fontFamily: F.mono }} />
           <Tooltip
             formatter={(v, name) => [v !== null ? `${v}/100` : "—", VELOCITY_LABELS[name] || name]}
             contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontFamily: F.body, fontSize: 11 }}
             labelStyle={{ color: C.sub, fontSize: 10 }}
           />
           {dimsWithData.filter(k => activeDims.has(k)).map(key => (
-            <Line
-              key={key}
-              type="monotone"
-              dataKey={key}
-              stroke={VELOCITY_COLORS[key]}
-              strokeWidth={2}
+            <Line key={key} type="monotone" dataKey={key}
+              stroke={VELOCITY_COLORS[key]} strokeWidth={2}
               dot={{ r: 3, fill: VELOCITY_COLORS[key], strokeWidth: 0 }}
-              activeDot={{ r: 5 }}
-              connectNulls={false}
-            />
+              activeDot={{ r: 5 }} connectNulls={false} />
           ))}
         </LineChart>
       </ResponsiveContainer>
@@ -871,26 +788,20 @@ const SkillVelocityGraph = ({ scoreTrend }) => {
   );
 };
 
-// ─── Blind Spot Alert Card — recurring weaknesses across sessions ─────────────
+// ─── Blind Spot Alert ─────────────────────────────────────────────────────────
 const BlindSpotAlertCard = () => {
-  const [data,    setData]    = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      try {
-        const result = await getBlindSpots();
-        setData(result);
-      } catch {
-        // silently fail — not a critical card
-      } finally {
-        setLoading(false);
-      }
+      try { setData(await getBlindSpots()); }
+      catch { /* silently fail */ }
+      finally { setLoading(false); }
     })();
   }, []);
 
   if (loading || !data || !data.blindSpots?.length) return null;
-
   const { blindSpots, sessionsAnalyzed } = data;
   const severityConfig = {
     high:   { color: C.red,    bg: C.redTint,   icon: "🔴", label: "High" },
@@ -904,9 +815,7 @@ const BlindSpotAlertCard = () => {
         <div>
           <div style={{ ...S.eyebrow, color: C.red }}>🚨 RECURRING BLIND SPOT ALERT</div>
           <h2 style={S.cardH2}>These topics keep showing up as weaknesses</h2>
-          <p style={{ ...S.cardSub }}>
-            Detected across your last {sessionsAnalyzed} sessions. These aren't random — they're patterns that need targeted work.
-          </p>
+          <p style={S.cardSub}>Detected across your last {sessionsAnalyzed} sessions. These aren't random — they're patterns.</p>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
@@ -926,47 +835,40 @@ const BlindSpotAlertCard = () => {
         })}
       </div>
       <div style={{ marginTop: 12, fontSize: 11.5, color: C.sub, lineHeight: 1.6 }}>
-        Blind spots from recurring weaknesses require <strong style={{ color: C.text }}>targeted isolation drills</strong>, not just more sessions. Pick the #1 topic above and do a dedicated topic-mode session.
+        Blind spots require <strong style={{ color: C.text }}>targeted isolation drills</strong>, not just more sessions. Pick #1 and do a dedicated topic-mode session.
       </div>
     </div>
   );
 };
 
-// ─── Session Quality Breakdown — last session per-question analysis ───────────
+// ─── Session Quality Breakdown ────────────────────────────────────────────────
 const SessionQualityCard = () => {
   const [breakdown, setBreakdown] = useState(null);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     (async () => {
-      try {
-        const data = await getLastSessionBreakdown();
-        setBreakdown(data);
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
+      try { setBreakdown(await getLastSessionBreakdown()); }
+      catch { setError(true); }
+      finally { setLoading(false); }
     })();
   }, []);
 
   if (loading) return (
     <div style={S.card} className="an-card">
-      <div style={S.eyebrow}>LAST SESSION QUALITY</div>
+      <div style={{ ...S.eyebrow, color: C.violet }}>LAST SESSION QUALITY</div>
       <div style={{ color: C.muted, fontSize: 12, padding: "16px 0" }}>Loading session data…</div>
     </div>
   );
-
   if (error || !breakdown) return null;
 
   const { questions = [], sessionScore, avgTimeTaken, skipRate, sessionMode, sessionDate, totalQuestions } = breakdown;
-  const answered  = questions.filter(q => !q.skipped);
-  const fast      = answered.filter(q => q.timeTaken < 25).length;
-  const slow      = answered.filter(q => q.timeTaken > 55).length;
-  const perfect   = answered.filter(q => q.score >= 90).length;
-  const struggle  = answered.filter(q => q.score < 50).length;
-
+  const answered = questions.filter(q => !q.skipped);
+  const fast = answered.filter(q => q.timeTaken < 25).length;
+  const slow = answered.filter(q => q.timeTaken > 55).length;
+  const perfect = answered.filter(q => q.score >= 90).length;
+  const struggle = answered.filter(q => q.score < 50).length;
   const timeLabel = avgTimeTaken < 25 ? "Fast paced ⚡" : avgTimeTaken > 55 ? "Methodical 🧠" : "Balanced ⚖️";
   const date = sessionDate ? new Date(sessionDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "";
 
@@ -974,7 +876,7 @@ const SessionQualityCard = () => {
     <div style={S.card} className="an-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <div>
-          <div style={S.eyebrow}>LAST SESSION QUALITY</div>
+          <div style={{ ...S.eyebrow, color: C.violet }}>LAST SESSION QUALITY</div>
           <h2 style={S.cardH2}>Per-question breakdown · {date}</h2>
           <p style={{ ...S.cardSub, marginBottom: 12 }}>{totalQuestions} questions · {sessionMode} mode · session score {sessionScore}/100</p>
         </div>
@@ -993,8 +895,6 @@ const SessionQualityCard = () => {
           ))}
         </div>
       </div>
-
-      {/* Per-question bars */}
       <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 12 }}>
         {questions.map((q, i) => {
           const barColor = q.skipped ? C.faint : scoreColor(q.score);
@@ -1004,25 +904,17 @@ const SessionQualityCard = () => {
               <div style={{ flex: 1, height: 8, borderRadius: 999, background: C.border, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: q.skipped ? "100%" : `${q.score}%`, background: q.skipped ? C.border : barColor, borderRadius: 999, opacity: q.skipped ? 0.4 : 1 }} />
               </div>
-              <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: barColor, width: 26, textAlign: "right", flexShrink: 0 }}>
-                {q.skipped ? "skip" : q.score}
-              </div>
-              <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted, width: 30, textAlign: "right", flexShrink: 0 }}>
-                {q.skipped ? "" : `${q.timeTaken}s`}
-              </div>
-              <div style={{ fontSize: 9, color: C.muted, width: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>
-                {q.topic}
-              </div>
+              <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: barColor, width: 26, textAlign: "right", flexShrink: 0 }}>{q.skipped ? "skip" : q.score}</div>
+              <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted, width: 30, textAlign: "right", flexShrink: 0 }}>{q.skipped ? "" : `${q.timeTaken}s`}</div>
+              <div style={{ fontSize: 9, color: C.muted, width: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>{q.topic}</div>
             </div>
           );
         })}
       </div>
-
-      {/* Time distribution mini-summary */}
       {answered.length > 0 && (
-        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: C.blue50, border: `1px solid ${C.borderMd}`, display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: C.violetTint, border: `1px solid ${C.violet}20`, display: "flex", gap: 16, flexWrap: "wrap" }}>
           <div style={{ fontSize: 11, color: C.sub }}><strong style={{ color: C.blue600 }}>{fast}</strong> fast (&lt;25s)</div>
-          <div style={{ fontSize: 11, color: C.sub }}><strong style={{ color: C.blue500 }}>{answered.length - fast - slow}</strong> normal</div>
+          <div style={{ fontSize: 11, color: C.sub }}><strong style={{ color: C.violet }}>{answered.length - fast - slow}</strong> normal</div>
           <div style={{ fontSize: 11, color: C.sub }}><strong style={{ color: C.amber }}>{slow}</strong> slow (&gt;55s)</div>
         </div>
       )}
@@ -1030,12 +922,12 @@ const SessionQualityCard = () => {
   );
 };
 
-// ─── Dimension Drill Panel — slides in when user clicks a radar axis ─────────
+// ─── Dimension Drill Panel ────────────────────────────────────────────────────
 const DimensionDrillPanel = ({ dim, onClose, navigate }) => {
   if (!dim) return null;
   const topics = dim.contributingTopics || [];
   const score = dim.score || 0;
-  const col = scoreColor(score);
+  const col = C.dimColors[dim.key] || scoreColor(score);
 
   return (
     <div style={{
@@ -1043,14 +935,12 @@ const DimensionDrillPanel = ({ dim, onClose, navigate }) => {
       background: C.card, borderLeft: `2px solid ${C.borderMd}`,
       boxShadow: C.shadowLg, zIndex: 9999,
       display: "flex", flexDirection: "column",
-      animation: "slideInRight 0.25s cubic-bezier(.16,1,.3,1)",
-      overflowY: "auto",
+      animation: "slideInRight 0.25s cubic-bezier(.16,1,.3,1)", overflowY: "auto",
     }}>
       <style>{`@keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
-      {/* Header */}
       <div style={{ padding: "20px 20px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
         <div>
-          <div style={S.eyebrow}>DIMENSION DRILL</div>
+          <div style={{ ...S.eyebrow, color: col }}>DIMENSION DRILL</div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
             <span style={{ fontSize: 22 }}>{dim.icon}</span>
             <div>
@@ -1059,13 +949,8 @@ const DimensionDrillPanel = ({ dim, onClose, navigate }) => {
             </div>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          style={{ background: C.blue50, border: `1px solid ${C.borderMd}`, borderRadius: 10, padding: "6px 12px", cursor: "pointer", fontSize: 13, color: C.sub, fontFamily: F.body, flexShrink: 0 }}
-        >✕</button>
+        <button onClick={onClose} style={{ background: `${col}10`, border: `1px solid ${col}30`, borderRadius: 10, padding: "6px 12px", cursor: "pointer", fontSize: 13, color: C.sub, fontFamily: F.body, flexShrink: 0 }}>✕</button>
       </div>
-
-      {/* Score ring summary */}
       <div style={{ margin: "16px 20px", padding: "14px 16px", background: `${col}10`, border: `1.5px solid ${col}40`, borderRadius: 14, display: "flex", alignItems: "center", gap: 16 }}>
         <div style={{ fontFamily: F.display, fontSize: 38, fontWeight: 900, color: col, lineHeight: 1 }}>{score}</div>
         <div>
@@ -1075,37 +960,27 @@ const DimensionDrillPanel = ({ dim, onClose, navigate }) => {
           <div style={{ fontSize: 11, color: C.sub, marginTop: 3, lineHeight: 1.5 }}>{dim.tip}</div>
         </div>
       </div>
-
-      {/* Contributing topics */}
       <div style={{ padding: "0 20px", marginBottom: 16 }}>
-        <div style={S.eyebrow}>CONTRIBUTING TOPICS</div>
+        <div style={{ ...S.eyebrow, color: col }}>CONTRIBUTING TOPICS</div>
         <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          {topics.length === 0 && (
-            <div style={{ color: C.muted, fontSize: 12, padding: "12px 0" }}>No topic data mapped to this dimension yet.</div>
-          )}
+          {topics.length === 0 && <div style={{ color: C.muted, fontSize: 12, padding: "12px 0" }}>No topic data mapped yet.</div>}
           {topics.map((topic, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, background: C.cardAlt, border: `1px solid ${C.border}` }}>
+            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, background: `${col}08`, border: `1px solid ${col}25` }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{topic}</div>
-              <div style={{ fontSize: 10, color: C.muted, fontFamily: F.mono }}>→ {dim.label}</div>
+              <div style={{ fontSize: 10, color: col, fontFamily: F.mono }}>→ {dim.label}</div>
             </div>
           ))}
         </div>
       </div>
-
-      {/* Improvement tip */}
       {dim.answeredCount != null && (
-        <div style={{ margin: "0 20px 16px", padding: "12px 14px", background: C.blue50, border: `1px solid ${C.borderMd}`, borderRadius: 12, fontSize: 11.5, color: C.sub, lineHeight: 1.6 }}>
-          <strong style={{ color: C.blue600 }}>Evidence:</strong> {dim.answeredCount} answered questions in this dimension.
+        <div style={{ margin: "0 20px 16px", padding: "12px 14px", background: `${col}08`, border: `1px solid ${col}25`, borderRadius: 12, fontSize: 11.5, color: C.sub, lineHeight: 1.6 }}>
+          <strong style={{ color: col }}>Evidence:</strong> {dim.answeredCount} answered questions in this dimension.
           {dim.isProvisional && <span style={{ color: C.amber }}> Score is provisional — keep practicing to stabilize.</span>}
         </div>
       )}
-
-      {/* CTA */}
       <div style={{ padding: "0 20px 24px", marginTop: "auto" }}>
-        <button
-          style={{ ...S.btnPrimary, width: "100%", textAlign: "center", display: "block" }}
-          onClick={() => { onClose(); navigate("/interview"); }}
-        >
+        <button style={{ ...S.btnPrimary, width: "100%", textAlign: "center", display: "block", background: `linear-gradient(135deg, ${col}, ${col}CC)` }}
+          onClick={() => { onClose(); navigate("/interview"); }}>
           ⚡ Drill {dim.label} now →
         </button>
       </div>
@@ -1113,16 +988,15 @@ const DimensionDrillPanel = ({ dim, onClose, navigate }) => {
   );
 };
 
-// ─── DNA Fingerprint — blue edition ──────────────────────────────────────────
+// ─── DNA Fingerprint ──────────────────────────────────────────────────────────
 const DNAFingerprint = ({ profile }) => {
   const seed = profile.reduce((acc, d) => acc + d.score, 0);
-
   const paths = profile.map((d, i) => {
-    const freq  = 0.038 + (d.score / 100) * 0.07;
-    const amp   = 16 + (d.score / 100) * 30;
+    const freq = 0.038 + (d.score / 100) * 0.07;
+    const amp = 16 + (d.score / 100) * 30;
     const yBase = 22 + i * 30;
-    const color = scoreColor(d.score);
-    const pts   = Array.from({ length: 80 }, (_, j) => {
+    const color = C.dimColors[d.key] || scoreColor(d.score);
+    const pts = Array.from({ length: 80 }, (_, j) => {
       const x = (j / 79) * 340 + 10;
       const y = yBase + Math.sin(j * freq + (seed % 7)) * amp * (d.score / 100);
       return `${j === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
@@ -1141,13 +1015,11 @@ const DNAFingerprint = ({ profile }) => {
         </defs>
         {paths.map(({ pts, color, label, score: s, icon }, i) => (
           <g key={i}>
-            <path d={pts} fill="none" stroke={color} strokeWidth={1.8}
-              strokeOpacity={0.7} filter="url(#dnaGlow)"
-            />
+            <path d={pts} fill="none" stroke={color} strokeWidth={1.8} strokeOpacity={0.7} filter="url(#dnaGlow)" />
             <text x={352} y={22 + i * 30} textAnchor="end"
-              fill={C.muted} fontSize={8} fontWeight={600}
-              fontFamily={F.body} dominantBaseline="middle"
-            >{icon} {label} <tspan fill={color} fontWeight={800}>{s}</tspan></text>
+              fill={C.muted} fontSize={8} fontWeight={600} fontFamily={F.body} dominantBaseline="middle">
+              {icon} {label} <tspan fill={color} fontWeight={800}>{s}</tspan>
+            </text>
           </g>
         ))}
       </svg>
@@ -1155,19 +1027,17 @@ const DNAFingerprint = ({ profile }) => {
   );
 };
 
-// ─── Streak calendar — blue edition ──────────────────────────────────────────
+// ─── Streak Calendar ──────────────────────────────────────────────────────────
 const StreakCalendar = ({ scoreTrend }) => {
   const today = new Date();
   const WEEKS = 15;
-  const DAYS  = WEEKS * 7;
-
+  const DAYS = WEEKS * 7;
   const sessionMap = useMemo(() => {
     const map = {};
     (scoreTrend || []).forEach(s => {
-      // scoreTrend items have { date, score }
       const raw = s.date || s.createdAt;
       if (!raw) return;
-      const d   = new Date(raw);
+      const d = new Date(raw);
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
       if (!map[key] || (s.score || 0) > map[key]) map[key] = s.score || 0;
     });
@@ -1175,7 +1045,7 @@ const StreakCalendar = ({ scoreTrend }) => {
   }, [scoreTrend]);
 
   const cells = Array.from({ length: DAYS }, (_, i) => {
-    const d   = new Date(today);
+    const d = new Date(today);
     d.setDate(today.getDate() - (DAYS - 1 - i));
     const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
     return { date: d, score: sessionMap[key] ?? 0, hasData: key in sessionMap };
@@ -1183,11 +1053,11 @@ const StreakCalendar = ({ scoreTrend }) => {
 
   const heatColor = (score, hasData) => {
     if (!hasData) return C.border;
-    if (score >= 85) return C.blue700;
-    if (score >= 70) return C.blue500;
-    if (score >= 55) return C.blue400;
-    if (score >= 40) return C.blue200;
-    return C.blue100;
+    if (score >= 85) return C.violetMid;
+    if (score >= 70) return C.violet;
+    if (score >= 55) return C.violetLight;
+    if (score >= 40) return `${C.violet}70`;
+    return `${C.violet}35`;
   };
 
   return (
@@ -1196,8 +1066,7 @@ const StreakCalendar = ({ scoreTrend }) => {
         {Array.from({ length: WEEKS }, (_, w) => (
           <div key={w} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {cells.slice(w * 7, w * 7 + 7).map((cell, d) => (
-              <div
-                key={d}
+              <div key={d}
                 title={cell.hasData ? `${cell.date.toDateString()} · Score: ${cell.score}` : cell.date.toDateString()}
                 style={{
                   width: 13, height: 13, borderRadius: 3, flexShrink: 0,
@@ -1215,7 +1084,7 @@ const StreakCalendar = ({ scoreTrend }) => {
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
         <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>Low</span>
-        {[C.blue100, C.blue200, C.blue400, C.blue500, C.blue700].map((bg, i) => (
+        {[`${C.violet}35`, `${C.violet}70`, C.violetLight, C.violet, C.violetMid].map((bg, i) => (
           <div key={i} style={{ width: 12, height: 12, borderRadius: 3, background: bg, flexShrink: 0 }} />
         ))}
         <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>High</span>
@@ -1224,69 +1093,19 @@ const StreakCalendar = ({ scoreTrend }) => {
   );
 };
 
-// ─── Confidence vs Accuracy ───────────────────────────────────────────────────
-const ConfidenceChart = ({ topics, avgTimePerQ }) => {
-  const data = (topics || []).map(t => {
-    const timePerQ    = t.avgTimePerQ || avgTimePerQ || 40;
-    const confidence  = Math.max(0, Math.min(100, 100 - (timePerQ / 90) * 100));
-    const accuracy    = t.averageScore || 0;
-    const divergence  = confidence - accuracy;
-    return { topic: t.topic, confidence: Math.round(confidence), accuracy: Math.round(accuracy), divergence: Math.round(divergence) };
-  });
-
-  const getLabel = (d) => {
-    if (d > 15) return { text: "Overconfident", color: C.orange, bg: C.orangeTint };
-    if (d < -10) return { text: "Underrated", color: C.blue500, bg: C.blue50 };
-    return { text: "Calibrated", color: C.green, bg: C.greenTint };
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
-      {data.map(d => {
-        const lbl = getLabel(d.divergence);
-        return (
-          <div key={d.topic}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{d.topic}</span>
-              <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 9px", borderRadius: 999, background: lbl.bg, color: lbl.color }}>
-                {d.divergence > 0 ? "⚠ " : d.divergence < -10 ? "🎯 " : "✓ "}{lbl.text}
-              </span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <div>
-                <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginBottom: 3 }}>SPEED (CONFIDENCE PROXY)</div>
-                <div style={{ height: 6, borderRadius: 999, background: C.border, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${d.confidence}%`, background: C.amber, borderRadius: 999 }} />
-                </div>
-                <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 2 }}>{d.confidence}</div>
-              </div>
-              <div>
-                <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginBottom: 3 }}>ACTUAL ACCURACY</div>
-                <div style={{ height: 6, borderRadius: 999, background: C.border, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${d.accuracy}%`, background: scoreColor(d.accuracy), borderRadius: 999 }} />
-                </div>
-                <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 2 }}>{d.accuracy}</div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-// ─── Metric card ─────────────────────────────────────────────────────────────
-const MetricCard = ({ icon, label, value, sub, color }) => (
+// ─── Metric card ──────────────────────────────────────────────────────────────
+const MetricCard = ({ icon, label, value, sub, color, accentColor }) => (
   <div className="an-stat-card" style={{
     display: "flex", alignItems: "center", gap: 14,
     padding: "20px 18px", background: C.card,
     border: `1px solid ${C.border}`, borderRadius: 18,
     boxShadow: "0 2px 16px rgba(26,110,255,0.06)",
+    borderTop: `3px solid ${accentColor || color}`,
   }}>
     <div style={{
       width: 48, height: 48, borderRadius: 14, flexShrink: 0,
-      background: `linear-gradient(135deg, ${C.blue50}, ${C.cyanTint})`,
-      border: `1px solid ${C.borderMd}`,
+      background: `${accentColor || color}15`,
+      border: `1px solid ${accentColor || color}30`,
       display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21,
     }}>{icon}</div>
     <div>
@@ -1296,6 +1115,8 @@ const MetricCard = ({ icon, label, value, sub, color }) => (
     </div>
   </div>
 );
+
+
 
 // ─── Momentum badge ───────────────────────────────────────────────────────────
 const getMomentum = (scoreTrend, topic) => {
@@ -1314,19 +1135,47 @@ const MomentumBadge = ({ momentum }) => {
   const cfg = {
     rising:  { icon: "↑", color: C.green,  bg: C.greenTint, label: "Rising" },
     falling: { icon: "↓", color: C.red,    bg: C.redTint,   label: "Falling" },
-    stable:  { icon: "→", color: C.blue500,bg: C.blue50,    label: "Stable" },
+    stable:  { icon: "→", color: C.violet, bg: C.violetTint, label: "Stable" },
   }[momentum] || { icon: "→", color: C.muted, bg: C.border, label: "—" };
-
   return (
-    <span style={{
-      padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 800,
-      color: cfg.color, background: cfg.bg, whiteSpace: "nowrap",
-      fontFamily: F.mono,
-    }}>{cfg.icon} {cfg.label}</span>
+    <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 800, color: cfg.color, background: cfg.bg, whiteSpace: "nowrap", fontFamily: F.mono }}>
+      {cfg.icon} {cfg.label}
+    </span>
   );
 };
 
-// ─── IRS breakdown explanation tooltip chip ───────────────────────────────────
+// ─── AnimatedSection: staggered scroll-triggered entrance ────────────────────
+const AnimatedSection = ({ children, delay = 0, style = {} }) => {
+  const [visible, setVisible] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); observer.disconnect(); } },
+      { threshold: 0.06 }
+    );
+    const t = setTimeout(() => observer.observe(el), delay);
+    return () => { clearTimeout(t); observer.disconnect(); };
+  }, [delay]);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(22px)",
+        transition: `opacity 0.55s cubic-bezier(.16,1,.3,1) ${delay}ms, transform 0.55s cubic-bezier(.16,1,.3,1) ${delay}ms`,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
+// ─── IRS Component Bar ────────────────────────────────────────────────────────
 const IRSComponentBar = ({ label, value, weight, color }) => (
   <div style={{ marginBottom: 10 }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
@@ -1343,122 +1192,83 @@ const IRSComponentBar = ({ label, value, weight, color }) => (
 );
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FULL AI PROFILE — Readiness Board + Interview DNA merged into one section
-// One button generates both simultaneously. Two panels, one story.
+// FULL AI PROFILE — War Room Edition
+// Deep indigo shell, distinct from Dashboard's blue modal.
+// Same prompts/logic, completely different visual identity.
 // ═══════════════════════════════════════════════════════════════════════════
-const FullAIProfileSection = ({
-  dimensionProfile,
-  scoreTrend,
-  archetype,
-  totalSessions,
-  irs,
-  topTier,
-  weakest,
-  strongest,
-}) => {
-  // Board state
+const FullAIProfileSection = ({ dimensionProfile, scoreTrend, archetype, totalSessions, irs, topTier, weakest, strongest }) => {
   const [boardSections, setBoardSections] = useState([]);
   const [boardRaw, setBoardRaw] = useState("");
   const [boardDone, setBoardDone] = useState(false);
-
-  // DNA state
   const [dnaSections, setDnaSections] = useState([]);
   const [dnaRaw, setDnaRaw] = useState("");
   const [dnaDone, setDnaDone] = useState(false);
-
-  // Shared loading
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
-  const slope = trendSlope(
-    (scoreTrend || []).slice(-6).map((s) => s.score || 0)
-  );
+  const slope = trendSlope((scoreTrend || []).slice(-6).map(s => s.score || 0));
+  const sd = stdDev((scoreTrend || []).map(s => s.score || 0));
 
-  const sd = stdDev(
-    (scoreTrend || []).map((s) => s.score || 0)
-  );
-
+  // War-room section accents — violet-forward instead of Dashboard's cyan
   const boardAccents = {
-    VERDICT: C.cyan400,
-    "CRITICAL GAPS": C.red,
-    "STRENGTHS TO LEVERAGE": C.green,
-    "30-DAY BATTLE PLAN": C.blue400,
-    "MINDSET ALERT": C.amber,
+    "HONEST VERDICT":              C.violetLight,
+    "THE REAL PROBLEM":            C.red,
+    "WHAT'S ACTUALLY WORKING":     C.green,
+    "YOUR NEXT 30 DAYS":           C.blue400,
+    "ONE THING MOST COACHES WON'T SAY": C.amber,
+    // fallback keys matching old prompt format
+    "VERDICT":                     C.violetLight,
+    "CRITICAL GAPS":               C.red,
+    "STRENGTHS TO LEVERAGE":       C.green,
+    "30-DAY BATTLE PLAN":          C.blue400,
+    "MINDSET ALERT":               C.amber,
   };
 
   const boardIcons = {
-    VERDICT: "🎯",
-    "CRITICAL GAPS": "🚨",
-    "STRENGTHS TO LEVERAGE": "✨",
-    "30-DAY BATTLE PLAN": "📅",
-    "MINDSET ALERT": "🧠",
+    "HONEST VERDICT": "🎯", "THE REAL PROBLEM": "🚨",
+    "WHAT'S ACTUALLY WORKING": "✨", "YOUR NEXT 30 DAYS": "📅",
+    "ONE THING MOST COACHES WON'T SAY": "🧠",
+    "VERDICT": "🎯", "CRITICAL GAPS": "🚨",
+    "STRENGTHS TO LEVERAGE": "✨", "30-DAY BATTLE PLAN": "📅", "MINDSET ALERT": "🧠",
   };
 
   const dnaColors = {
-    "RESPONSE STYLE": C.blue500,
-    "PRESSURE RESPONSE": C.cyan500,
-    "KNOWLEDGE PATTERN": C.green,
-    "GROWTH EDGE": C.amber,
+    "RESPONSE STYLE": C.blue500, "PRESSURE RESPONSE": C.violet,
+    "KNOWLEDGE PATTERN": C.green, "GROWTH EDGE": C.amber,
   };
-
-  const dnaIcons = {
-    "RESPONSE STYLE": "💬",
-    "PRESSURE RESPONSE": "🔥",
-    "KNOWLEDGE PATTERN": "📚",
-    "GROWTH EDGE": "🎯",
-  };
+  const dnaIcons = { "RESPONSE STYLE": "💬", "PRESSURE RESPONSE": "🔥", "KNOWLEDGE PATTERN": "📚", "GROWTH EDGE": "🎯" };
 
   const parseSections = (text, accentMap) =>
-    text
-      .split(/\n(?=[A-Z][A-Z ]{3,}\n)/)
-      .filter(Boolean)
-      .map((section) => {
+    text.split(/\n(?=[A-Z][A-Z ']{3,}\n)/).filter(Boolean)
+      .map(section => {
         const lines = section.trim().split("\n");
         const heading = lines[0].trim();
         const body = lines.slice(1).join("\n").trim();
-
-        return {
-          heading,
-          body,
-          accent: accentMap[heading] || C.blue400,
-        };
-      })
-      .filter((section) => section.heading && section.body);
+        return { heading, body, accent: accentMap[heading] || C.violet };
+      }).filter(s => s.heading && s.body);
 
   const generateBoth = async () => {
-    // Start loading
     setLoading(true);
-
-    // Reset previous results
-    setBoardDone(false);
-    setDnaDone(false);
-
-    setBoardSections([]);
-    setDnaSections([]);
-
-    setBoardRaw("");
-    setDnaRaw("");
-
+    setBoardDone(false); setDnaDone(false);
+    setBoardSections([]); setDnaSections([]);
+    setBoardRaw(""); setDnaRaw("");
     setDone(false);
 
-   const topicLines = (dimensionProfile || [])
-  .filter(d => d.hasData)
-  .sort((a, b) => a.score - b.score)
-  .map(d => {
-    const gap = 100 - d.score;
-    const urgency = d.score < 40 ? "🔴 critical" : d.score < 60 ? "🟠 weak" : d.score < 75 ? "🟡 developing" : "🟢 solid";
-    const topics = (d.contributingTopics || []).slice(0, 3).join(", ");
-    return `  ${d.label}: ${d.score}/100 [${urgency}] — IRS weight ${Math.round((d.weight ?? 0) * 100)}%, gap ${gap} pts${topics ? ` — covers: ${topics}` : ""}`;
-  })
-  .join("\n");
+    const topicLines = (dimensionProfile || []).filter(d => d.hasData).sort((a, b) => a.score - b.score)
+      .map(d => {
+        const gap = 100 - d.score;
+        const urgency = d.score < 40 ? "🔴 critical" : d.score < 60 ? "🟠 weak" : d.score < 75 ? "🟡 developing" : "🟢 solid";
+        const topics = (d.contributingTopics || []).slice(0, 3).join(", ");
+        return `  ${d.label}: ${d.score}/100 [${urgency}] — IRS weight ${Math.round((d.weight ?? 0) * 100)}%, gap ${gap} pts${topics ? ` — covers: ${topics}` : ""}`;
+      }).join("\n");
 
-const recentTrend = scoreTrend.slice(-5).map((s, i) => `S${scoreTrend.length - 4 + i}: ${s.score}`).join(" → ");
-const trendVerdict = slope > 3 ? "accelerating upward" : slope > 0.5 ? "slowly improving" : slope > -0.5 ? "flatlined" : "declining — needs urgent reset";
-const varianceVerdict = sd > 18 ? "dangerously inconsistent (high variance means interviewers will see a bad day)" : sd > 10 ? "moderately inconsistent" : "consistent — a real strength";
-const tierGap = topTier ? `currently at ${topTier.label}` : "tier not yet determined";
-const sessionVerdict = totalSessions < 5 ? "early stage — not enough data to trust patterns yet" : totalSessions < 15 ? "building — patterns are becoming clear" : "established — full behavioral picture available";
+    const recentTrend = scoreTrend.slice(-5).map((s, i) => `S${scoreTrend.length - 4 + i}: ${s.score}`).join(" → ");
+    const trendVerdict = slope > 3 ? "accelerating upward" : slope > 0.5 ? "slowly improving" : slope > -0.5 ? "flatlined" : "declining — needs urgent reset";
+    const varianceVerdict = sd > 18 ? "dangerously inconsistent" : sd > 10 ? "moderately inconsistent" : "consistent — a real strength";
+    const tierGap = topTier ? `currently at ${topTier.label}` : "tier not yet determined";
+    const sessionVerdict = totalSessions < 5 ? "early stage" : totalSessions < 15 ? "building — patterns becoming clear" : "established — full behavioral picture available";
 
-const boardPrompt = `You are coach, MockMate's senior placement coach. You have coached 200+ Indian CS students through campus placements at companies ranging from TCS to Google. You speak directly, honestly, and personally — like a senior who genuinely wants this student to succeed, not a bot generating a report.
+    const boardPrompt = `You are coach, MockMate's senior placement coach. You have coached 200+ Indian CS students through campus placements at companies ranging from TCS to Google. You speak directly, honestly, and personally — like a senior who genuinely wants this student to succeed, not a bot generating a report.
 
 You are looking at this student's real data right now. Talk to them like you're sitting across the table.
 
@@ -1476,139 +1286,77 @@ DIMENSION BREAKDOWN (sorted weakest → strongest):
 ${topicLines || "  No dimension data yet"}
 
 YOUR TASK:
-Write a personal coaching message to this student. Not a report. Not bullet points. Not sections with CAPS headings. Talk to them.
+Write a personal coaching message to this student. Not a report. Not bullet points. Talk to them.
 
 Structure your response EXACTLY like this — use these exact heading names, each on its own line, followed by your message in plain conversational prose:
 
 HONEST VERDICT
-[2-3 sentences. Tell them exactly where they stand. Use their actual IRS number and tier. Don't soften it — if they're stuck, say so and why. If they're close to a breakthrough, name it specifically.]
+[2-3 sentences. Tell them exactly where they stand. Use their actual IRS number and tier. Don't soften it.]
 
 THE REAL PROBLEM
-[3-4 sentences. Identify the single root cause holding their IRS back most. Name the specific dimension, score, and why that particular gap matters in actual interviews. Connect it to the archetype — what does being an "${archetype?.label}" mean for how THIS gap shows up on an interview day?]
+[3-4 sentences. Identify the single root cause holding their IRS back most. Name the specific dimension, score, and why that gap matters in actual interviews.]
 
 WHAT'S ACTUALLY WORKING
-[2-3 sentences. Find the genuine strength — not just "you have potential." Reference their strongest dimension or best score. Tell them exactly how to weaponize it in interviews — which companies, which round of interviews, which type of question plays to this strength.]
+[2-3 sentences. Find the genuine strength. Reference their strongest dimension or best score. Tell them exactly how to weaponize it in interviews.]
 
 YOUR NEXT 30 DAYS
-[4 specific actions. Each starts with a number and timeframe. Be concrete — name the topic, the mode (topic/full/mcq), and the target score. Example: "Week 1: 3 DSA sessions in topic mode, aim to move from ${weakest?.score ?? 40} → 55 before touching anything else."]
+[4 specific weekly actions. Each starts with "Week N:". Be concrete — name the topic, the mode, and the target score.]
 
 ONE THING MOST COACHES WON'T SAY
-[2-3 sentences. The uncomfortable truth about their pattern. Reference their archetype and variance directly. What does this pattern predict about their real interview performance if nothing changes?]
+[2-3 sentences. The uncomfortable truth about their pattern. What does this predict about their real interview performance if nothing changes?]
 
 Rules:
-- Every number you mention must come from the data above — never invent stats
-- Write as coach speaking to the student directly ("you scored", "your DSA", "what I'm seeing")  
-- No markdown, no asterisks, no bullet dashes, no generic advice
-- Total length: 350-450 words
-- Sound like a human who read their data, not a model completing a template`;
+- Every number must come from the data above — never invent stats
+- Write as coach speaking to the student directly
+- No markdown, no asterisks, no bullet dashes
+- Total length: 350-450 words`;
 
-const dnaPrompt = `You are MockMate's behavioral analysis system. You have just finished reading ${totalSessions} completed mock interview sessions from one student. This is not a generic profile — this is derived from actual performance patterns.
+    const dnaPrompt = `You are MockMate's behavioral analysis system. You have just finished reading ${totalSessions} completed mock interview sessions from one student. This is not a generic profile — this is derived from actual performance patterns.
 
 BEHAVIORAL SIGNALS:
-- Score std-dev: ${sd.toFixed(1)} → ${sd > 18 ? "HIGH variance (brilliant peaks, concerning troughs)" : sd > 10 ? "moderate variance (somewhat unpredictable)" : "LOW variance (consistent, reliable)"}
-- Trend slope over last 6 sessions: ${slope.toFixed(2)} pts/session → ${slope > 2 ? "strong upward momentum" : slope > 0 ? "slight improvement" : slope > -1 ? "stagnating" : "declining"}
-- Archetype classification: ${archetype?.label} — ${archetype?.desc}
-- Archetype fix: ${archetype?.fix}
-- Strongest area: ${strongest?.label ?? "unclear"} (${strongest?.score ?? "—"}/100) — ${strongest?.score >= 75 ? "genuinely strong, should be leaned on" : "stronger than others but not interview-ready"}
-- Biggest gap: ${weakest?.label ?? "unclear"} (${weakest?.score ?? "—"}/100) — ${(weakest?.score ?? 0) < 50 ? "critical gap that will cost them in interviews" : "needs work but not fatal"}
-- Session count: ${totalSessions} — ${totalSessions < 10 ? "limited data, observations are preliminary" : totalSessions < 20 ? "enough data for reliable pattern detection" : "strong behavioral history — high confidence observations"}
+- Score std-dev: ${sd.toFixed(1)} → ${sd > 18 ? "HIGH variance" : sd > 10 ? "moderate variance" : "LOW variance"}
+- Trend slope over last 6 sessions: ${slope.toFixed(2)} pts/session
+- Archetype: ${archetype?.label} — ${archetype?.desc}
+- Strongest area: ${strongest?.label ?? "unclear"} (${strongest?.score ?? "—"}/100)
+- Biggest gap: ${weakest?.label ?? "unclear"} (${weakest?.score ?? "—"}/100)
+- Session count: ${totalSessions}
 
 Write EXACTLY 4 behavioral observations, using EXACTLY these headings:
 
 RESPONSE STYLE
-[One precise sentence — NOT advice. Describe HOW they communicate answers based on the data. Include something specific about pace, structure, or confidence inferred from their scores and archetype. Example of wrong: "They should practice being more concise." Example of right: "Their answers tend to be front-loaded with definition but trail off before landing the conclusion, which tracks with the ${archetype?.label} pattern of strong bursts followed by incomplete follow-through."]
+[One precise sentence about HOW they communicate answers — pace, structure, confidence pattern.]
 
 PRESSURE RESPONSE
-[One precise sentence about what the variance data reveals about their performance under time/pressure conditions. High std-dev = breaks down under pressure. Low std-dev with low score = consistently underperforms. Reference the actual numbers.]
+[One precise sentence about what the variance data reveals about performance under pressure.]
 
 KNOWLEDGE PATTERN
-[One precise sentence about how their dimension scores reveal their knowledge structure — are they a specialist or generalist? Where is knowledge deep vs shallow? Use the actual dimension names and scores.]
+[One precise sentence about dimension scores and knowledge structure — specialist vs generalist.]
 
 GROWTH EDGE
-[One precise sentence naming the single behavioral change — not a topic — that would move their IRS fastest. This is about HOW they practice or perform, not WHAT they study. Make it behavioral and specific to their archetype pattern.]
+[One precise sentence naming the single behavioral change that would move their IRS fastest.]
 
-Rules:
-- Write as an observer describing what you see, not as a coach giving advice
-- Reference actual numbers from the data
-- Each observation must be ONE sentence only
-- No markdown, no asterisks, total under 150 words`;
+Rules: Write as an observer, reference actual numbers, each observation ONE sentence only, total under 150 words.`;
 
     try {
-      // Run both Gemini requests independently.
-      // If one fails, the other can still succeed.
       const [boardResult, dnaResult] = await Promise.allSettled([
         getAIFreeform(boardPrompt, 1000),
-
-        totalSessions >= 10
-          ? getAIFreeform(dnaPrompt, 600)
-          : Promise.resolve(""),
+        totalSessions >= 10 ? getAIFreeform(dnaPrompt, 600) : Promise.resolve(""),
       ]);
 
-      // Debug rejected requests without breaking the UI
-      if (boardResult.status === "rejected") {
-        console.error(
-          "Placement coach AI failed:",
-          boardResult.reason
-        );
-      }
+      const boardText = boardResult.status === "fulfilled" ? boardResult.value : "";
+      const dnaText = dnaResult.status === "fulfilled" ? dnaResult.value : "";
 
-      if (dnaResult.status === "rejected") {
-        console.error(
-          "Interview DNA AI failed:",
-          dnaResult.reason
-        );
-      }
-
-      // Get successful results
-      const boardText =
-        boardResult.status === "fulfilled"
-          ? boardResult.value
-          : "";
-
-      const dnaText =
-        dnaResult.status === "fulfilled"
-          ? dnaResult.value
-          : "";
-
-      // =========================
-      // PLACEMENT COACH RESULT
-      // =========================
-
-      setBoardRaw(
-        boardText ||
-          "Unable to generate the placement coach analysis."
-      );
-
-      setBoardSections(
-        parseSections(boardText, boardAccents)
-      );
-
+      setBoardRaw(boardText || "Unable to generate the placement coach analysis.");
+      setBoardSections(parseSections(boardText, boardAccents));
       setBoardDone(true);
 
-      // =========================
-      // INTERVIEW DNA RESULT
-      // =========================
-
       setDnaRaw(dnaText);
-
-      setDnaSections(
-        parseSections(dnaText, dnaColors)
-      );
-
-      // Mark DNA as finished even
-      // when Gemini returns an empty response
+      setDnaSections(parseSections(dnaText, dnaColors));
       setDnaDone(true);
-
     } catch (err) {
-      console.error(
-        "Full AI profile generation failed:",
-        err
-      );
-
       const msg = err?.isQuota
-        ? "Gemini quota exhausted (20 req/day limit). Set GEMINI_MODEL=gemini-2.5-flash in server/.env and restart."
-        : "Could not reach AI. Please check your connection and try again.";
-
+        ? "Gemini quota exhausted. Set GEMINI_MODEL=gemini-2.5-flash in server/.env and restart."
+        : "Could not reach AI. Check your connection and try again.";
       setBoardRaw(msg);
       setBoardDone(true);
     } finally {
@@ -1617,401 +1365,105 @@ Rules:
     }
   };
 
-  const loadingMessages = [
-    `Scanning IRS = ${irs}/100 across 6 dimensions…`,
-    `Computing score variance (StdDev: ${sd.toFixed(1)})…`,
-    `Mapping ${strongest?.label || "—"} strength vs ${
-      weakest?.label || "—"
-    } gap…`,
-    "Drafting your 30-day battle plan…",
-    "Mapping your behavioral fingerprint…",
-  ];
-
+  // War-room dark shell — deep indigo/violet, distinct from Dashboard's blue modal
   return (
-    <section
-      style={{
-        background:
-          "linear-gradient(145deg, #080F1E 0%, #0A1628 35%, #001A4A 70%, #002040 100%)",
-        borderRadius: 24,
-        padding: "28px",
-        boxShadow: "0 24px 72px rgba(0,20,80,0.45)",
-        border: "1px solid rgba(0,200,240,0.18)",
-        marginBottom: 18,
-      }}
-    >
+    <section style={{
+      background: "linear-gradient(145deg, #0D0A1E 0%, #120E2A 30%, #1A0E3A 60%, #0D1A35 100%)",
+      borderRadius: 24, padding: "28px",
+      boxShadow: "0 24px 72px rgba(0,68,196,0.35)",
+      border: "1px solid rgba(26,110,255,0.25)",
+      marginBottom: 18,
+    }}>
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          marginBottom: 20,
-          flexWrap: "wrap",
-          gap: 14,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 14 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontFamily: F.mono,
-              fontSize: 9.5,
-              fontWeight: 700,
-              letterSpacing: "1.8px",
-              color: C.cyan400,
-              marginBottom: 8,
-            }}
-          >
-            ⚡ FULL AI PROFILE
+          <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.8px", color: C.violetLight, marginBottom: 8 }}>
+            ⚔️ ANALYTICS WAR ROOM
           </div>
-
-          <h2
-            style={{
-              margin: 0,
-              fontFamily: F.display,
-              fontSize: 22,
-              fontWeight: 800,
-              color: "#fff",
-              lineHeight: 1.2,
-            }}
-          >
+          <h2 style={{ margin: 0, fontFamily: F.display, fontSize: 22, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>
             Placement Coach + Behavioral DNA
           </h2>
-
-          <p
-            style={{
-              margin: "8px 0 0",
-              color: "rgba(255,255,255,0.5)",
-              fontSize: 12.5,
-              lineHeight: 1.65,
-              maxWidth: 560,
-            }}
-          >
-            Two AI analyses, one click. Left panel: your 30-day action
-            plan from the placement coach. Right panel: your behavioral
-            fingerprint derived from {totalSessions} sessions.
-
+          <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.5)", fontSize: 12.5, lineHeight: 1.65, maxWidth: 560 }}>
+            Two AI analyses, one click. Left: your 30-day action plan. Right: behavioral fingerprint from {totalSessions} sessions.
             {totalSessions < 10 && (
-              <span
-                style={{
-                  display: "block",
-                  marginTop: 6,
-                  color: C.amber,
-                  fontSize: 11.5,
-                }}
-              >
-                ⚠ Interview DNA unlocks at 10 sessions — you have{" "}
-                {totalSessions}. The coach analysis is available now.
+              <span style={{ display: "block", marginTop: 6, color: C.amber, fontSize: 11.5 }}>
+                ⚠ Interview DNA unlocks at 10 sessions — you have {totalSessions}. Coach analysis is available now.
               </span>
             )}
           </p>
         </div>
 
         {/* Stats strip */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            alignItems: "flex-end",
-            flexShrink: 0,
-          }}
-        >
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end", flexShrink: 0 }}>
           <div style={{ display: "flex", gap: 6 }}>
             {[
-              {
-                label: "IRS",
-                val: `${irs}/100`,
-                color:
-                  irs >= 75
-                    ? C.green
-                    : irs >= 55
-                    ? C.blue400
-                    : C.amber,
-              },
-              {
-                label: "ARCHETYPE",
-                val: archetype?.label || "—",
-                color: C.blue300,
-              },
-              {
-                label: "VARIANCE",
-                val:
-                  sd > 18
-                    ? "HIGH"
-                    : sd > 10
-                    ? "MED"
-                    : "LOW",
-                color:
-                  sd > 18
-                    ? C.red
-                    : sd > 10
-                    ? C.amber
-                    : C.green,
-              },
+              { label: "IRS", val: `${irs}/100`, color: irs >= 75 ? C.green : irs >= 55 ? C.violetLight : C.amber },
+              { label: "ARCHETYPE", val: archetype?.label || "—", color: C.violetLight },
+              { label: "VARIANCE", val: sd > 18 ? "HIGH" : sd > 10 ? "MED" : "LOW", color: sd > 18 ? C.red : sd > 10 ? C.amber : C.green },
             ].map((item, i) => (
-              <div
-                key={i}
-                style={{
-                  padding: "6px 11px",
-                  borderRadius: 8,
-                  background: "rgba(255,255,255,0.06)",
-                  border:
-                    "1px solid rgba(255,255,255,0.1)",
-                  textAlign: "center",
-                }}
-              >
-                <div
-                  style={{
-                    fontFamily: F.mono,
-                    fontSize: 7.5,
-                    letterSpacing: "0.8px",
-                    color: "rgba(255,255,255,0.3)",
-                    marginBottom: 3,
-                  }}
-                >
-                  {item.label}
-                </div>
-
-                <div
-                  style={{
-                    fontFamily: F.display,
-                    fontSize: 11,
-                    fontWeight: 800,
-                    color: item.color,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {item.val}
-                </div>
+              <div key={i} style={{
+                padding: "6px 11px", borderRadius: 8,
+                background: "rgba(26,110,255,0.12)",
+                border: "1px solid rgba(26,110,255,0.22)", textAlign: "center",
+              }}>
+                <div style={{ fontFamily: F.mono, fontSize: 7.5, letterSpacing: "0.8px", color: "rgba(255,255,255,0.35)", marginBottom: 3 }}>{item.label}</div>
+                <div style={{ fontFamily: F.display, fontSize: 11, fontWeight: 800, color: item.color, whiteSpace: "nowrap" }}>{item.val}</div>
               </div>
             ))}
           </div>
-
-          <button
-            onClick={generateBoth}
-            disabled={loading}
-            className="an-ai-generate-btn"
+          <button onClick={generateBoth} disabled={loading} className="an-ai-generate-btn"
             style={{
-              border: "none",
-              borderRadius: 13,
-              background: loading
-                ? "rgba(255,255,255,0.07)"
-                : `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`,
-              color: "#fff",
-              padding: "13px 24px",
-              fontSize: 13.5,
-              fontWeight: 800,
-              cursor: loading
-                ? "not-allowed"
-                : "pointer",
-              boxShadow: loading
-                ? "none"
-                : "0 4px 22px rgba(0,173,224,0.36)",
-              display: "flex",
-              alignItems: "center",
-              gap: 9,
-              whiteSpace: "nowrap",
-              fontFamily: F.body,
-            }}
-          >
+              border: "none", borderRadius: 13,
+              background: loading ? "rgba(255,255,255,0.07)" : `linear-gradient(135deg, ${C.violet}, ${C.violetMid})`,
+              color: "#fff", padding: "13px 24px", fontSize: 13.5, fontWeight: 800,
+              cursor: loading ? "not-allowed" : "pointer",
+              boxShadow: loading ? "none" : `0 4px 22px rgba(26,110,255,0.45)`,
+              display: "flex", alignItems: "center", gap: 9, whiteSpace: "nowrap", fontFamily: F.body,
+            }}>
             {loading ? (
-              <>
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 14,
-                    height: 14,
-                    border:
-                      "2px solid rgba(255,255,255,0.22)",
-                    borderTopColor: "#fff",
-                    borderRadius: "50%",
-                    animation:
-                      "spin 0.7s linear infinite",
-                  }}
-                />
-                Generating both…
-              </>
-            ) : done ? (
-              "↺ Regenerate Profile"
-            ) : (
-              "⚡ Generate Full AI Profile"
-            )}
+              <><span style={{ display: "inline-block", width: 14, height: 14, border: "2px solid rgba(255,255,255,0.22)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Generating…</>
+            ) : done ? "↺ Regenerate Profile" : "⚔️ Generate War Room Profile"}
           </button>
         </div>
       </div>
 
       {/* Empty state */}
       {!done && !loading && (
-        <div
-          style={{
-            padding: "44px 20px",
-            textAlign: "center",
-            border:
-              "1.5px dashed rgba(0,200,240,0.2)",
-            borderRadius: 16,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 36,
-              marginBottom: 12,
-            }}
-          >
-            ⚡
-          </div>
-
-          <p
-            style={{
-              color: "rgba(255,255,255,0.4)",
-              fontSize: 13,
-              margin: "0 auto",
-              maxWidth: 480,
-              lineHeight: 1.7,
-            }}
-          >
-            Click{" "}
-            <strong
-              style={{
-                color:
-                  "rgba(255,255,255,0.7)",
-              }}
-            >
-              Generate Full AI Profile
-            </strong>{" "}
-            to get your placement coach's action plan
-            and your behavioral fingerprint — both
-            computed from your real session data in
-            parallel.
+        <div style={{ padding: "44px 20px", textAlign: "center", border: "1.5px dashed rgba(26,110,255,0.25)", borderRadius: 16 }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>⚔️</div>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, margin: "0 auto", maxWidth: 480, lineHeight: 1.7 }}>
+            Click <strong style={{ color: "rgba(255,255,255,0.7)" }}>Generate War Room Profile</strong> to get your placement coach's action plan and behavioral fingerprint — both computed from your real session data in parallel.
           </p>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              justifyContent: "center",
-              marginTop: 20,
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 20, flexWrap: "wrap" }}>
             {[
-              {
-                icon: "🎯",
-                label: "VERDICT",
-                desc: "Where you truly stand",
-              },
-              {
-                icon: "🚨",
-                label: "CRITICAL GAPS",
-                desc: "Top 3 things to fix",
-              },
-              {
-                icon: "📅",
-                label: "30-DAY PLAN",
-                desc: "Concrete weekly targets",
-              },
-              {
-                icon: "🧬",
-                label: "INTERVIEW DNA",
-                desc: "Behavioral fingerprint",
-              },
-            ].map((item) => (
-              <div
-                key={item.label}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background:
-                    "rgba(255,255,255,0.05)",
-                  border:
-                    "1px solid rgba(255,255,255,0.08)",
-                  textAlign: "center",
-                  minWidth: 100,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 18,
-                    marginBottom: 5,
-                  }}
-                >
-                  {item.icon}
-                </div>
-
-                <div
-                  style={{
-                    fontFamily: F.mono,
-                    fontSize: 8.5,
-                    fontWeight: 800,
-                    letterSpacing: "0.8px",
-                    color: C.cyan400,
-                    marginBottom: 3,
-                  }}
-                >
-                  {item.label}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    color:
-                      "rgba(255,255,255,0.38)",
-                  }}
-                >
-                  {item.desc}
-                </div>
+              { icon: "🎯", label: "HONEST VERDICT", desc: "Where you truly stand" },
+              { icon: "🚨", label: "REAL PROBLEM", desc: "Root cause identified" },
+              { icon: "📅", label: "30-DAY PLAN", desc: "Concrete weekly targets" },
+              { icon: "🧬", label: "INTERVIEW DNA", desc: "Behavioral fingerprint" },
+            ].map(item => (
+              <div key={item.label} style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(26,110,255,0.08)", border: "1px solid rgba(26,110,255,0.15)", textAlign: "center", minWidth: 100 }}>
+                <div style={{ fontSize: 18, marginBottom: 5 }}>{item.icon}</div>
+                <div style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.8px", color: C.violetLight, marginBottom: 3 }}>{item.label}</div>
+                <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.38)" }}>{item.desc}</div>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Loading state */}
+      {/* Loading */}
       {loading && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 9,
-          }}
-        >
-          {loadingMessages.map((msg, i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "10px 14px",
-                borderRadius: 10,
-                background:
-                  "rgba(255,255,255,0.04)",
-                border:
-                  "1px solid rgba(26,110,255,0.14)",
-              }}
-            >
-              <div
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  background: C.cyan400,
-                  flexShrink: 0,
-                  animation: `livePulse 1.4s ease ${
-                    i * 0.22
-                  }s infinite`,
-                }}
-              />
-
-              <div
-                style={{
-                  color:
-                    "rgba(255,255,255,0.45)",
-                  fontSize: 11.5,
-                  fontFamily: F.mono,
-                }}
-              >
-                {msg}
-              </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          {[
+            `Scanning IRS = ${irs}/100 across 6 dimensions…`,
+            `Computing score variance (StdDev: ${sd.toFixed(1)})…`,
+            `Mapping ${strongest?.label || "—"} strength vs ${weakest?.label || "—"} gap…`,
+            "Drafting your 30-day battle plan…",
+            "Mapping your behavioral fingerprint…",
+          ].map((msg, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: "rgba(26,110,255,0.08)", border: "1px solid rgba(26,110,255,0.15)" }}>
+              <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.violetLight, flexShrink: 0, animation: `livePulse 1.4s ease ${i * 0.22}s infinite` }} />
+              <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 11.5, fontFamily: F.mono }}>{msg}</div>
             </div>
           ))}
         </div>
@@ -2019,322 +1471,61 @@ Rules:
 
       {/* Results */}
       {done && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              totalSessions >= 10
-                ? "1fr 1fr"
-                : "1fr",
-            gap: 18,
-            marginTop: 4,
-          }}
-          className="an-two-col"
-        >
-          {/* Left — Placement Coach Board */}
+        <div style={{ display: "grid", gridTemplateColumns: totalSessions >= 10 ? "1fr 1fr" : "1fr", gap: 18, marginTop: 4 }} className="an-two-col">
+          {/* Left — Placement Coach */}
           <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 14,
-                paddingBottom: 10,
-                borderBottom:
-                  "1px solid rgba(255,255,255,0.08)",
-              }}
-            >
-              <div
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 8,
-                  background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 14,
-                  flexShrink: 0,
-                }}
-              >
-                ⚡
-              </div>
-
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid rgba(26,110,255,0.2)" }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${C.violet}, ${C.violetMid})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>⚡</div>
               <div>
-                <div
-                  style={{
-                    fontFamily: F.mono,
-                    fontSize: 8.5,
-                    letterSpacing: "1.2px",
-                    color: C.blue300,
-                    fontWeight: 700,
-                  }}
-                >
-                  PLACEMENT COACH
-                </div>
-
-                <div
-                  style={{
-                    fontFamily: F.display,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: "#fff",
-                  }}
-                >
-                  Action plan from your data
-                </div>
+                <div style={{ fontFamily: F.mono, fontSize: 8.5, letterSpacing: "1.2px", color: C.violetLight, fontWeight: 700 }}>PLACEMENT COACH</div>
+                <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: "#fff" }}>Action plan from your data</div>
               </div>
             </div>
-
             {boardSections.length > 0 ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                }}
-              >
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {boardSections.map((s, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: "13px 15px",
-                      borderRadius: 12,
-                      background:
-                        "rgba(255,255,255,0.04)",
-                      border:
-                        "1px solid rgba(255,255,255,0.07)",
-                      borderLeft:
-                        `3px solid ${s.accent}`,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 7,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <span style={{ fontSize: 12 }}>
-                        {boardIcons[s.heading] || "•"}
-                      </span>
-
-                      <div
-                        style={{
-                          fontFamily: F.mono,
-                          fontSize: 8,
-                          fontWeight: 800,
-                          letterSpacing: "1.3px",
-                          color: s.accent,
-                        }}
-                      >
-                        {s.heading}
-                      </div>
+                  <div key={i} style={{ padding: "13px 15px", borderRadius: 12, background: "rgba(26,110,255,0.06)", border: "1px solid rgba(26,110,255,0.12)", borderLeft: `3px solid ${s.accent}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                      <span style={{ fontSize: 12 }}>{boardIcons[s.heading] || "•"}</span>
+                      <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 800, letterSpacing: "1.3px", color: s.accent }}>{s.heading}</div>
                     </div>
-
-                    <p
-                      style={{
-                        margin: 0,
-                        color:
-                          "rgba(255,255,255,0.8)",
-                        fontSize: 12,
-                        lineHeight: 1.72,
-                        whiteSpace: "pre-line",
-                      }}
-                    >
-                      {s.body}
-                    </p>
+                    <p style={{ margin: 0, color: "rgba(255,255,255,0.8)", fontSize: 12, lineHeight: 1.72, whiteSpace: "pre-line" }}>{s.body}</p>
                   </div>
                 ))}
               </div>
             ) : (
-              <p
-                style={{
-                  color:
-                    "rgba(255,255,255,0.68)",
-                  fontSize: 12,
-                  lineHeight: 1.72,
-                  margin: 0,
-                  whiteSpace: "pre-line",
-                }}
-              >
-                {boardRaw}
-              </p>
+              <p style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, lineHeight: 1.72, margin: 0, whiteSpace: "pre-line" }}>{boardRaw}</p>
             )}
           </div>
 
           {/* Right — Interview DNA */}
           {totalSessions >= 10 && (
             <div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 14,
-                  paddingBottom: 10,
-                  borderBottom:
-                    "1px solid rgba(255,255,255,0.08)",
-                }}
-              >
-                <div
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    background: `linear-gradient(135deg, ${C.cyan600}, ${C.cyan500})`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent:
-                      "center",
-                    fontSize: 14,
-                    flexShrink: 0,
-                  }}
-                >
-                  🧬
-                </div>
-
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid rgba(26,110,255,0.2)" }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${C.violetMid}, ${C.violet})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>🧬</div>
                 <div>
-                  <div
-                    style={{
-                      fontFamily: F.mono,
-                      fontSize: 8.5,
-                      letterSpacing: "1.2px",
-                      color: C.cyan400,
-                      fontWeight: 700,
-                    }}
-                  >
-                    INTERVIEW DNA
-                  </div>
-
-                  <div
-                    style={{
-                      fontFamily: F.display,
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: "#fff",
-                    }}
-                  >
-                    Behavioral fingerprint —{" "}
-                    {totalSessions} sessions
-                  </div>
+                  <div style={{ fontFamily: F.mono, fontSize: 8.5, letterSpacing: "1.2px", color: C.violetLight, fontWeight: 700 }}>INTERVIEW DNA</div>
+                  <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: "#fff" }}>Behavioral fingerprint — {totalSessions} sessions</div>
                 </div>
               </div>
-
               {dnaSections.length > 0 ? (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 10,
-                  }}
-                >
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {dnaSections.map((s, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        padding: "13px 15px",
-                        borderRadius: 12,
-                        background:
-                          "rgba(255,255,255,0.04)",
-                        border:
-                          "1px solid rgba(255,255,255,0.07)",
-                        borderLeft:
-                          `3px solid ${s.accent}`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 7,
-                          marginBottom: 8,
-                        }}
-                      >
-                        <span style={{ fontSize: 12 }}>
-                          {dnaIcons[s.heading] ||
-                            "🧬"}
-                        </span>
-
-                        <div
-                          style={{
-                            fontFamily: F.mono,
-                            fontSize: 8,
-                            fontWeight: 800,
-                            letterSpacing:
-                              "1.3px",
-                            color: s.accent,
-                          }}
-                        >
-                          {s.heading}
-                        </div>
+                    <div key={i} style={{ padding: "13px 15px", borderRadius: 12, background: "rgba(26,110,255,0.06)", border: "1px solid rgba(26,110,255,0.12)", borderLeft: `3px solid ${s.accent}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                        <span style={{ fontSize: 12 }}>{dnaIcons[s.heading] || "🧬"}</span>
+                        <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 800, letterSpacing: "1.3px", color: s.accent }}>{s.heading}</div>
                       </div>
-
-                      <p
-                        style={{
-                          margin: 0,
-                          color:
-                            "rgba(255,255,255,0.8)",
-                          fontSize: 12,
-                          lineHeight: 1.72,
-                          whiteSpace:
-                            "pre-line",
-                        }}
-                      >
-                        {s.body}
-                      </p>
+                      <p style={{ margin: 0, color: "rgba(255,255,255,0.8)", fontSize: 12, lineHeight: 1.72, whiteSpace: "pre-line" }}>{s.body}</p>
                     </div>
                   ))}
                 </div>
               ) : dnaDone ? (
-                <p
-                  style={{
-                    color:
-                      "rgba(255,255,255,0.68)",
-                    fontSize: 12,
-                    lineHeight: 1.72,
-                    margin: 0,
-                    whiteSpace: "pre-line",
-                  }}
-                >
-                  {dnaRaw ||
-                    "Unable to generate the Interview DNA analysis."}
-                </p>
+                <p style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, lineHeight: 1.72, margin: 0, whiteSpace: "pre-line" }}>{dnaRaw || "Unable to generate the Interview DNA analysis."}</p>
               ) : (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                  }}
-                >
-                  {[
-                    "Reading session variance patterns…",
-                    "Mapping response style indicators…",
-                    "Identifying pressure response signals…",
-                    "Writing behavioral fingerprint…",
-                  ].map((msg, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        padding: "9px 13px",
-                        borderRadius: 8,
-                        background:
-                          "rgba(255,255,255,0.04)",
-                        border:
-                          "1px solid rgba(0,200,240,0.12)",
-                        color:
-                          "rgba(255,255,255,0.38)",
-                        fontSize: 11,
-                        fontFamily: F.mono,
-                        animation: `livePulse 1.5s ease ${
-                          i * 0.25
-                        }s infinite`,
-                      }}
-                    >
-                      {msg}
-                    </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {["Reading session variance patterns…", "Mapping response style indicators…", "Identifying pressure response signals…", "Writing behavioral fingerprint…"].map((msg, i) => (
+                    <div key={i} style={{ padding: "9px 13px", borderRadius: 8, background: "rgba(26,110,255,0.06)", border: "1px solid rgba(26,110,255,0.12)", color: "rgba(255,255,255,0.38)", fontSize: 11, fontFamily: F.mono, animation: `livePulse 1.5s ease ${i * 0.25}s infinite` }}>{msg}</div>
                   ))}
                 </div>
               )}
@@ -2343,54 +1534,10 @@ Rules:
         </div>
       )}
 
-      {/* Divider + note */}
       {done && (
-        <div
-          style={{
-            marginTop: 18,
-            paddingTop: 14,
-            borderTop:
-              "1px solid rgba(255,255,255,0.07)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent:
-              "space-between",
-            flexWrap: "wrap",
-            gap: 10,
-          }}
-        >
-          <p
-            style={{
-              margin: 0,
-              fontSize: 11,
-              color:
-                "rgba(255,255,255,0.3)",
-              lineHeight: 1.6,
-            }}
-          >
-            Both analyses are re-generated fresh
-            on each click. DNA unlocks at 10
-            sessions.
-          </p>
-
-          <button
-            onClick={generateBoth}
-            disabled={loading}
-            style={{
-              border:
-                "1px solid rgba(255,255,255,0.14)",
-              borderRadius: 9,
-              background:
-                "rgba(255,255,255,0.06)",
-              color:
-                "rgba(255,255,255,0.6)",
-              padding: "7px 14px",
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-              fontFamily: F.body,
-            }}
-          >
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(26,110,255,0.15)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.3)", lineHeight: 1.6 }}>Both analyses regenerate fresh on each click. DNA unlocks at 10 sessions.</p>
+          <button onClick={generateBoth} disabled={loading} style={{ border: `1px solid rgba(26,110,255,0.25)`, borderRadius: 9, background: "rgba(26,110,255,0.1)", color: "rgba(255,255,255,0.6)", padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: F.body }}>
             ↺ Regenerate both
           </button>
         </div>
@@ -2398,42 +1545,29 @@ Rules:
     </section>
   );
 };
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN ANALYTICS COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 const Analytics = () => {
   const navigate = useNavigate();
-  const [data,     setData]     = useState(null);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState("");
-  const [mounted,  setMounted]  = useState(false);
-  const [drillDim,        setDrillDim]        = useState(null);  // radar axis drill
-  const [selectedCompany, setSelectedCompany] = useState(null);   // company overlay on radar
-const hasFetched = useRef(false);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [mounted, setMounted] = useState(false);
+  const [drillDim, setDrillDim] = useState(null);
+  const [selectedCompany, setSelectedCompany] = useState(null);
+  const hasFetched = useRef(false);
 
-useEffect(() => {
-  if (hasFetched.current) return;
-  hasFetched.current = true;
-
-  (async () => {
-    try {
-      const [result] = await Promise.all([
-        getAnalytics(),
-        new Promise(resolve => setTimeout(resolve, 1500)),
-      ]);
-      setData(result);
-    } catch (err) {
-      console.error("Analytics load failed:", err);
-      setError("Unable to load your performance data.");
-    } finally {
-      setLoading(false);
-      requestAnimationFrame(() => setTimeout(() => setMounted(true), 50));
-    }
-  })();
-}, []);
-
-
+  // ── CRITICAL: always mount at top — prevents scroll-to-bottom from child effects
   useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, []);
+
+  // FIX: single ref-guarded useEffect — no more duplicate fetch
+  useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
     (async () => {
       try {
         const [result] = await Promise.all([
@@ -2453,29 +1587,23 @@ useEffect(() => {
 
   // ── Derived state ───────────────────────────────────────────────────────
   const topicPerformance = useMemo(() => data?.topicPerformance ?? [], [data]);
-  const scoreTrend       = useMemo(() => data?.scoreTrend ?? [],       [data]);
+  const scoreTrend       = useMemo(() => data?.scoreTrend ?? [], [data]);
   const averageScore     = data?.averageScore ?? 0;
   const totalSessions    = data?.totalSessions ?? 0;
   const avgTimePerQ      = data?.timePerformance?.averageTimePerQuestion ?? null;
   const highestScore     = data?.highestScore ?? data?.bestScore ?? Math.max(0, ...scoreTrend.map(s => s.score || 0));
 
-  // ── IRS + tier — always read from backend (scoringModel.js).
-  // The backend uses a real synonym resolver that handles 65+ Gemini topic
-  // phrasings. The old frontend DIMENSIONS exact-match silently dropped ~20%
-  // of real answered questions from dimension scores — that code is gone.
   const irs = data?.irs ?? 0;
   const currentTierLabel = data?.currentTier ?? "₹3–6 LPA";
   const currentTierMeta  = TIER_META[currentTierLabel] ?? TIER_META["₹3–6 LPA"];
   const currentTier      = { label: currentTierLabel, ...currentTierMeta };
 
-  const apiTiers   = data?.tiers ?? [];
+  const apiTiers    = data?.tiers ?? [];
   const nextTierApi = apiTiers.find(t => !t.isUnlocked && t.label !== currentTierLabel) ?? null;
   const nextTier    = nextTierApi
-    ? { label: nextTierApi.label, minScore: nextTierApi.minIRS, color: TIER_META[nextTierApi.label]?.color ?? C.blue500, advice: nextTierApi.advice, desc: nextTierApi.desc }
+    ? { label: nextTierApi.label, minScore: nextTierApi.minIRS, color: TIER_META[nextTierApi.label]?.color ?? C.violet, advice: nextTierApi.advice, desc: nextTierApi.desc }
     : null;
 
-  // ── Six-dimension profile — from backend (synonym-resolved).
-  // Merge DIMENSION_META display fields onto API shape.
   const dimensionProfile = useMemo(() => {
     const apiProfile = data?.dimensionProfile ?? [];
     return DIMENSION_META.map(meta => {
@@ -2491,79 +1619,41 @@ useEffect(() => {
     });
   }, [data]);
 
-  // IRS sub-components for the breakdown panel — read straight from the
-  // backend's computeIRSBreakdown() (server/utils/scoringModel.js), NOT
-  // re-derived here. The old version re-implemented the V1 formula
-  // client-side (different weights, no maturity gate, no rigor component),
-  // which meant this panel could show numbers that didn't add up to the
-  // headline IRS anymore once the backend model changed. Single source of
-  // truth now lives on the server; this just renders it.
-  const irsBreakdown  = data?.irsBreakdown ?? null;
-  const irsComponents = useMemo(() => {
+  const irsBreakdown   = data?.irsBreakdown ?? null;
+  const irsComponents  = useMemo(() => {
     if (!irsBreakdown) return {};
     const c = irsBreakdown.components;
-    return {
-      dimScore:    c.dimension.score,
-      ewmaScore:   c.ewma.score,
-      breadth:     c.breadth.score,
-      consistency: c.consistency.score,
-      rigor:       c.rigor.score,
-    };
+    return { dimScore: c.dimension.score, ewmaScore: c.ewma.score, breadth: c.breadth.score, consistency: c.consistency.score, rigor: c.rigor.score };
   }, [irsBreakdown]);
-
-  // Maturity multiplier — how much the evidence volume (answered questions)
-  // is currently suppressing the composite score. 1.0 = full trust, lower =
-  // "the math says X, but you don't have enough logged history yet to fully
-  // trust that number." Shown so the score doesn't feel arbitrary.
-  const irsMaturity = irsBreakdown?.maturity ?? null;
+  const irsMaturity     = irsBreakdown?.maturity ?? null;
   const irsRawComposite = irsBreakdown?.rawComposite ?? null;
-
-  // Gated vs raw tier — currentTier (above) is already the evidence-gated
-  // one from the backend. currentTierIsGated tells us the raw IRS math
-  // actually points to a HIGHER tier than what's being shown, in which case
-  // we say "on track for X, N more sessions to confirm it" instead of
-  // silently downgrading with no explanation.
-  const currentTierIsGated     = data?.currentTierIsGated ?? false;
-  const currentTierRawLabel    = data?.currentTierRaw ?? currentTierLabel;
-  const sessionsNeededForRaw   = data?.sessionsNeededForRawTier ?? 0;
-
-  const unmappedTopics = data?.unmappedTopics ?? [];
+  const currentTierIsGated   = data?.currentTierIsGated ?? false;
+  const currentTierRawLabel  = data?.currentTierRaw ?? currentTierLabel;
+  const sessionsNeededForRaw = data?.sessionsNeededForRawTier ?? 0;
 
   const strongestDim = useMemo(() => [...dimensionProfile].filter(d => d.hasData).sort((a, b) => b.score - a.score)[0], [dimensionProfile]);
-  const weakestDim   = useMemo(() => [...dimensionProfile].filter(d => d.hasData).sort((a, b) => a.score - b.score)[0],  [dimensionProfile]);
+  const weakestDim   = useMemo(() => [...dimensionProfile].filter(d => d.hasData).sort((a, b) => a.score - b.score)[0], [dimensionProfile]);
+  const archetype    = useMemo(() => deriveArchetype(scoreTrend, avgTimePerQ, averageScore), [scoreTrend, avgTimePerQ, averageScore]);
 
-  const archetype = useMemo(() => deriveArchetype(scoreTrend, avgTimePerQ, averageScore), [scoreTrend, avgTimePerQ, averageScore]);
-
-  // Topic ranking by ROI — uses backend-resolved dimension profile so the
-  // weight used for each topic matches the IRS formula, not the old exact-match lookup.
   const topicROIRanking = useMemo(() =>
-    [...topicPerformance]
-      .map(t => ({ ...t, roi: topicROI(t.topic, dimensionProfile) }))
-      .sort((a, b) => b.roi - a.roi),
-  [topicPerformance, dimensionProfile]);
+    [...topicPerformance].map(t => ({ ...t, roi: topicROI(t.topic, dimensionProfile) })).sort((a, b) => b.roi - a.roi),
+    [topicPerformance, dimensionProfile]);
 
-  // Chart data
   const chartData = useMemo(() =>
-    scoreTrend.map((item, i) => ({
-      interview: `#${i + 1}`,
-      score:     item.score || 0,
-      avg:       averageScore,
-    })),
-  [scoreTrend, averageScore]);
+    scoreTrend.map((item, i) => ({ interview: `#${i + 1}`, score: item.score || 0, avg: averageScore })),
+    [scoreTrend, averageScore]);
 
-  const latestScore  = chartData.at(-1)?.score ?? 0;
-  const prevScore    = chartData.at(-2)?.score ?? latestScore;
-  const delta        = latestScore - prevScore;
+  const latestScore = chartData.at(-1)?.score ?? 0;
+  const prevScore   = chartData.at(-2)?.score ?? latestScore;
+  const delta       = latestScore - prevScore;
+  const slope       = trendSlope(scoreTrend.map(s => s.score || 0));
+  const sd          = stdDev(scoreTrend.map(s => s.score || 0));
 
-  const slope        = trendSlope(scoreTrend.map(s => s.score || 0));
-  const sd           = stdDev(scoreTrend.map(s => s.score || 0));
-
-  // ── States ──────────────────────────────────────────────────────────────
+  // ── Loading / error states ───────────────────────────────────────────────
   if (loading) return (
     <div style={S.page}>
       <div style={S.center}>
-        <PencilLoader/>
-        
+        <BookLoader />
         <p style={{ color: C.sub, marginTop: 14, fontSize: 13, fontFamily: F.body }}>Building your readiness profile…</p>
       </div>
     </div>
@@ -2584,7 +1674,7 @@ useEffect(() => {
     <div style={S.page}>
       <div style={S.emptyCard}>
         <div style={{ fontSize: 48, marginBottom: 14 }}>🧠</div>
-        <div style={S.eyebrow}>READINESS INTELLIGENCE</div>
+        <div style={{ ...S.eyebrow, color: C.violet }}>READINESS INTELLIGENCE</div>
         <h1 style={S.emptyTitle}>Your interview fingerprint starts here.</h1>
         <p style={S.emptyText}>Complete your first mock interview and MockMate will compute your IRS, map your dimensions, and show you exactly which package tier you're ready for.</p>
         <button style={S.btnPrimary} className="an-btn-primary" onClick={() => navigate("/interview")}>Start First Interview →</button>
@@ -2592,89 +1682,63 @@ useEffect(() => {
     </div>
   );
 
-  // ── Main render ──────────────────────────────────────────────────────────
   return (
     <div style={S.page}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-        /* ── Keyframes ── */
         @keyframes spin        { to { transform: rotate(360deg); } }
         @keyframes fadeUp      { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes fadeIn      { from { opacity:0; } to { opacity:1; } }
-        @keyframes scaleIn     { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:scale(1); } }
         @keyframes livePulse   { 0%,100% { opacity:1; } 50% { opacity:0.28; } }
-        @keyframes slideRight  { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
         @keyframes barFill     { from { width:0; } }
-        @keyframes shimmer     { 0% { background-position:-400px 0; } 100% { background-position:400px 0; } }
 
         *, *::before, *::after { box-sizing: border-box; }
-        ::selection { background: rgba(26,110,255,0.16); color: ${C.text}; }
+        ::selection { background: rgba(26,110,255,0.15); color: ${C.text}; }
 
-        /* ── Focus ── */
         .an-page button:focus-visible, .an-page a:focus-visible {
-          outline: 2px solid ${C.blue500}; outline-offset: 3px; border-radius: 6px;
+          outline: 2px solid ${C.violet}; outline-offset: 3px; border-radius: 6px;
         }
-
-        /* ── Scrollbar ── */
         .an-page ::-webkit-scrollbar { width: 5px; height: 5px; }
         .an-page ::-webkit-scrollbar-track { background: transparent; }
         .an-page ::-webkit-scrollbar-thumb { background: ${C.borderMd}; border-radius: 4px; }
-        .an-page ::-webkit-scrollbar-thumb:hover { background: ${C.borderStr}; }
 
-        /* ── Page entrance ── */
-        .an-page-inner { animation: fadeUp 0.5s cubic-bezier(.16,1,.3,1) both; }
-
-        /* ── Cards ── */
         .an-card {
           transition: box-shadow 0.22s ease, transform 0.22s cubic-bezier(.16,1,.3,1), border-color 0.22s ease !important;
         }
         .an-card:hover { box-shadow: 0 10px 36px rgba(26,110,255,0.1) !important; transform: translateY(-2px) !important; border-color: ${C.borderMd} !important; }
 
-        /* ── Stat cards ── */
         .an-stat-card {
           transition: box-shadow 0.22s ease, transform 0.22s cubic-bezier(.16,1,.3,1), border-color 0.22s ease !important;
           position: relative; overflow: hidden;
         }
-        .an-stat-card::before {
-          content: ''; position: absolute; inset: 0; opacity: 0;
-          background: linear-gradient(135deg, rgba(26,110,255,0.04), rgba(0,200,240,0.02));
-          transition: opacity 0.22s ease; border-radius: inherit; pointer-events: none;
-        }
-        .an-stat-card:hover { box-shadow: 0 8px 32px rgba(26,110,255,0.13) !important; transform: translateY(-3px) !important; border-color: ${C.borderMd} !important; }
-        .an-stat-card:hover::before { opacity: 1; }
+        .an-stat-card:hover { box-shadow: 0 8px 32px rgba(26,110,255,0.13) !important; transform: translateY(-3px) !important; }
 
-        /* ── Tier cards ── */
         .an-tier-card {
           transition: box-shadow 0.2s ease, transform 0.2s cubic-bezier(.16,1,.3,1), border-color 0.2s ease !important;
         }
         .an-tier-card:hover { box-shadow: 0 6px 24px rgba(26,110,255,0.12) !important; transform: translateY(-2px) !important; }
         .an-tier-card-active:hover { box-shadow: 0 8px 28px rgba(26,110,255,0.22) !important; }
 
-        /* ── Dimension rows ── */
         .an-dim-row {
           transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease !important;
           cursor: default;
         }
-        .an-dim-row:hover { background: ${C.blue50} !important; border-color: ${C.borderMd} !important; transform: translateX(3px) !important; }
+        .an-dim-row:hover { background: ${C.violetTint} !important; border-color: ${C.borderMd} !important; transform: translateX(3px) !important; }
 
-        /* ── Topic ROI rows ── */
         .an-roi-row {
           transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease !important;
         }
-        .an-roi-row:hover { background: ${C.blue50} !important; border-color: ${C.borderMd} !important; box-shadow: 0 2px 12px rgba(26,110,255,0.07) !important; }
+        .an-roi-row:hover { background: ${C.violetTint} !important; border-color: ${C.borderMd} !important; box-shadow: 0 2px 12px rgba(26,110,255,0.07) !important; }
 
-        /* ── Buttons ── */
         .an-btn-primary {
           transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important;
         }
         .an-btn-primary:hover { box-shadow: 0 10px 28px rgba(26,110,255,0.38) !important; transform: translateY(-2px) !important; }
-        .an-btn-primary:active { transform: translateY(0) !important; }
 
         .an-btn-secondary {
           transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease !important;
         }
-        .an-btn-secondary:hover { background: ${C.blue100} !important; border-color: ${C.blue300} !important; transform: translateY(-1px) !important; }
+        .an-btn-secondary:hover { background: ${C.violetTint} !important; border-color: ${C.violet}50 !important; transform: translateY(-1px) !important; }
 
         .an-btn-blue {
           transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important;
@@ -2682,43 +1746,26 @@ useEffect(() => {
         .an-btn-blue:hover { box-shadow: 0 8px 24px rgba(26,110,255,0.4) !important; transform: translateY(-2px) !important; }
         .an-btn-blue:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
 
-        /* ── Nav tabs ── */
         .an-tab {
           transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease !important;
-          position: relative;
         }
-        .an-tab:hover:not(.an-tab-active) { color: ${C.blue500} !important; background: ${C.blue50} !important; }
+        .an-tab:hover:not(.an-tab-active) { color: ${C.violet} !important; background: ${C.violetTint} !important; }
 
-        /* ── Bar fills ── */
         .an-bar-fill { transition: width 1.1s cubic-bezier(.16,1,.3,1) !important; }
 
-        /* ── Velocity bars ── */
-        .an-vel-column { animation: fadeUp 0.45s ease both; }
+        .an-irs-ring { transition: box-shadow 0.3s ease !important; }
+        .an-irs-ring:hover { box-shadow: 0 0 0 4px rgba(26,110,255,0.18), 0 16px 48px rgba(0,68,196,0.24) !important; }
 
-        /* ── Score card with ring ── */
-        .an-irs-ring {
-          transition: box-shadow 0.3s ease !important;
-        }
-        .an-irs-ring:hover { box-shadow: 0 0 0 4px rgba(26,110,255,0.18), 0 16px 48px rgba(0,31,107,0.24) !important; }
-
-        /* ── Section stagger ── */
-        .an-section { animation: fadeUp 0.45s cubic-bezier(.16,1,.3,1) both; }
-
-        /* ── Full AI section ── */
         .an-ai-generate-btn {
           transition: box-shadow 0.2s ease, transform 0.2s cubic-bezier(.16,1,.3,1) !important;
         }
-        .an-ai-generate-btn:hover:not(:disabled) { box-shadow: 0 10px 30px rgba(0,173,224,0.4) !important; transform: translateY(-2px) !important; }
+        .an-ai-generate-btn:hover:not(:disabled) { box-shadow: 0 10px 30px rgba(26,110,255,0.45) !important; transform: translateY(-2px) !important; }
 
-        /* ── Recharts tooltip ── */
         .recharts-tooltip-wrapper { transition: transform 0.12s ease !important; }
 
-        /* ── Reduced motion ── */
         @media (prefers-reduced-motion: reduce) {
           .an-page * { animation: none !important; transition-duration: 0.01ms !important; }
         }
-
-        /* ── Responsive ── */
         @media (max-width: 960px) {
           .an-two-col { grid-template-columns: 1fr !important; }
           .an-hero-grid { grid-template-columns: 1fr !important; }
@@ -2735,12 +1782,12 @@ useEffect(() => {
         }
       `}</style>
 
-      <div style={{ ...S.container, opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(10px)", transition: "opacity 0.55s ease, transform 0.55s cubic-bezier(.16,1,.3,1)" }} className="an-page">
-
+      <div style={S.container} className="an-page">
+        <AnimatedSection delay={0}>
         {/* ── PAGE HEADER ──────────────────────────────────────────────── */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 24, marginBottom: 28, flexWrap: "wrap" }}>
           <div>
-            <div style={S.eyebrow}>READINESS INTELLIGENCE</div>
+            <div style={{ ...S.eyebrow, color: C.violet }}>READINESS INTELLIGENCE</div>
             <h1 style={S.pageTitle}>Understand exactly how interview-ready you are.</h1>
             <p style={{ maxWidth: 640, margin: "10px 0 0", color: C.sub, fontSize: 13.5, lineHeight: 1.65, fontFamily: F.body }}>
               IRS = weighted dimension avg · EWMA trend · topic breadth · consistency.
@@ -2750,58 +1797,46 @@ useEffect(() => {
           <button style={S.btnPrimary} className="an-btn-primary" onClick={() => navigate("/interview")}>🎯 New Interview</button>
         </div>
 
-        {/* ── HERO: LIVING AURA + IRS BREAKDOWN ───────────────────────── */}
-        <section style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 18, marginBottom: 18 }} className="an-hero-grid">
+        </AnimatedSection>
 
-          {/* Living Skill Aura */}
-          <div style={{ ...S.card, background: `linear-gradient(145deg, ${C.card} 0%, ${C.cardAlt} 100%)` }}>
-            <div style={S.eyebrow}>LIVING SKILL AURA</div>
+        <AnimatedSection delay={60}>
+        {/* ── HERO: LIVING AURA + IRS RING ─────────────────────────────── */}
+        <section style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 18, marginBottom: 18 }} className="an-hero-grid">
+          <div style={{ ...S.card, background: `linear-gradient(145deg, ${C.card} 0%, ${C.violetTint} 100%)` }}>
+            <div style={{ ...S.eyebrow, color: C.violet }}>LIVING SKILL AURA</div>
             <h2 style={{ ...S.cardH2, marginBottom: 4 }}>
               {irs >= 80 ? "Interview Ready" : irs >= 60 ? "Nearly Ready" : irs >= 40 ? "Building Readiness" : "Needs Focus"}
             </h2>
             <p style={{ ...S.cardSub, marginBottom: 16 }}>
-              Each pulsing layer represents your real skill depth across six dimensions.
-              Larger shape = stronger readiness. Empty rings = room to grow.
+              Each pulsing layer represents your real skill depth. Larger shape = stronger readiness.
             </p>
-            {/* Company target selector */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
               <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, alignSelf: "center", marginRight: 2 }}>TARGET:</span>
               {COMPANY_PROFILES.map(cp => {
                 const active = selectedCompany?.id === cp.id;
                 return (
-                  <button
-                    key={cp.id}
-                    onClick={() => setSelectedCompany(active ? null : cp)}
+                  <button key={cp.id} onClick={() => setSelectedCompany(active ? null : cp)}
                     style={{
-                      border: `1.5px solid ${active ? C.green : C.border}`,
+                      border: `1.5px solid ${active ? C.violet : C.border}`,
                       borderRadius: 999, padding: "3px 10px",
-                      background: active ? `${C.green}15` : C.cardAlt,
-                      color: active ? C.green : C.muted,
-                      fontSize: 10, fontWeight: 700, cursor: "pointer",
-                      fontFamily: F.body, transition: "all 0.15s",
-                    }}
-                  >{cp.icon} {cp.label.split(" (")[0]}</button>
+                      background: active ? `${C.violet}15` : C.cardAlt,
+                      color: active ? C.violet : C.muted,
+                      fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: F.body, transition: "all 0.15s",
+                    }}>
+                    {cp.icon} {cp.label.split(" (")[0]}
+                  </button>
                 );
               })}
             </div>
-
-            <LivingAura
-              data={dimensionProfile}
-              irs={irs}
-              scoreTrend={scoreTrend}
-              onDrillDimension={setDrillDim}
-              companyOverlay={selectedCompany}
-            />
+            <LivingAura data={dimensionProfile} irs={irs} scoreTrend={scoreTrend} onDrillDimension={setDrillDim} companyOverlay={selectedCompany} />
           </div>
 
-          {/* Right column */}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {/* IRS ring + tier */}
+            {/* IRS ring */}
             <div className="an-card an-irs-ring" style={{ ...S.card, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
-              <div style={S.eyebrow}>INTERVIEW READINESS SCORE</div>
-              <p style={{ margin: "4px 0 14px", color: C.sub, fontSize: 11, fontFamily: F.mono, letterSpacing: "0.3px" }}>
-                4-component weighted composite
-              </p>
+              <div style={{ ...S.eyebrow, color: C.violet }}>INTERVIEW READINESS SCORE</div>
+              <p style={{ margin: "4px 0 14px", color: C.sub, fontSize: 11, fontFamily: F.mono, letterSpacing: "0.3px" }}>4-component weighted composite</p>
               <AnimatedRing score={irs} size={150} strokeWidth={13} />
               <div style={{ marginTop: 12, width: "100%", padding: "11px 14px", borderRadius: 13, background: `${currentTier.color}15`, border: `1px solid ${currentTier.color}40`, display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ textAlign: "left", flex: 1 }}>
@@ -2816,104 +1851,115 @@ useEffect(() => {
               )}
             </div>
 
-            {/* Archetype */}
-            <div className="an-card" style={{ ...S.card, flex: 1 }}>
-              <div style={S.eyebrow}>INTERVIEW ARCHETYPE</div>
+            {/* Archetype — violet accent */}
+            <div className="an-card" style={{ ...S.card, flex: 1, borderTop: `3px solid ${C.violet}` }}>
+              <div style={{ ...S.eyebrow, color: C.violet }}>INTERVIEW ARCHETYPE</div>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginTop: 10 }}>
-                <div style={{ width: 46, height: 46, borderRadius: 13, fontSize: 22, background: C.blue50, border: `1px solid ${C.borderMd}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ width: 46, height: 46, borderRadius: 13, fontSize: 22, background: C.violetTint, border: `1px solid ${C.violet}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {archetype.icon}
                 </div>
                 <div>
                   <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 800, color: C.text }}>{archetype.label}</div>
                   <div style={{ fontSize: 11.5, color: C.sub, marginTop: 4, lineHeight: 1.55 }}>{archetype.desc}</div>
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.blue600, lineHeight: 1.55 }}>
-                    Fix: {archetype.fix}
-                  </div>
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.violet, lineHeight: 1.55 }}>Fix: {archetype.fix}</div>
                 </div>
               </div>
             </div>
           </div>
         </section>
+        
 
-        {/* ── IRS COMPONENT BREAKDOWN ──────────────────────────────────── */}
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
+        {/* ── IRS BREAKDOWN ────────────────────────────────────────────── */}
         <section style={{ ...S.card, marginBottom: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
             <div>
-              <div style={S.eyebrow}>IRS BREAKDOWN</div>
+              <div style={{ ...S.eyebrow, color: C.violet }}>IRS BREAKDOWN</div>
               <h2 style={S.cardH2}>How your {irs}/100 is computed</h2>
-              <p style={S.cardSub}>Five statistical components, Bayesian-shrunk toward a neutral baseline until you've logged enough evidence — not a single average that can be gamed by drilling one topic or one lucky session.</p>
+              <p style={S.cardSub}>Five statistical components, Bayesian-shrunk toward a neutral baseline until you've logged enough evidence.</p>
             </div>
             <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, lineHeight: 1.7, maxWidth: 340 }}>
-              Weighted dim avg × 40%<br/>
-              EWMA trend (shrunk) × 22%<br/>
-              Topic breadth & depth × 13%<br/>
-              Consistency (1 − CV) × 15%<br/>
+              Weighted dim avg × 40%<br />
+              EWMA trend (shrunk) × 22%<br />
+              Topic breadth & depth × 13%<br />
+              Consistency (1 − CV) × 15%<br />
               Difficulty-adjusted rigor × 10%
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px 32px" }}>
-            <IRSComponentBar label="Dimension-weighted avg" value={irsComponents.dimScore} weight={0.40} color={C.blue500} />
-            <IRSComponentBar label="EWMA recent trend"      value={irsComponents.ewmaScore} weight={0.22} color={C.cyan500} />
-            <IRSComponentBar label="Topic breadth & depth"  value={irsComponents.breadth} weight={0.13} color={C.amber} />
-            <IRSComponentBar label="Consistency (1−CV)"     value={irsComponents.consistency} weight={0.15} color={C.green} />
-            <IRSComponentBar label="Difficulty-adjusted rigor" value={irsComponents.rigor} weight={0.10} color={C.sub} />
+            <IRSComponentBar label="Dimension-weighted avg"    value={irsComponents.dimScore}    weight={0.40} color={C.violet} />
+            <IRSComponentBar label="EWMA recent trend"         value={irsComponents.ewmaScore}   weight={0.22} color={C.blue500} />
+            <IRSComponentBar label="Topic breadth & depth"     value={irsComponents.breadth}     weight={0.13} color={C.amber} />
+            <IRSComponentBar label="Consistency (1−CV)"        value={irsComponents.consistency} weight={0.15} color={C.green} />
+            <IRSComponentBar label="Difficulty-adjusted rigor" value={irsComponents.rigor}       weight={0.10} color={C.sub} />
           </div>
-
           {irsMaturity != null && irsMaturity < 0.97 && (
             <div style={{ marginTop: 14, padding: "12px 16px", borderRadius: 12, background: "#FFF7E8", border: `1px solid #F0D8A8`, fontSize: 12, color: "#8A6414", lineHeight: 1.6 }}>
-              <strong>Evidence gate active:</strong> the raw weighted composite above is {irsRawComposite}/100, but with only {data?.totalAnsweredQuestions ?? 0} answered questions logged so far your trusted IRS is scaled to <strong>{Math.round(irsMaturity * 100)}%</strong> confidence — <strong>{irs}/100</strong>. Keep practicing; this multiplier climbs toward 100% as you log more sessions, and stops artificially inflating your score off a small sample.
+              <strong>Evidence gate active:</strong> raw composite is {irsRawComposite}/100, but with {data?.totalAnsweredQuestions ?? 0} answered questions, trusted IRS is scaled to <strong>{Math.round(irsMaturity * 100)}%</strong> confidence — <strong>{irs}/100</strong>.
             </div>
           )}
-
           {currentTierIsGated && (
-            <div style={{ marginTop: 10, padding: "12px 16px", borderRadius: 12, background: C.blue50, border: `1px solid ${C.borderMd}`, fontSize: 12, color: C.blue700 ?? C.sub, lineHeight: 1.6 }}>
-              <strong>On track for {currentTierRawLabel}:</strong> your IRS math already crosses that band, but we don't show it as confirmed until you've logged a few more sessions ({sessionsNeededForRaw} more needed) — small sample sizes can be misleading, and we'd rather under-promise here.
+            <div style={{ marginTop: 10, padding: "12px 16px", borderRadius: 12, background: C.violetTint, border: `1px solid ${C.violet}20`, fontSize: 12, color: C.violetMid, lineHeight: 1.6 }}>
+              <strong>On track for {currentTierRawLabel}:</strong> your IRS math already crosses that band, but we need {sessionsNeededForRaw} more sessions to confirm — small samples can be misleading.
             </div>
           )}
-
-          <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 12, background: C.blue50, border: `1px solid ${C.borderMd}`, display: "flex", gap: 16, flexWrap: "wrap" }}>
-            <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>SCORE STD-DEV</span><br /><strong style={{ color: C.text, fontSize: 14, fontFamily: F.display }}>{sd.toFixed(1)}</strong></div>
-            <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>TREND SLOPE</span><br /><strong style={{ color: slope >= 0 ? C.green : C.orange, fontSize: 14, fontFamily: F.display }}>{slope >= 0 ? "+" : ""}{slope.toFixed(2)} pts/session</strong></div>
-            <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>TOPICS COVERED</span><br /><strong style={{ color: C.text, fontSize: 14, fontFamily: F.display }}>{topicPerformance.length}/8+</strong></div>
-            <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>SESSIONS</span><br /><strong style={{ color: C.text, fontSize: 14, fontFamily: F.display }}>{totalSessions}</strong></div>
-            <div><span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>EVIDENCE CONFIDENCE</span><br /><strong style={{ color: C.text, fontSize: 14, fontFamily: F.display }}>{irsMaturity != null ? `${Math.round(irsMaturity * 100)}%` : "—"}</strong></div>
+          <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 12, background: C.violetTint, border: `1px solid ${C.violet}20`, display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {[
+              { label: "SCORE STD-DEV", val: sd.toFixed(1), color: C.text },
+              { label: "TREND SLOPE", val: `${slope >= 0 ? "+" : ""}${slope.toFixed(2)} pts/session`, color: slope >= 0 ? C.green : C.orange },
+              { label: "TOPICS COVERED", val: `${topicPerformance.length}/8+`, color: C.text },
+              { label: "SESSIONS", val: totalSessions, color: C.text },
+              { label: "EVIDENCE CONFIDENCE", val: irsMaturity != null ? `${Math.round(irsMaturity * 100)}%` : "—", color: C.text },
+            ].map(item => (
+              <div key={item.label}>
+                <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>{item.label}</span><br />
+                <strong style={{ color: item.color, fontSize: 14, fontFamily: F.display }}>{item.val}</strong>
+              </div>
+            ))}
           </div>
         </section>
 
-        {/* ── SESSION QUALITY BREAKDOWN ────────────────────────────────── */}
-        <div style={{ marginBottom: 18 }}>
-          <SessionQualityCard />
-        </div>
+        </AnimatedSection>
 
-        {/* ── STAT CARDS ───────────────────────────────────────────────── */}
+        <AnimatedSection delay={0}>
+        {/* ── SESSION QUALITY ───────────────────────────────────────────── */}
+        <div style={{ marginBottom: 18 }}><SessionQualityCard /></div>
+ 
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
+        {/* ── STAT CARDS — each with unique accent ─────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }} className="an-stats">
-          <MetricCard icon="🎤" label="SESSIONS"    value={totalSessions}    sub={`${topicPerformance.length} topics covered`}       color={C.blue600} />
-          <MetricCard icon="📈" label="AVG SCORE"   value={`${averageScore}/100`} sub={delta >= 0 ? `↑ ${delta} pts vs last` : `↓ ${Math.abs(delta)} pts vs last`} color={scoreColor(averageScore)} />
-          <MetricCard icon="🏆" label="BEST SCORE"  value={`${highestScore}/100`} sub="Your performance ceiling"                     color={C.amber} />
-          <MetricCard icon="⏱" label="AVG TIME/Q"  value={`${avgTimePerQ ?? "—"}s`} sub={avgTimePerQ ? (avgTimePerQ < 30 ? "Fast paced" : avgTimePerQ > 55 ? "Methodical" : "Balanced") : "No data"} color={C.sub} />
+          <MetricCard icon="🎤" label="SESSIONS"   value={totalSessions}           sub={`${topicPerformance.length} topics covered`}                                                    color={C.violet}  accentColor={C.violet} />
+          <MetricCard icon="📈" label="AVG SCORE"  value={`${averageScore}/100`}   sub={delta >= 0 ? `↑ ${delta} pts vs last` : `↓ ${Math.abs(delta)} pts vs last`}                   color={scoreColor(averageScore)} accentColor={scoreColor(averageScore)} />
+          <MetricCard icon="🏆" label="BEST SCORE" value={`${highestScore}/100`}   sub="Your performance ceiling"                                                                       color={C.amber}   accentColor={C.amber} />
+          <MetricCard icon="⏱"  label="AVG TIME/Q" value={`${avgTimePerQ ?? "—"}s`} sub={avgTimePerQ ? (avgTimePerQ < 30 ? "Fast paced" : avgTimePerQ > 55 ? "Methodical" : "Balanced") : "No data"} color={C.blue600} accentColor={C.blue500} />
         </div>
 
-        {/* ── TIER READINESS ───────────────────────────────────────────── */}
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
+        {/* ── TIER READINESS ────────────────────────────────────────────── */}
         <section style={{ ...S.card, marginBottom: 18 }}>
-          <div style={S.eyebrow}>PACKAGE TIER READINESS</div>
+          <div style={{ ...S.eyebrow, color: C.violet }}>PACKAGE TIER READINESS</div>
           <h2 style={S.cardH2}>Where you stand in the placement food chain</h2>
           <p style={{ ...S.cardSub, marginBottom: 20 }}>IRS thresholds map directly to real Indian placement market data.</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }} className="an-tiers">
-            {apiTiers.map((tier) => {
-              const meta      = TIER_META[tier.label] ?? { color: C.blue500, bg: C.blue50 };
-              const reached   = tier.isUnlocked;
+            {apiTiers.map(tier => {
+              const meta = TIER_META[tier.label] ?? { color: C.violet, bg: C.violetTint, gradient: C.violetTint };
+              const reached = tier.isUnlocked;
               const isCurrent = tier.label === currentTierLabel;
-              const pct       = Math.min(100, tier.minIRS === 0 ? 100 : (irs / tier.minIRS) * 100);
+              const pct = Math.min(100, tier.minIRS === 0 ? 100 : (irs / tier.minIRS) * 100);
               return (
                 <div key={tier.label} className={`an-tier-card${isCurrent ? " an-tier-card-active" : ""}`} style={{
                   padding: "18px 16px", borderRadius: 18,
                   border: `2px solid ${isCurrent ? meta.color : C.border}`,
-                  background: isCurrent ? `${meta.color}12` : C.cardAlt,
+                  background: isCurrent ? meta.gradient : C.cardAlt,
                   position: "relative",
                 }}>
-                  {isCurrent && (
-                    <div style={{ position: "absolute", top: 9, right: 9, fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: meta.color, color: "#fff", fontFamily: F.mono, letterSpacing: "0.5px" }}>CURRENT</div>
-                  )}
+                  {isCurrent && <div style={{ position: "absolute", top: 9, right: 9, fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: meta.color, color: "#fff", fontFamily: F.mono, letterSpacing: "0.5px" }}>CURRENT</div>}
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: reached ? meta.color : C.muted, fontFamily: F.display, marginBottom: 4 }}>{tier.label}</div>
                   <div style={{ fontSize: 10.5, color: C.sub, lineHeight: 1.45, marginBottom: 10 }}>{tier.desc}</div>
                   <div style={{ height: 6, borderRadius: 999, background: C.border, overflow: "hidden" }}>
@@ -2928,39 +1974,39 @@ useEffect(() => {
           </div>
         </section>
 
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
         {/* ── DNA FINGERPRINT + STREAK CALENDAR ───────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
           <div style={S.card} className="an-card">
-            <div style={S.eyebrow}>PERFORMANCE DNA</div>
+            <div style={{ ...S.eyebrow, color: C.violet }}>PERFORMANCE DNA</div>
             <h2 style={S.cardH2}>Your unique score fingerprint</h2>
-            <p style={{ ...S.cardSub, marginBottom: 14 }}>
-              A generative waveform derived from your six dimensions — no two students have the same pattern.
-              Amplitude = score magnitude, frequency = dimension weight.
-            </p>
+            <p style={{ ...S.cardSub, marginBottom: 14 }}>A generative waveform derived from your six dimensions — no two students have the same pattern.</p>
             <DNAFingerprint profile={dimensionProfile} />
             <div style={{ marginTop: 12, display: "flex", gap: 7, flexWrap: "wrap" }}>
-              {dimensionProfile.map(d => (
-                <span key={d.key} style={{ padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: d.hasData ? `${scoreColor(d.score)}18` : C.border, color: d.hasData ? scoreColor(d.score) : C.faint }}>
-                  {d.icon} {d.label}: {d.hasData ? d.score : "—"}
-                </span>
-              ))}
+              {dimensionProfile.map(d => {
+                const col = C.dimColors[d.key] || scoreColor(d.score);
+                return (
+                  <span key={d.key} style={{ padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: d.hasData ? `${col}18` : C.border, color: d.hasData ? col : C.faint }}>
+                    {d.icon} {d.label}: {d.hasData ? d.score : "—"}
+                  </span>
+                );
+              })}
             </div>
           </div>
-
           <div style={S.card} className="an-card">
-            <div style={S.eyebrow}>PRACTICE ACTIVITY</div>
+            <div style={{ ...S.eyebrow, color: C.violet }}>PRACTICE ACTIVITY</div>
             <h2 style={S.cardH2}>15-week session log</h2>
-            <p style={{ ...S.cardSub, marginBottom: 16 }}>
-              Darker blue = higher score. Hover for date and exact score.
-            </p>
+            <p style={{ ...S.cardSub, marginBottom: 16 }}>Darker violet = higher score. Hover for date and exact score.</p>
             <StreakCalendar scoreTrend={scoreTrend} />
             <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
               {[
-                { label: "Total", val: totalSessions, color: C.blue600 },
-                { label: "Strong (80+)", val: scoreTrend.filter(s => (s.score||0) >= 80).length, color: C.green },
+                { label: "Total", val: totalSessions, color: C.violet },
+                { label: "Strong (80+)", val: scoreTrend.filter(s => (s.score || 0) >= 80).length, color: C.green },
                 { label: "Last delta", val: `${delta >= 0 ? "+" : ""}${delta}`, color: delta >= 0 ? C.green : C.orange },
               ].map(({ label, val, color }) => (
-                <div key={label} style={{ textAlign: "center", padding: "10px", background: C.cardAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                <div key={label} style={{ textAlign: "center", padding: "10px", background: C.violetTint, borderRadius: 10, border: `1px solid ${C.violet}15` }}>
                   <div style={{ fontFamily: F.display, fontSize: 20, fontWeight: 800, color }}>{val}</div>
                   <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 3 }}>{label.toUpperCase()}</div>
                 </div>
@@ -2969,10 +2015,13 @@ useEffect(() => {
           </div>
         </div>
 
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
         {/* ── PERFORMANCE TRAJECTORY + TOPIC MOMENTUM ─────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
           <div style={S.card} className="an-card">
-            <div style={S.eyebrow}>SCORE TRAJECTORY</div>
+            <div style={{ ...S.eyebrow, color: C.violet }}>SCORE TRAJECTORY</div>
             <h2 style={S.cardH2}>Your readiness evolution</h2>
             <p style={S.cardSub}>Every completed session reshapes your IRS. The dashed line is your average.</p>
             {chartData.length > 1 ? (
@@ -2980,52 +2029,47 @@ useEffect(() => {
                 <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -22, bottom: 0 }}>
                   <defs>
                     <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={C.blue500} stopOpacity={0.22} />
-                      <stop offset="95%" stopColor={C.blue500} stopOpacity={0} />
+                      <stop offset="5%"  stopColor={C.violet} stopOpacity={0.22} />
+                      <stop offset="95%" stopColor={C.violet} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="interview" axisLine={false} tickLine={false} tick={{ fill: C.muted, fontSize: 10, fontFamily: F.mono }} />
                   <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fill: C.muted, fontSize: 10, fontFamily: F.mono }} />
-                  <Tooltip
-                    formatter={(v, name) => [`${v}/100`, name === "score" ? "Score" : "Avg"]}
-                    contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontFamily: F.body, fontSize: 12 }}
-                  />
-                  <ReferenceLine y={averageScore} stroke={C.borderMd} strokeDasharray="4 4" label={{ value: `avg ${averageScore}`, position: "right", fontSize: 9, fill: C.muted, fontFamily: F.mono }} />
+                  <Tooltip formatter={(v, name) => [`${v}/100`, name === "score" ? "Score" : "Avg"]}
+                    contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontFamily: F.body, fontSize: 12 }} />
+                  <ReferenceLine y={averageScore} stroke={C.borderMd} strokeDasharray="4 4"
+                    label={{ value: `avg ${averageScore}`, position: "right", fontSize: 9, fill: C.muted, fontFamily: F.mono }} />
                   <Area type="monotone" dataKey="score"
-                    stroke={C.blue500} strokeWidth={2.5} fill="url(#scoreGrad)"
-                    dot={{ r: 4.5, fill: C.blue500, strokeWidth: 2, stroke: "#fff" }}
-                    activeDot={{ r: 7, fill: C.cyan500 }}
-                  />
+                    stroke={C.violet} strokeWidth={2.5} fill="url(#scoreGrad)"
+                    dot={{ r: 4.5, fill: C.violet, strokeWidth: 2, stroke: "#fff" }}
+                    activeDot={{ r: 7, fill: C.violetLight }} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div style={{ marginTop: 20, padding: "28px", textAlign: "center", background: C.blue50, borderRadius: 14, color: C.sub, fontSize: 13 }}>
+              <div style={{ marginTop: 20, padding: "28px", textAlign: "center", background: C.violetTint, borderRadius: 14, color: C.sub, fontSize: 13 }}>
                 Complete 2+ interviews to see your trajectory.
               </div>
             )}
           </div>
 
           <div style={S.card} className="an-card">
-            <div style={S.eyebrow}>TOPIC MOMENTUM</div>
+            <div style={{ ...S.eyebrow, color: C.violet }}>TOPIC MOMENTUM</div>
             <h2 style={S.cardH2}>Rising, stable, or falling?</h2>
             <p style={S.cardSub}>Trend tells more than a snapshot score.</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
               {topicPerformance.slice(0, 7).map(t => {
                 const momentum = getMomentum(scoreTrend, t.topic);
-                const score    = t.averageScore || 0;
+                const score = t.averageScore || 0;
+                const col = C.dimColors[
+                  dimensionProfile.find(d => (d.contributingTopics || []).some(ct => ct.toLowerCase() === t.topic.toLowerCase()))?.key
+                ] || scoreColor(score);
                 return (
-                  <div key={t.topic} className="an-roi-row" style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    padding: "10px 12px", borderRadius: 11,
-                    background: C.cardAlt, border: `1px solid ${C.border}`,
-                  }}>
-                    <div style={{ width: 92, fontSize: 11.5, fontWeight: 700, color: C.text, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {t.topic}
-                    </div>
+                  <div key={t.topic} className="an-roi-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 11, background: C.cardAlt, border: `1px solid ${C.border}` }}>
+                    <div style={{ width: 92, fontSize: 11.5, fontWeight: 700, color: C.text, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.topic}</div>
                     <div style={{ flex: 1, height: 7, borderRadius: 999, background: C.border, overflow: "hidden" }}>
-                      <div className="an-bar-fill" style={{ height: "100%", width: `${mounted ? score : 0}%`, background: scoreColor(score), borderRadius: 999 }} />
+                      <div className="an-bar-fill" style={{ height: "100%", width: `${mounted ? score : 0}%`, background: col, borderRadius: 999 }} />
                     </div>
-                    <div style={{ fontFamily: F.display, fontSize: 12, fontWeight: 800, color: scoreColor(score), width: 28, textAlign: "right", flexShrink: 0 }}>{score}</div>
+                    <div style={{ fontFamily: F.display, fontSize: 12, fontWeight: 800, color: col, width: 28, textAlign: "right", flexShrink: 0 }}>{score}</div>
                     <MomentumBadge momentum={momentum} />
                   </div>
                 );
@@ -3035,85 +2079,47 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* ── SKILL VELOCITY GRAPH ─────────────────────────────────────── */}
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
+        {/* ── SKILL VELOCITY ────────────────────────────────────────────── */}
         <SkillVelocityGraph scoreTrend={scoreTrend} />
 
-        {/* ── CONFIDENCE vs ACCURACY + POINT-LOSS MAP ─────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
-          <div style={S.card} className="an-card">
-            <div style={S.eyebrow}>CONFIDENCE vs ACCURACY</div>
-            <h2 style={S.cardH2}>Are you fast but wrong?</h2>
-            <p style={S.cardSub}>
-              Answer speed is a proxy for confidence. Where speed and accuracy diverge, you have a blind spot.
-            </p>
-            {topicPerformance.length > 0 ? (
-              <ConfidenceChart topics={topicPerformance} avgTimePerQ={avgTimePerQ} />
-            ) : (
-              <div style={{ color: C.muted, fontSize: 12, padding: "20px 0" }}>Complete more interviews to map your confidence profile.</div>
-            )}
-          </div>
+        </AnimatedSection>
 
-          <div style={S.card} className="an-card">
-            <div style={S.eyebrow}>ROI POINT-LOSS MAP</div>
-            <h2 style={S.cardH2}>Where you're leaking readiness points</h2>
-            <p style={S.cardSub}>
-              Ranked by ROI = dimension weight × gap. Fix #1 moves IRS more than any other change.
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-              {topicROIRanking.slice(0, 5).map((t, i) => {
-                const score = t.averageScore || 0;
-                // Use contributingTopics from API profile — synonym-resolved, not exact-match
-                const dim   = dimensionProfile.find(d =>
-                  (d.contributingTopics ?? []).some(ct => ct.toLowerCase() === t.topic.toLowerCase())
-                );
-                return (
-                  <div key={t.topic} style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                    <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, background: i === 0 ? C.redTint : C.blue50, color: i === 0 ? C.red : C.blue600, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, fontFamily: F.mono }}>
-                      {i + 1}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                        <div>
-                          <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{t.topic}</span>
-                          {dim && <span style={{ marginLeft: 7, fontFamily: F.mono, fontSize: 9, color: C.muted }}>({dim.label})</span>}
-                        </div>
-                        <span style={{ fontFamily: F.display, fontSize: 12, fontWeight: 800, color: scoreColor(score) }}>{score}/100</span>
-                      </div>
-                      <div style={{ height: 6, borderRadius: 999, background: C.border, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${score}%`, background: scoreColor(score), borderRadius: 999 }} />
-                      </div>
-                      <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted, marginTop: 3 }}>
-                        +{100 - score} pts headroom · ROI {t.roi.toFixed(1)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <button style={{ ...S.btnSecondary, marginTop: 16 }} onClick={() => navigate("/interview")}>
-              ⚡ Drill top ROI topic →
-            </button>
-          </div>
-        </div>
+        <AnimatedSection delay={0}>
+        {/* ── TOPIC HEAT GRID (replaces Confidence vs Accuracy + ROI Point-Loss Map) ── */}
+        <TopicHeatGrid
+          topicPerformance={topicPerformance}
+          dimensionProfile={dimensionProfile}
+          avgTimePerQ={avgTimePerQ}
+          navigate={navigate}
+          mounted={mounted}
+        />
 
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
         {/* ── BLIND SPOT ALERTS ────────────────────────────────────────── */}
         <BlindSpotAlertCard />
 
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
         {/* ── SIX DIMENSIONS GRID ──────────────────────────────────────── */}
         <section style={{ ...S.card, marginBottom: 18 }}>
-          <div style={S.eyebrow}>PREPARATION PROFILE</div>
+          <div style={{ ...S.eyebrow, color: C.violet }}>PREPARATION PROFILE</div>
           <h2 style={S.cardH2}>Your six interview dimensions</h2>
-          <p style={{ ...S.cardSub, marginBottom: 18 }}>
-            Each bar is weighted in the IRS formula. Hover a card to see which topics map here.
-          </p>
+          <p style={{ ...S.cardSub, marginBottom: 18 }}>Each bar is weighted in the IRS formula. Hover a card to see which topics map here.</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }} className="an-dims">
             {dimensionProfile.map(dim => {
-              const col = dim.hasData ? scoreColor(dim.score) : C.faint;
+              const col = dim.hasData ? (C.dimColors[dim.key] || scoreColor(dim.score)) : C.faint;
               return (
                 <div key={dim.key} title={dim.tip} className="an-dim-row" style={{
                   padding: "17px 16px", borderRadius: 17,
-                  border: `1.5px solid ${dim.hasData && dim.score >= 80 ? col + "55" : C.border}`,
-                  background: dim.hasData && dim.score >= 80 ? `${col}0A` : C.cardAlt,
+                  border: `1.5px solid ${dim.hasData ? `${col}40` : C.border}`,
+                  background: dim.hasData ? `${col}08` : C.cardAlt,
+                  borderTop: dim.hasData ? `3px solid ${col}` : `3px solid ${C.border}`,
                 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -3131,9 +2137,7 @@ useEffect(() => {
                     <span style={{ fontSize: 10, fontWeight: 700, color: dim.hasData ? col : C.faint }}>
                       {!dim.hasData ? "No data yet" : dim.score >= 80 ? "✓ Strong" : dim.score >= 60 ? "→ Developing" : "↑ Focus needed"}
                     </span>
-                    <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>
-                      {Math.round((dim.weight ?? 0) * 100)}% weight
-                    </span>
+                    <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>{Math.round((dim.weight ?? 0) * 100)}% weight</span>
                   </div>
                 </div>
               );
@@ -3141,7 +2145,10 @@ useEffect(() => {
           </div>
         </section>
 
-        {/* ── FULL AI PROFILE (Readiness Board + Interview DNA merged) ─── */}
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
+        {/* ── FULL AI PROFILE — War Room Edition ───────────────────────── */}
         <FullAIProfileSection
           dimensionProfile={dimensionProfile}
           scoreTrend={scoreTrend}
@@ -3153,45 +2160,43 @@ useEffect(() => {
           strongest={strongestDim}
         />
 
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
         {/* ── COLD START vs WARM UP ────────────────────────────────────── */}
         <ColdStartWarmUpCard />
 
-        {/* ── SMART FOCUS + IRS CLIMB BANNER ───────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
+        </AnimatedSection>
 
-          {/* Smart Focus — upgraded action map */}
+        <AnimatedSection delay={0}>
+        {/* ── SMART FOCUS + IRS CLIMB ───────────────────────────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
+          {/* Smart Focus */}
           <div style={S.card} className="an-card">
-            <div style={S.eyebrow}>SMART FOCUS RECOMMENDER</div>
+            <div style={{ ...S.eyebrow, color: C.violet }}>SMART FOCUS RECOMMENDER</div>
             <h2 style={S.cardH2}>Where to put your next hour</h2>
             <p style={S.cardSub}>Sorted by ROI — specific action, mode, and estimated sessions to close the gap.</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
               {topicROIRanking.slice(0, 3).map((t, i) => {
-                const score  = t.averageScore || 0;
-                // Specific mode recommendation based on score bucket
-                const mode   = score < 40 ? "topic" : score < 60 ? "full" : "challenge";
+                const score = t.averageScore || 0;
+                const mode = score < 40 ? "topic" : score < 60 ? "full" : "challenge";
                 const modeLabel = { topic: "Topic Focus", full: "Full Session", challenge: "Challenge Mode" }[mode];
-                const modeIcon  = { topic: "📚", full: "🎯", challenge: "⚡" }[mode];
-                // Concrete action text
+                const modeIcon = { topic: "📚", full: "🎯", challenge: "⚡" }[mode];
                 const action = score < 40
                   ? `Start with ${t.topic} basics — cover definitions, then worked examples`
                   : score < 60
                   ? `Practice ${t.topic} with immediate answer review after each question`
                   : `Run a timed ${t.topic}-only challenge — aim to hold 75+ every question`;
-                // Sessions-to-close estimate: gap / avg improvement per session (conservative 4 pts/session)
-                const avgImprovementPerSession = 4;
-                const sessionsEst = Math.ceil((100 - score) / avgImprovementPerSession);
-                const sessionsLabel = sessionsEst <= 3 ? `~${sessionsEst} sessions` : sessionsEst <= 8 ? `~${sessionsEst} sessions` : "10+ sessions";
-
+                const sessionsEst = Math.ceil((100 - score) / 4);
+                const sessionsLabel = sessionsEst <= 8 ? `~${sessionsEst} sessions` : "10+ sessions";
+                const dimColor = t.dimColor || (i === 0 ? C.red : i === 1 ? C.amber : C.violet);
                 return (
                   <div key={t.topic} className="an-roi-row" style={{
-                    display: "flex", alignItems: "flex-start", gap: 12, padding: "13px 15px",
-                    borderRadius: 14,
-                    background: i === 0 ? C.redTint : i === 1 ? C.amberTint : C.blue50,
-                    border: `1px solid ${i === 0 ? "#FECACA" : i === 1 ? "#FDE68A" : C.borderMd}`,
+                    display: "flex", alignItems: "flex-start", gap: 12, padding: "13px 15px", borderRadius: 14,
+                    background: i === 0 ? C.redTint : i === 1 ? C.amberTint : C.violetTint,
+                    border: `1px solid ${i === 0 ? "#FECACA" : i === 1 ? "#FDE68A" : `${C.violet}25`}`,
                   }}>
-                    <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: i === 0 ? C.red : i === 1 ? C.amber : C.blue500, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, fontFamily: F.mono, marginTop: 1 }}>
-                      {i + 1}
-                    </div>
+                    <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: i === 0 ? C.red : i === 1 ? C.amber : C.violet, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, fontFamily: F.mono, marginTop: 1 }}>{i + 1}</div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                         <div style={{ fontSize: 12.5, fontWeight: 800, color: C.text }}>{t.topic} · {score}/100</div>
@@ -3200,10 +2205,8 @@ useEffect(() => {
                       <div style={{ fontSize: 11, color: C.sub, marginTop: 3, lineHeight: 1.5 }}>{action}</div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
                         <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>ROI {t.roi.toFixed(1)}</div>
-                        <button
-                          onClick={() => navigate("/interview")}
-                          className="an-btn-blue"
-                          style={{ border: "none", borderRadius: 8, background: i === 0 ? C.red : i === 1 ? C.amber : C.blue500, color: "#fff", padding: "5px 11px", fontSize: 10.5, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: F.body }}>
+                        <button onClick={() => navigate("/interview")} className="an-btn-blue"
+                          style={{ border: "none", borderRadius: 8, background: i === 0 ? C.red : i === 1 ? C.amber : C.violet, color: "#fff", padding: "5px 11px", fontSize: 10.5, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: F.body }}>
                           {modeIcon} Start {modeLabel} →
                         </button>
                       </div>
@@ -3214,77 +2217,63 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* Climb to next tier */}
-          <div style={{
-            background: `linear-gradient(135deg, ${C.blue50} 0%, ${C.cyanTint} 100%)`,
-            border: `1px solid ${C.borderMd}`, borderRadius: 20, padding: 22,
-            boxShadow: `0 4px 20px rgba(26,110,255,0.08)`,
-            display: "flex", flexDirection: "column",
-          }}>
-            <div style={S.eyebrow}>IRS PROGRESS</div>
+          {/* IRS Climb */}
+          <div style={{ background: `linear-gradient(135deg, ${C.violetTint} 0%, ${C.blue50} 100%)`, border: `1px solid ${C.violet}25`, borderRadius: 20, padding: 22, boxShadow: `0 4px 20px rgba(26,110,255,0.08)`, display: "flex", flexDirection: "column" }}>
+            <div style={{ ...S.eyebrow, color: C.violet }}>IRS PROGRESS</div>
             <h2 style={S.cardH2}>
               {nextTier ? <>{nextTier.minScore - irs} points to <span style={{ color: nextTier.color }}>{nextTier.label}</span></> : "You've reached the highest tracked tier."}
             </h2>
             <p style={{ ...S.cardSub, marginBottom: 16 }}>{nextTier ? (nextTier.advice ?? "") : "Maintain your streak to protect this position."}</p>
-
             {nextTier && nextTier.minScore > 0 && (
               <>
                 <div style={{ position: "relative", height: 10, borderRadius: 999, background: C.borderMd, overflow: "hidden", marginBottom: 6 }}>
-                  <div style={{ height: "100%", width: `${mounted ? Math.min(100, (irs / nextTier.minScore) * 100) : 0}%`, background: `linear-gradient(90deg, ${C.blue500}, ${C.cyan500})`, borderRadius: 999, transition: "width 1.3s cubic-bezier(.16,1,.3,1)" }} />
+                  <div style={{ height: "100%", width: `${mounted ? Math.min(100, (irs / nextTier.minScore) * 100) : 0}%`, background: `linear-gradient(90deg, ${C.violet}, ${C.blue500})`, borderRadius: 999, transition: "width 1.3s cubic-bezier(.16,1,.3,1)" }} />
                 </div>
-                <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, marginBottom: 20 }}>
-                  {irs}/{nextTier.minScore} IRS ({Math.round((irs / nextTier.minScore) * 100)}% there)
-                </div>
+                <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, marginBottom: 20 }}>{irs}/{nextTier.minScore} IRS ({Math.round((irs / nextTier.minScore) * 100)}% there)</div>
               </>
             )}
-
             <div style={{ marginTop: "auto" }}>
               <div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.7, marginBottom: 14 }}>
-                Closing your <strong style={{ color: C.text }}>{weakestDim?.label}</strong> gap
-                (currently {weakestDim?.score}/100) is the highest-leverage move to push IRS
-                toward <strong style={{ color: nextTier?.color || C.green }}>{nextTier?.label || "peak"}</strong>.
+                Closing your <strong style={{ color: C.text }}>{weakestDim?.label}</strong> gap (currently {weakestDim?.score}/100) is the highest-leverage move toward <strong style={{ color: nextTier?.color || C.violet }}>{nextTier?.label || "peak"}</strong>.
               </div>
-              <button style={{ ...S.btnBlue, width: "100%", justifyContent: "center" }} onClick={() => navigate("/interview")}>
-                Keep climbing →
-              </button>
+              <button style={{ ...S.btnPrimary, width: "100%", textAlign: "center" }} onClick={() => navigate("/interview")}>Keep climbing →</button>
             </div>
           </div>
         </div>
 
-        {/* ── COACH BANNER ────────────────────────────────────────────── */}
+        </AnimatedSection>
+
+        <AnimatedSection delay={0}>
+        {/* ── COACH BANNER — violet war-room identity ───────────────────── */}
         <section style={{
           display: "flex", alignItems: "center", gap: 18, padding: "22px 26px",
           borderRadius: 20, marginBottom: 18,
-          background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 55%, ${C.cyan600} 100%)`,
-          boxShadow: "0 12px 40px rgba(0,31,107,0.28)",
+          background: `linear-gradient(135deg, ${C.violetDeep} 0%, ${C.violetMid} 55%, ${C.blue700} 100%)`,
+          boxShadow: "0 12px 40px rgba(0,68,196,0.35)",
         }}>
-          <div style={{ width: 52, height: 52, borderRadius: 16, background: "rgba(255,255,255,0.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>🧠</div>
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: "rgba(255,255,255,0.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>⚔️</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: F.mono, fontSize: 9.5, letterSpacing: "1.5px", color: "rgba(255,255,255,0.6)", marginBottom: 5 }}>MOCKMATE READINESS COACH</div>
+            <div style={{ fontFamily: F.mono, fontSize: 9.5, letterSpacing: "1.5px", color: "rgba(255,255,255,0.6)", marginBottom: 5 }}>MOCKMATE WAR ROOM</div>
             <h2 style={{ margin: "0 0 6px", fontFamily: F.display, fontSize: 17, fontWeight: 800, color: "#fff" }}>
-              Biggest unlock: <strong style={{ color: C.cyan400 }}>{weakestDim?.label}</strong> at {weakestDim?.score}/100.
+              Biggest unlock: <strong style={{ color: C.violetLight }}>{weakestDim?.label}</strong> at {weakestDim?.score}/100.
             </h2>
             <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.78)", lineHeight: 1.65 }}>
               Strongest: <strong style={{ color: "#fff" }}>{strongestDim?.label}</strong> at {strongestDim?.score}/100.
-              {" "}A {weakestDim?.label} gap at this IRS ({irs}) is the primary reason you haven't crossed{" "}
-              <strong style={{ color: C.cyan400 }}>{nextTier?.label || "the next tier"}</strong> yet.
+              {" "}A {weakestDim?.label} gap at IRS {irs} is the primary reason you haven't crossed{" "}
+              <strong style={{ color: C.violetLight }}>{nextTier?.label || "the next tier"}</strong> yet.
             </p>
           </div>
-          <button style={{ flexShrink: 0, border: "none", borderRadius: 12, padding: "11px 16px", background: "#fff", color: C.blue700, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: F.body }} onClick={() => navigate("/interview")}>
-            Build This Skill →
-          </button>
+          <button style={{ flexShrink: 0, border: "none", borderRadius: 12, padding: "11px 16px", background: "#fff", color: C.violetMid, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: F.body }}
+            onClick={() => navigate("/interview")}>Build This Skill →</button>
         </section>
+        </AnimatedSection>
 
       </div>
 
-      {/* ── DIMENSION DRILL PANEL (slide-in sidebar) ────────────────── */}
+      {/* ── DIMENSION DRILL PANEL ─────────────────────────────────────── */}
       {drillDim && (
         <>
-          {/* Backdrop */}
-          <div
-            onClick={() => setDrillDim(null)}
-            style={{ position: "fixed", inset: 0, background: "rgba(10,22,40,0.35)", zIndex: 9998, backdropFilter: "blur(2px)" }}
-          />
+          <div onClick={() => setDrillDim(null)} style={{ position: "fixed", inset: 0, background: "rgba(10,22,40,0.35)", zIndex: 9998, backdropFilter: "blur(2px)" }} />
           <DimensionDrillPanel dim={drillDim} onClose={() => setDrillDim(null)} navigate={navigate} />
         </>
       )}
@@ -3292,33 +2281,32 @@ useEffect(() => {
   );
 };
 
-// ─── Shared styles ────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const S = {
   page: {
     minHeight: "100vh",
     background: C.bg,
-    backgroundImage: `radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.08) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(0,173,224,0.055) 0%, transparent 42%), radial-gradient(ellipse at 50% 100%, rgba(26,110,255,0.04) 0%, transparent 55%)`,
+    backgroundImage: `radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.07) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(26,110,255,0.05) 0%, transparent 42%), radial-gradient(ellipse at 50% 100%, rgba(26,110,255,0.04) 0%, transparent 55%)`,
     padding: "36px 28px 80px",
     fontFamily: F.body,
   },
   container: { maxWidth: 1220, margin: "0 auto" },
   center: { minHeight: "70vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" },
-  spinner: { width: 44, height: 44, borderRadius: "50%", border: `4px solid ${C.blue50}`, borderTopColor: C.blue500, animation: "spin 0.75s linear infinite" },
 
-  eyebrow: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.6px", color: C.blue500, marginBottom: 6 },
+  eyebrow: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.6px", color: C.violet, marginBottom: 6 },
   pageTitle: { margin: 0, fontFamily: F.display, fontSize: "clamp(26px, 4vw, 38px)", lineHeight: 1.1, fontWeight: 800, letterSpacing: "-0.8px", color: C.text },
 
-  card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 22, padding: 24, boxShadow: "0 2px 16px rgba(26,110,255,0.06)" },
+  card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 22, padding: 24, boxShadow: "0 2px 16px rgba(26,110,255,0.05)", marginBottom: 0 },
   cardH2:  { margin: 0, fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.text, letterSpacing: "-0.2px" },
   cardSub: { margin: "6px 0 0", color: C.sub, fontSize: 12, lineHeight: 1.65 },
 
-  btnPrimary: { border: "none", borderRadius: 13, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: "#fff", padding: "13px 22px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", boxShadow: `0 6px 22px rgba(26,110,255,0.30)`, fontFamily: F.body, letterSpacing: "-0.1px" },
-  btnSecondary: { width: "100%", padding: "11px 14px", borderRadius: 11, border: `1px solid ${C.borderMd}`, background: C.blue50, color: C.blue600, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: F.body },
-  btnBlue: { display: "flex", alignItems: "center", gap: 6, border: "none", borderRadius: 12, background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, color: "#fff", padding: "12px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: `0 4px 16px rgba(26,110,255,0.3)`, fontFamily: F.body },
+  btnPrimary:   { border: "none", borderRadius: 13, background: `linear-gradient(135deg, ${C.violetMid}, ${C.violet})`, color: "#fff", padding: "13px 22px", fontSize: 13.5, fontWeight: 800, cursor: "pointer", boxShadow: `0 6px 22px rgba(26,110,255,0.30)`, fontFamily: F.body, letterSpacing: "-0.1px" },
+  btnSecondary: { width: "100%", padding: "11px 14px", borderRadius: 11, border: `1px solid ${C.violet}30`, background: C.violetTint, color: C.violet, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: F.body },
+  btnBlue:      { display: "flex", alignItems: "center", gap: 6, border: "none", borderRadius: 12, background: `linear-gradient(135deg, ${C.violetMid}, ${C.violet})`, color: "#fff", padding: "12px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: `0 4px 16px rgba(26,110,255,0.3)`, fontFamily: F.body },
 
-  emptyCard: { maxWidth: 620, margin: "80px auto", padding: "56px 28px", textAlign: "center", background: C.card, border: `1px solid ${C.border}`, borderRadius: 24, boxShadow: "0 8px 40px rgba(26,110,255,0.09)" },
+  emptyCard:  { maxWidth: 620, margin: "80px auto", padding: "56px 28px", textAlign: "center", background: C.card, border: `1px solid ${C.border}`, borderRadius: 24, boxShadow: "0 8px 40px rgba(26,110,255,0.09)" },
   emptyTitle: { margin: "10px 0 0", fontFamily: F.display, fontSize: 22, fontWeight: 800, color: C.text },
-  emptyText: { maxWidth: 480, margin: "10px auto 22px", color: C.sub, lineHeight: 1.7, fontSize: 13.5 },
+  emptyText:  { maxWidth: 480, margin: "10px auto 22px", color: C.sub, lineHeight: 1.7, fontSize: 13.5 },
 };
 
 export default Analytics;

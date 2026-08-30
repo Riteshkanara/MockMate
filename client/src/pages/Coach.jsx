@@ -20,6 +20,8 @@ import PencilLoader from "../components/PencilLoader";
 //   • Error boundaries per section (one crash ≠ whole page down)
 //   • Accessibility: aria-labels, role="log", keyboard nav
 //   • React.memo on every section component
+//   • Page always mounts at top (window.scrollTo guard)
+//   • CoachChat scrollIntoView only on user-initiated messages
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
@@ -248,8 +250,6 @@ const DimBar = ({ dim, score, dark = false }) => {
   );
 };
 
-// ─── IMPROVED: Highlight key terms in coach text ──────────────────────────────
-// Wraps dimension names and score patterns in a bold span so they pop visually
 const HighlightedText = ({ text, dark = true }) => {
   if (!text) return null;
   const dimNames = ["Technical Depth","Problem Solving","Communication","Behavioral","System Design","CS Fundamentals","IRS","tier"];
@@ -259,7 +259,7 @@ const HighlightedText = ({ text, dark = true }) => {
     <>
       {parts.map((part, i) => {
         const isKeyword = pattern.test(part);
-        pattern.lastIndex = 0; // reset stateful regex
+        pattern.lastIndex = 0;
         if (/\d{1,3}\/100/.test(part)) {
           return (
             <span key={i} style={{ fontFamily: F.mono, fontWeight: 800, fontSize: "1.05em", color: dark ? C.cyan400 : C.blue500, letterSpacing: "0.3px" }}>
@@ -280,7 +280,6 @@ const HighlightedText = ({ text, dark = true }) => {
   );
 };
 
-// ─── IMPROVED: Split coach text into readable sentences ───────────────────────
 const SentenceBreaker = ({ text, dark = true, beats = null }) => {
   if (!text) return null;
   const sentences = text.match(/[^.!?]+[.!?]+/g)?.map(s => s.trim()).filter(Boolean) || [text];
@@ -308,13 +307,9 @@ const SentenceBreaker = ({ text, dark = true, beats = null }) => {
                 {beats[i].label}
               </div>
               <p style={{
-                margin: 0,
-                fontSize: 15,
-                fontWeight: 500,
-                lineHeight: 1.75,
+                margin: 0, fontSize: 15, fontWeight: 500, lineHeight: 1.75,
                 color: dark ? "rgba(255,255,255,0.92)" : C.text,
-                fontFamily: F.body,
-                letterSpacing: "-0.1px",
+                fontFamily: F.body, letterSpacing: "-0.1px",
               }}>
                 <HighlightedText text={sentence} dark={dark} />
               </p>
@@ -325,7 +320,6 @@ const SentenceBreaker = ({ text, dark = true, beats = null }) => {
     );
   }
 
-  // Fallback: just rendered sentences without beats
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {sentences.map((sentence, i) => (
@@ -333,6 +327,39 @@ const SentenceBreaker = ({ text, dark = true, beats = null }) => {
           <HighlightedText text={sentence} dark={dark} />
         </p>
       ))}
+    </div>
+  );
+};
+
+// ─── AnimatedSection: staggered entrance per section ─────────────────────────
+const AnimatedSection = ({ children, delay = 0, style = {} }) => {
+  const [visible, setVisible] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    // Use IntersectionObserver so sections only animate when scrolled into view
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); observer.disconnect(); } },
+      { threshold: 0.08 }
+    );
+    // Delay the observation slightly so top sections fire immediately on mount
+    const t = setTimeout(() => observer.observe(el), delay);
+    return () => { clearTimeout(t); observer.disconnect(); };
+  }, [delay]);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(24px)",
+        transition: `opacity 0.55s cubic-bezier(.16,1,.3,1) ${delay}ms, transform 0.55s cubic-bezier(.16,1,.3,1) ${delay}ms`,
+        ...style,
+      }}
+    >
+      {children}
     </div>
   );
 };
@@ -391,7 +418,7 @@ const CommandHeader = memo(({ irs, tier, totalSessions, lastScore, slope, naviga
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION 2 — WHAT TO DO TODAY  [IMPROVED TEXT DISPLAY]
+// SECTION 2 — WHAT TO DO TODAY
 // ═══════════════════════════════════════════════════════════════════════════
 const TODAY_BEATS = [
   { icon: "🎯", label: "TODAY'S PRIORITY" },
@@ -488,7 +515,6 @@ Plain text. No headers. No markdown. Speak directly to the student. Under 80 wor
       )}
 
       {done && todayPlan && (
-        /* ── IMPROVED: 3-beat layout instead of a flat paragraph ── */
         <div style={{
           padding: "22px 22px",
           borderRadius: 16,
@@ -519,7 +545,7 @@ Plain text. No headers. No markdown. Speak directly to the student. Under 80 wor
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION 3 — WEEKLY FOCUS PLAN  [IMPROVED DAY CARDS]
+// SECTION 3 — WEEKLY FOCUS PLAN
 // ═══════════════════════════════════════════════════════════════════════════
 const WeeklyPlan = memo(({ analyticsData, navigate }) => {
   const [plan, setPlan]       = useState(null);
@@ -634,7 +660,6 @@ Rules: No markdown, no asterisks. Mention specific dimension names. Sound like a
       )}
 
       {done && plan && (
-        /* ── IMPROVED: Bigger, more structured day cards ── */
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 14 }}>
           {plan.map((section, i) => {
             const cfg = DAY_CONFIG[section.heading] || { icon: "📌", badge: "FOCUS", badgeBg: `${C.blue500}18`, badgeColor: C.blue500 };
@@ -647,40 +672,19 @@ Rules: No markdown, no asterisks. Mention specific dimension names. Sound like a
                 borderLeft: `4px solid ${section.accent}`,
                 display: "flex", flexDirection: "column", gap: 12,
               }}>
-                {/* Day header */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 18, lineHeight: 1 }}>{cfg.icon}</span>
-                    <span style={{
-                      fontFamily: F.display, fontSize: 16, fontWeight: 900,
-                      color: section.accent, letterSpacing: "-0.3px",
-                    }}>
+                    <span style={{ fontFamily: F.display, fontSize: 16, fontWeight: 900, color: section.accent, letterSpacing: "-0.3px" }}>
                       {section.heading}
                     </span>
                   </div>
-                  <span style={{
-                    fontFamily: F.mono, fontSize: 7.5, fontWeight: 800,
-                    letterSpacing: "0.8px", padding: "3px 8px", borderRadius: 999,
-                    background: cfg.badgeBg, color: cfg.badgeColor,
-                    textTransform: "uppercase",
-                  }}>
+                  <span style={{ fontFamily: F.mono, fontSize: 7.5, fontWeight: 800, letterSpacing: "0.8px", padding: "3px 8px", borderRadius: 999, background: cfg.badgeBg, color: cfg.badgeColor, textTransform: "uppercase" }}>
                     {cfg.badge}
                   </span>
                 </div>
-
-                {/* Divider */}
                 <div style={{ height: 1, background: `linear-gradient(90deg, ${section.accent}40, transparent)` }} />
-
-                {/* Body text — bigger, bolder */}
-                <p style={{
-                  margin: 0,
-                  fontSize: 14,
-                  fontWeight: 500,
-                  lineHeight: 1.8,
-                  color: C.sub,
-                  fontFamily: F.body,
-                  letterSpacing: "-0.05px",
-                }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 500, lineHeight: 1.8, color: C.sub, fontFamily: F.body, letterSpacing: "-0.05px" }}>
                   <HighlightedText text={section.body} dark={false} />
                 </p>
               </div>
@@ -702,7 +706,7 @@ Rules: No markdown, no asterisks. Mention specific dimension names. Sound like a
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION 4 — PROGRESS TIMELINE  (no AI — pure data render, unchanged)
+// SECTION 4 — PROGRESS TIMELINE
 // ═══════════════════════════════════════════════════════════════════════════
 const ProgressTimeline = memo(({ scoreTrend }) => {
   const sessions = useMemo(() => (scoreTrend || []).slice(-10), [scoreTrend]);
@@ -779,7 +783,7 @@ const ProgressTimeline = memo(({ scoreTrend }) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION 5 — COMPANY READINESS  [IMPROVED VERDICT TEXT]
+// SECTION 5 — COMPANY READINESS
 // ═══════════════════════════════════════════════════════════════════════════
 const CompanyReadiness = memo(({ analyticsData }) => {
   const [selected, setSelected] = useState(null);
@@ -847,7 +851,6 @@ No headers. No markdown. Direct mentor voice. Under 100 words.`;
     }
   }, [dimProfile]);
 
-  // Derive a verdict "level" from readinessPct for the badge
   const verdictLevel = (pct) => {
     if (pct >= 85) return { label: "READY",      color: C.green,   bg: `${C.green}18`   };
     if (pct >= 65) return { label: "NEAR-READY", color: C.amber,   bg: `${C.amber}18`   };
@@ -893,7 +896,6 @@ No headers. No markdown. Direct mentor voice. Under 100 words.`;
         <>
           {cacheTs && <div style={{ marginBottom: 12 }}><CacheTag ts={cacheTs} /></div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="coach-two-col">
-            {/* Left — dimension gap bars */}
             <div>
               <div style={{ marginBottom: 14, padding: "16px 18px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -942,34 +944,14 @@ No headers. No markdown. Direct mentor voice. Under 100 words.`;
               ))}
             </div>
 
-            {/* Right — IMPROVED verdict + gaps + strengths */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {result.verdict && (
-                <div style={{
-                  padding: "20px 20px",
-                  borderRadius: 14,
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderLeft: `3px solid ${C.cyan400}`,
-                }}>
-                  <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.cyan400, letterSpacing: "1px", marginBottom: 12 }}>
-                    ⚡ COACH'S VERDICT
-                  </div>
-                  {/* Split verdict into 2 paragraphs with visual separation */}
+                <div style={{ padding: "20px 20px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderLeft: `3px solid ${C.cyan400}` }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.cyan400, letterSpacing: "1px", marginBottom: 12 }}>⚡ COACH'S VERDICT</div>
                   {result.verdict.split(/\n\n|\n(?=[A-Z])/).filter(Boolean).map((para, pi) => (
                     <div key={pi}>
-                      {pi > 0 && (
-                        <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "12px 0" }} />
-                      )}
-                      <p style={{
-                        margin: 0,
-                        fontSize: 14,
-                        fontWeight: pi === 0 ? 600 : 400,
-                        lineHeight: 1.8,
-                        color: pi === 0 ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.70)",
-                        fontFamily: F.body,
-                        letterSpacing: "-0.1px",
-                      }}>
+                      {pi > 0 && <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "12px 0" }} />}
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: pi === 0 ? 600 : 400, lineHeight: 1.8, color: pi === 0 ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.70)", fontFamily: F.body, letterSpacing: "-0.1px" }}>
                         <HighlightedText text={para} dark={true} />
                       </p>
                     </div>
@@ -1017,7 +999,7 @@ No headers. No markdown. Direct mentor voice. Under 100 words.`;
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION 6 — COACH CHAT  [IMPROVED BUBBLES]
+// SECTION 6 — COACH CHAT  ← SCROLL FIX IS HERE
 // ═══════════════════════════════════════════════════════════════════════════
 const CHAT_COOLDOWN_MS = 4000;
 
@@ -1027,10 +1009,14 @@ const CoachChat = memo(({ analyticsData, breakdownData, blindSpots }) => {
   const [loading, setLoading]   = useState(false);
   const [cooldown, setCooldown] = useState(false);
   const [contextReady, setContextReady] = useState(false);
-  const chatEndRef  = useRef(null);
-  const inputRef    = useRef(null);
-  const lastSent    = useRef(0);
-  const inFlight    = useRef(false);
+  const chatEndRef     = useRef(null);
+  const inputRef       = useRef(null);
+  const lastSent       = useRef(0);
+  const inFlight       = useRef(false);
+  // ── NEW: track whether the greeting has fired so we skip auto-scroll for it
+  const greetingDone   = useRef(false);
+  // ── NEW: track whether a user message triggered the latest scroll
+  const shouldScroll   = useRef(false);
 
   const coachContext = useMemo(() => {
     if (!analyticsData) return "";
@@ -1050,17 +1036,22 @@ const CoachChat = memo(({ analyticsData, breakdownData, blindSpots }) => {
 
   useEffect(() => {
     if (coachContext && !contextReady) {
+      // Greeting fires once — do NOT auto-scroll (page is already at top)
       setMessages([{
         role: "coach",
         text: `Hey — I've pulled your data. IRS ${analyticsData?.irs ?? 0}/100, ${analyticsData?.totalSessions ?? 0} sessions done, currently at ${analyticsData?.currentTier ?? "₹3–6 LPA"}. Ask me anything — where to focus, what companies are realistic, why your score is stuck, how to close a specific gap. I'll give you straight answers based on what I see in your numbers.`,
         time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
       }]);
       setContextReady(true);
+      greetingDone.current = true;
     }
   }, [coachContext, contextReady, analyticsData]);
 
+  // ── FIXED: only scroll when user sends a message, not on greeting ──────
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!shouldScroll.current) return;
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    shouldScroll.current = false;
   }, [messages]);
 
   const sendMessage = useCallback(async (textOverride) => {
@@ -1081,6 +1072,8 @@ const CoachChat = memo(({ analyticsData, breakdownData, blindSpots }) => {
       time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
     };
 
+    // Signal that this scroll is user-initiated
+    shouldScroll.current = true;
     setMessages(prev => [...prev.slice(-19), userMsg]);
     setInput("");
     setLoading(true);
@@ -1102,12 +1095,14 @@ Respond as coach directly to this student. Use their actual data if relevant. Be
 
     try {
       const responseText = await getAIFreeform(prompt, 400);
+      shouldScroll.current = true;
       setMessages(prev => [...prev, {
         role: "coach",
         text: responseText || "Let me check your data and get back to you on that.",
         time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
       }]);
     } catch {
+      shouldScroll.current = true;
       setMessages(prev => [...prev, {
         role: "coach",
         text: "Network issue — try again in a moment.",
@@ -1142,7 +1137,6 @@ Respond as coach directly to this student. Use their actual data if relevant. Be
         {cooldown && <span style={{ color: C.amber, marginLeft: 8 }}>⏳ Wait a moment before sending another message.</span>}
       </p>
 
-      {/* Message window */}
       <div role="log" aria-live="polite" aria-label="Coach conversation"
         style={{ height: 400, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16, padding: "18px 16px", marginBottom: 12, background: "rgba(0,0,0,0.25)", borderRadius: 16, border: "1px solid rgba(255,255,255,0.06)", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.1) transparent" }}>
         {messages.map((msg, i) => {
@@ -1151,7 +1145,6 @@ Respond as coach directly to this student. Use their actual data if relevant. Be
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: isCoach ? "flex-start" : "flex-end", gap: 5, animation: "coachFadeUp 0.3s ease both" }}>
               {isCoach && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {/* ── IMPROVED: coach avatar ── */}
                   <div style={{ width: 30, height: 30, borderRadius: 9, background: `linear-gradient(135deg, ${C.blue600}, ${C.cyan600})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0, boxShadow: `0 2px 8px rgba(0,173,224,0.3)` }}>⚡</div>
                   <span style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan400, fontWeight: 800, letterSpacing: "0.5px" }}>COACH</span>
                   <span style={{ fontFamily: F.mono, fontSize: 8, color: "rgba(255,255,255,0.2)" }}>{msg.time}</span>
@@ -1162,13 +1155,10 @@ Respond as coach directly to this student. Use their actual data if relevant. Be
                 maxWidth: "84%",
                 padding: isCoach ? "14px 18px" : "12px 16px",
                 borderRadius: isCoach ? "4px 16px 16px 16px" : "16px 4px 16px 16px",
-                background: isCoach
-                  ? "rgba(255,255,255,0.07)"
-                  : `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`,
+                background: isCoach ? "rgba(255,255,255,0.07)" : `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`,
                 border: isCoach ? "1px solid rgba(255,255,255,0.09)" : "none",
                 boxShadow: isCoach ? "none" : "0 4px 14px rgba(26,110,255,0.3)",
               }}>
-                {/* ── IMPROVED: bigger, more readable bubble text ── */}
                 <p style={{
                   margin: 0,
                   fontSize: isCoach ? 14.5 : 14,
@@ -1178,10 +1168,7 @@ Respond as coach directly to this student. Use their actual data if relevant. Be
                   fontFamily: F.body,
                   letterSpacing: isCoach ? "-0.1px" : "0",
                 }}>
-                  {isCoach
-                    ? <HighlightedText text={msg.text} dark={true} />
-                    : msg.text
-                  }
+                  {isCoach ? <HighlightedText text={msg.text} dark={true} /> : msg.text}
                 </p>
               </div>
 
@@ -1205,7 +1192,6 @@ Respond as coach directly to this student. Use their actual data if relevant. Be
         <div ref={chatEndRef} />
       </div>
 
-      {/* Quick prompts */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
         {quickPrompts.map((prompt, i) => (
           <button key={i} onClick={() => sendMessage(prompt)} disabled={loading || cooldown}
@@ -1216,7 +1202,6 @@ Respond as coach directly to this student. Use their actual data if relevant. Be
         ))}
       </div>
 
-      {/* Input row */}
       <div style={{ display: "flex", gap: 8 }}>
         <input ref={inputRef} value={input}
           onChange={e => setInput(e.target.value)}
@@ -1235,7 +1220,7 @@ Respond as coach directly to this student. Use their actual data if relevant. Be
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION 7 — SESSION DEBRIEF  [IMPROVED SECTION CARDS]
+// SECTION 7 — SESSION DEBRIEF
 // ═══════════════════════════════════════════════════════════════════════════
 const SessionDebrief = memo(({ breakdownData, analyticsData }) => {
   const [debrief, setDebrief]   = useState(null);
@@ -1349,7 +1334,6 @@ No markdown. No asterisks. Coach talking after a session. Under 200 words.`;
         </button>
       </div>
 
-      {/* Per-question score grid — unchanged */}
       <div style={{ display: "flex", gap: 4, marginBottom: 18, flexWrap: "wrap" }} role="list" aria-label="Per-question scores">
         {(breakdownData.questions || []).map((q, i) => (
           <div key={i} role="listitem"
@@ -1378,20 +1362,11 @@ No markdown. No asterisks. Coach talking after a session. Under 200 words.`;
 
       {done && debrief && (
         debrief.sections ? (
-          /* ── IMPROVED: section cards with big heading, icon, and readable body ── */
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14 }}>
             {debrief.sections.map((s, i) => {
               const cfg = SECTION_CONFIG[s.heading] || { icon: "•", desc: "" };
               return (
-                <div key={i} style={{
-                  padding: "20px 20px",
-                  borderRadius: 16,
-                  background: C.cardAlt,
-                  border: `1px solid ${C.border}`,
-                  borderLeft: `4px solid ${s.accent}`,
-                  display: "flex", flexDirection: "column", gap: 12,
-                }}>
-                  {/* Section header */}
+                <div key={i} style={{ padding: "20px 20px", borderRadius: 16, background: C.cardAlt, border: `1px solid ${C.border}`, borderLeft: `4px solid ${s.accent}`, display: "flex", flexDirection: "column", gap: 12 }}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
@@ -1400,25 +1375,11 @@ No markdown. No asterisks. Coach talking after a session. Under 200 words.`;
                           {s.heading}
                         </span>
                       </div>
-                      <div style={{ fontFamily: F.body, fontSize: 10.5, color: C.muted, marginLeft: 25 }}>
-                        {cfg.desc}
-                      </div>
+                      <div style={{ fontFamily: F.body, fontSize: 10.5, color: C.muted, marginLeft: 25 }}>{cfg.desc}</div>
                     </div>
                   </div>
-
-                  {/* Divider */}
                   <div style={{ height: 1, background: `linear-gradient(90deg, ${s.accent}35, transparent)` }} />
-
-                  {/* Body text — bigger, bolder */}
-                  <p style={{
-                    margin: 0,
-                    fontSize: 14,
-                    fontWeight: 500,
-                    lineHeight: 1.8,
-                    color: C.sub,
-                    fontFamily: F.body,
-                    letterSpacing: "-0.05px",
-                  }}>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 500, lineHeight: 1.8, color: C.sub, fontFamily: F.body, letterSpacing: "-0.05px" }}>
                     <HighlightedText text={s.body} dark={false} />
                   </p>
                 </div>
@@ -1434,7 +1395,7 @@ No markdown. No asterisks. Coach talking after a session. Under 200 words.`;
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION 8 — DIMENSION HEALTH  (no AI — pure data render, unchanged)
+// SECTION 8 — DIMENSION HEALTH
 // ═══════════════════════════════════════════════════════════════════════════
 const DimensionHealth = memo(({ analyticsData, navigate }) => {
   const dimProfile = useMemo(() => {
@@ -1513,8 +1474,14 @@ const Coach = () => {
   const [blindSpotsData, setBlindSpotsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
-  const [mounted, setMounted] = useState(false);
   const hasFetched = useRef(false);
+
+  // ── CRITICAL: Scroll to top immediately on mount, before any child
+  //    effects can fire (including CoachChat's greeting which previously
+  //    called scrollIntoView and pulled the viewport to the bottom)
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, []);
 
   useEffect(() => {
     if (hasFetched.current) return;
@@ -1536,7 +1503,6 @@ const Coach = () => {
         setError("Unable to load your coaching data. Check your connection and try again.");
       } finally {
         setLoading(false);
-        requestAnimationFrame(() => setTimeout(() => setMounted(true), 50));
       }
     })();
   }, []);
@@ -1628,64 +1594,87 @@ const Coach = () => {
         }
       `}</style>
 
-      <div className="coach-page" style={{ maxWidth: 1200, margin: "0 auto", opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(12px)", transition: "opacity 0.55s ease, transform 0.55s cubic-bezier(.16,1,.3,1)" }}>
+      <div className="coach-page" style={{ maxWidth: 1200, margin: "0 auto" }}>
 
-        <SectionErrorBoundary>
-          <CommandHeader irs={irs} tier={tier} totalSessions={totalSessions} lastScore={lastScore} slope={slope} navigate={navigate} />
-        </SectionErrorBoundary>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }} className="coach-two-col">
+        {/* Header — no delay, visible immediately */}
+        <AnimatedSection delay={0}>
           <SectionErrorBoundary>
-            <TodayCard analyticsData={analyticsData} breakdownData={breakdownData} blindSpots={blindSpotsData} navigate={navigate} />
+            <CommandHeader irs={irs} tier={tier} totalSessions={totalSessions} lastScore={lastScore} slope={slope} navigate={navigate} />
           </SectionErrorBoundary>
+        </AnimatedSection>
+
+        {/* Today + Weekly — staggered */}
+        <AnimatedSection delay={80}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }} className="coach-two-col">
+            <SectionErrorBoundary>
+              <TodayCard analyticsData={analyticsData} breakdownData={breakdownData} blindSpots={blindSpotsData} navigate={navigate} />
+            </SectionErrorBoundary>
+            <SectionErrorBoundary>
+              <WeeklyPlan analyticsData={analyticsData} navigate={navigate} />
+            </SectionErrorBoundary>
+          </div>
+        </AnimatedSection>
+
+        {/* Progress Timeline */}
+        <AnimatedSection delay={0}>
           <SectionErrorBoundary>
-            <WeeklyPlan analyticsData={analyticsData} navigate={navigate} />
+            <ProgressTimeline scoreTrend={scoreTrend} />
           </SectionErrorBoundary>
-        </div>
+        </AnimatedSection>
 
-        <SectionErrorBoundary>
-          <ProgressTimeline scoreTrend={scoreTrend} />
-        </SectionErrorBoundary>
+        {/* Dimension Health */}
+        <AnimatedSection delay={0}>
+          <SectionErrorBoundary>
+            <DimensionHealth analyticsData={analyticsData} navigate={navigate} />
+          </SectionErrorBoundary>
+        </AnimatedSection>
 
-        <SectionErrorBoundary>
-          <DimensionHealth analyticsData={analyticsData} navigate={navigate} />
-        </SectionErrorBoundary>
+        {/* Company Readiness */}
+        <AnimatedSection delay={0}>
+          <SectionErrorBoundary>
+            <CompanyReadiness analyticsData={analyticsData} />
+          </SectionErrorBoundary>
+        </AnimatedSection>
 
-        <SectionErrorBoundary>
-          <CompanyReadiness analyticsData={analyticsData} />
-        </SectionErrorBoundary>
+        {/* Session Debrief */}
+        <AnimatedSection delay={0}>
+          <SectionErrorBoundary>
+            <SessionDebrief breakdownData={breakdownData} analyticsData={analyticsData} />
+          </SectionErrorBoundary>
+        </AnimatedSection>
 
-        <SectionErrorBoundary>
-          <SessionDebrief breakdownData={breakdownData} analyticsData={analyticsData} />
-        </SectionErrorBoundary>
-
-        <SectionErrorBoundary>
-          <CoachChat analyticsData={analyticsData} breakdownData={breakdownData} blindSpots={blindSpotsData} />
-        </SectionErrorBoundary>
+        {/* Coach Chat */}
+        <AnimatedSection delay={0}>
+          <SectionErrorBoundary>
+            <CoachChat analyticsData={analyticsData} breakdownData={breakdownData} blindSpots={blindSpotsData} />
+          </SectionErrorBoundary>
+        </AnimatedSection>
 
         {/* Footer nav */}
-        <div style={{ marginTop: 8, padding: "20px 24px", borderRadius: 18, background: C.card, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
-          <div>
-            <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, letterSpacing: "0.8px", marginBottom: 4 }}>QUICK NAVIGATION</div>
-            <nav aria-label="Quick navigation" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {[
-                { label: "📊 Analytics",    path: "/analytics" },
-                { label: "🎤 New Interview", path: "/interview" },
-                { label: "📜 History",       path: "/history"   },
-                { label: "🏠 Dashboard",     path: "/dashboard" },
-              ].map(({ label, path }) => (
-                <button key={path} onClick={() => navigate(path)} aria-label={`Go to ${label}`}
-                  style={{ border: `1px solid ${C.borderMd}`, borderRadius: 9, background: C.cardAlt, color: C.sub, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: F.body, transition: "all 0.15s" }}>
-                  {label}
-                </button>
-              ))}
-            </nav>
+        <AnimatedSection delay={0}>
+          <div style={{ marginTop: 8, padding: "20px 24px", borderRadius: 18, background: C.card, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+            <div>
+              <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, letterSpacing: "0.8px", marginBottom: 4 }}>QUICK NAVIGATION</div>
+              <nav aria-label="Quick navigation" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[
+                  { label: "📊 Analytics",    path: "/analytics" },
+                  { label: "🎤 New Interview", path: "/interview" },
+                  { label: "📜 History",       path: "/history"   },
+                  { label: "🏠 Dashboard",     path: "/dashboard" },
+                ].map(({ label, path }) => (
+                  <button key={path} onClick={() => navigate(path)} aria-label={`Go to ${label}`}
+                    style={{ border: `1px solid ${C.borderMd}`, borderRadius: 9, background: C.cardAlt, color: C.sub, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: F.body, transition: "all 0.15s" }}>
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>IRS {irs}/100 · {tier} · {totalSessions} sessions</div>
+              <div style={{ fontFamily: F.mono, fontSize: 8, color: C.faint, marginTop: 2 }}>All analysis from your real session data</div>
+            </div>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>IRS {irs}/100 · {tier} · {totalSessions} sessions</div>
-            <div style={{ fontFamily: F.mono, fontSize: 8, color: C.faint, marginTop: 2 }}>All analysis from your real session data</div>
-          </div>
-        </div>
+        </AnimatedSection>
       </div>
     </div>
   );

@@ -58,6 +58,14 @@ const normalizeQuestion = question => ({
   options: Array.isArray(question?.options)
     ? question.options
     : [],
+  correctAnswerIndex:
+    question?.correctAnswerIndex !== undefined
+      ? Number(question.correctAnswerIndex)
+      : null,
+  explanation:
+    typeof question?.explanation === 'string'
+      ? question.explanation.trim()
+      : '',
 });
 
 export const useInterview = () => {

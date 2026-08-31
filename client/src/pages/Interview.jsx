@@ -270,9 +270,22 @@ const Interview = () => {
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  const [selectedDifficulty, setSelectedDifficulty] = useState('mixed');
+  // Default difficulty comes from the user's onboarding pref:
+  //   'easy'   → 'easy'   (start gentle)
+  //   'medium' → 'mixed'  (balanced, the old default)
+  //   'hard'   → 'hard'   (throw me in)
+  const [selectedDifficulty, setSelectedDifficulty] = useState(
+    { easy: 'easy', medium: 'mixed', hard: 'hard' }[user?.difficultyPref] ?? 'mixed'
+  );
+
+  // Default mode comes from location.state (dashboard quick-launch) or the
+  // user's saved targetRole from onboarding:
+  //   frontend / backend / data → 'topic'   (role-specific focus)
+  //   sde / fullstack / devops  → 'quick'   (broad coverage)
   const [selectedMode, setSelectedMode] = useState(
-    location.state?.mode || 'quick'
+    location.state?.mode ||
+    { frontend: 'topic', backend: 'topic', data: 'topic' }[user?.targetRole] ||
+    'quick'
   );
   const [selectedCompany, setSelectedCompany] = useState(
     location.state?.company || ''
@@ -300,7 +313,7 @@ const Interview = () => {
 
   const mode = MODE_META[selectedMode] || MODE_META.quick;
 
-  const totalQuestions = questions.length;
+  const totalQuestions = questions?.length ?? 0;
 
   const progress = totalQuestions
     ? ((currentIndex + 1) / totalQuestions) * 100
@@ -1611,6 +1624,7 @@ const Interview = () => {
                 }
                 isLast={isLastQuestion}
                 accent={mode.accent}
+                userAnswerIndex={selectedAnswerIndex}
               />
             )}
           </section>
@@ -1720,6 +1734,56 @@ const TimerRing = ({
   );
 };
 
+// ── Splits a paragraph string into bullet-ready sentences ─────────────────
+// Handles ". ", "! ", "? " as sentence boundaries.
+// Returns an array of clean non-empty strings.
+const splitToBullets = (text = '') => {
+  if (!text) return [];
+  // Split on sentence boundaries but keep short text as one bullet
+  const sentences = text
+    .replace(/([.!?])\s+/g, '$1|||')
+    .split('|||')
+    .map(s => s.trim())
+    .filter(Boolean);
+  return sentences.length <= 1 ? [text.trim()] : sentences;
+};
+
+// ── Score metadata ─────────────────────────────────────────────────────────
+const scoreConfig = (score) => {
+  if (score >= 80) return {
+    color: C.green,
+    bg: C.greenTint,
+    barGradient: `linear-gradient(90deg, #059669, #10b981)`,
+    emoji: '🔥',
+    label: 'Strong',
+    vibe: 'Really solid. You clearly know this.',
+  };
+  if (score >= 60) return {
+    color: C.blue500,
+    bg: C.blue50,
+    barGradient: `linear-gradient(90deg, ${C.blue600}, ${C.blue400})`,
+    emoji: '👍',
+    label: 'Good',
+    vibe: 'Good base. A bit more depth and this is interview-ready.',
+  };
+  if (score >= 40) return {
+    color: C.amber,
+    bg: C.amberTint,
+    barGradient: `linear-gradient(90deg, #b45309, ${C.amber})`,
+    emoji: '📝',
+    label: 'Partial',
+    vibe: 'You\'re on the right track. Missing a few key things.',
+  };
+  return {
+    color: C.red,
+    bg: C.redTint,
+    barGradient: `linear-gradient(90deg, #b91c1c, ${C.red})`,
+    emoji: '💡',
+    label: 'Needs work',
+    vibe: 'Don\'t sweat it — this is exactly why you practice.',
+  };
+};
+
 const FeedbackView = ({
   question,
   feedback,
@@ -1727,206 +1791,304 @@ const FeedbackView = ({
   isLoading,
   isLast,
   accent,
+  userAnswerIndex,
 }) => {
-  const score =
-    Number(feedback?.score) || 0;
+  const [showSample, setShowSample] = useState(false);
 
-  const objective = [
-    'mcq',
-    'aptitude',
-  ].includes(question.questionType);
+  const score   = Number(feedback?.score) || 0;
+  const objective = ['mcq', 'aptitude'].includes(question?.questionType);
+  const correct   = feedback?.correct === true;
 
-  const correct =
-    feedback?.correct === true;
+  const cfg = scoreConfig(score);
 
-  const color = objective
-    ? correct
-      ? C.green
-      : C.red
-    : score >= 80
-      ? C.green
-      : score >= 60
-        ? C.blue500
-        : C.amber;
-
-  const background = objective
-    ? correct
-      ? C.greenTint
-      : C.redTint
-    : score >= 80
-      ? C.greenTint
-      : score >= 60
-        ? C.blue50
-        : C.amberTint;
+  // For objective questions
+  const objColor = correct ? C.green : C.red;
+  const objBg    = correct ? C.greenTint : C.redTint;
+  const objEmoji = correct ? '✅' : '❌';
+  const objVibe  = correct ? 'Nailed it. Move on.' : 'Wrong one — but read why below.';
 
   return (
-    <div
-      style={S.feedback}
-      className="iv-fade-in"
-    >
-      <div style={S.feedbackHero}>
-        <div
-          style={{
-            ...S.feedbackScore,
-            color,
-            background,
-          }}
-          className="iv-score-pop"
-        >
-          {objective
-            ? correct
-              ? '✓'
-              : '×'
-            : score}
-        </div>
+    <div style={S.feedback} className="iv-fade-in">
 
-        <div>
-          <span style={S.feedbackEyebrow}>
-            {objective
-              ? correct
-                ? 'CORRECT ANSWER'
-                : 'ANSWER REVIEW'
-              : 'AI INTERVIEW REVIEW'}
+      {/* ── Score strip ────────────────────────────────────────────────── */}
+      <div style={{
+        ...S.fbScoreStrip,
+        background: objective ? objBg : cfg.bg,
+        borderColor: `${objective ? objColor : cfg.color}25`,
+      }}>
+        <div style={S.fbScoreLeft}>
+          <span style={S.fbScoreEmoji}>
+            {objective ? objEmoji : cfg.emoji}
           </span>
-
-          <h2 style={S.feedbackTitle}>
-            {objective
-              ? correct
-                ? 'Nice work.'
-                : 'Good attempt. Learn from it.'
-              : score >= 80
-                ? 'Strong answer.'
-                : score >= 60
-                  ? 'Solid base. Refine it.'
-                  : 'This answer gives you a clear next step.'}
-          </h2>
+          <div>
+            <div style={{ ...S.fbScoreLabel, color: objective ? objColor : cfg.color }}>
+              {objective
+                ? (correct ? 'Correct answer' : 'Wrong answer')
+                : cfg.label
+              }
+            </div>
+            <div style={S.fbScoreVibe}>
+              {objective ? objVibe : cfg.vibe}
+            </div>
+          </div>
         </div>
+
+        {!objective && (
+          <div style={S.fbScoreRight}>
+            <div style={{ ...S.fbScoreNum, color: cfg.color }}>{score}</div>
+            <div style={S.fbScoreOutOf}>/100</div>
+          </div>
+        )}
       </div>
 
-      {objective ? (
-        <div style={S.objectiveFeedback}>
-          <div style={S.feedbackResult}>
-            <span>RESULT</span>
-
-            <strong style={{ color }}>
-              {correct
-                ? 'Correct'
-                : 'Incorrect'}
-            </strong>
+      {/* ── Score bar (open questions only) ────────────────────────────── */}
+      {!objective && (
+        <div style={S.fbBarWrap}>
+          <div style={S.fbBarTrack}>
+            <div style={{
+              ...S.fbBarFill,
+              width: `${score}%`,
+              background: cfg.barGradient,
+            }} className="iv-fb-bar" />
           </div>
-
-          <div style={S.feedbackNote}>
-            {feedback?.raw ||
-              'Your answer has been recorded.'}
+          <div style={S.fbBarTicks}>
+            {[25, 50, 75].map(t => (
+              <div key={t} style={{ ...S.fbBarTick, left: `${t}%` }} />
+            ))}
           </div>
         </div>
-      ) : (
-        <div
-          style={S.feedbackGrid}
-          className="iv-feedback-grid"
-        >
+      )}
+
+      {/* ── Open question feedback blocks ───────────────────────────────── */}
+      {!objective ? (
+        <div style={S.fbBlocks} className="iv-feedback-grid">
+
           <FeedbackBlock
+            icon="✅"
             title="What worked"
-            value={feedback?.good}
+            bullets={splitToBullets(feedback?.good)}
             color={C.green}
-            background={C.greenTint}
+            bg={C.greenTint}
           />
 
           <FeedbackBlock
+            icon="🔍"
             title="What was missing"
-            value={feedback?.missing}
+            bullets={splitToBullets(feedback?.missing)}
             color={C.red}
-            background={C.redTint}
+            bg={C.redTint}
           />
 
           <FeedbackBlock
-            title="Key idea"
-            value={feedback?.idealHint}
+            icon="💡"
+            title="The key idea"
+            bullets={splitToBullets(feedback?.idealHint)}
             color={C.blue500}
-            background={C.blue50}
+            bg={C.blue50}
           />
 
           <FeedbackBlock
-            title="Next move"
-            value={feedback?.tip}
+            icon="🎯"
+            title="Your next move"
+            bullets={splitToBullets(feedback?.tip)}
             color={C.amber}
-            background={C.amberTint}
+            bg={C.amberTint}
           />
 
-          {feedback?.sampleAnswer && (
-            <div style={S.sample}>
-              <span>
-                STRONG ANSWER PATTERN
-              </span>
+        </div>
+      ) : (
+        /* ── Objective (MCQ/Aptitude) feedback ─────────────────────────── */
+        <McqExplanation
+          question={question}
+          feedback={feedback}
+          correct={correct}
+          objColor={objColor}
+          userAnswerIndex={userAnswerIndex}
+        />
+      )}
 
-              <p>
-                {feedback.sampleAnswer}
-              </p>
+      {/* ── Sample answer toggle ────────────────────────────────────────── */}
+      {!objective && feedback?.sampleAnswer && (
+        <div style={S.fbSampleWrap}>
+          <button
+            type="button"
+            style={S.fbSampleToggle}
+            onClick={() => setShowSample(v => !v)}
+          >
+            <span style={S.fbSampleToggleIcon}>{showSample ? '▾' : '▸'}</span>
+            {showSample ? 'Hide ideal answer' : 'Show ideal answer'}
+            <span style={S.fbSampleBadge}>optional</span>
+          </button>
+
+          {showSample && (
+            <div style={S.fbSampleBody} className="iv-fade-in">
+              {splitToBullets(feedback.sampleAnswer).map((pt, i) => (
+                <div key={i} style={S.fbSamplePoint}>
+                  <span style={S.fbSampleDot}>{i + 1}</span>
+                  <span style={S.fbSampleText}>{pt}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
       )}
 
+      {/* ── Continue button ─────────────────────────────────────────────── */}
       <button
         type="button"
         style={{
           ...S.nextBtn,
           background: `linear-gradient(135deg, ${C.blue700}, ${accent})`,
-          ...(isLoading
-            ? S.btnDisabled
-            : {}),
+          ...(isLoading ? S.btnDisabled : {}),
+          marginTop: 16,
         }}
         className="iv-next-btn"
         onClick={onNext}
         disabled={isLoading}
       >
         {isLoading ? (
-          <>
-            <span style={S.spinner} />
-
-            {isLast
-              ? 'Preparing your report…'
-              : 'Preparing…'}
-          </>
+          <><span style={S.spinner} />{isLast ? 'Preparing your report…' : 'Preparing…'}</>
         ) : isLast ? (
           'View your results →'
         ) : (
-          'Continue to next question →'
+          'Next question →'
         )}
       </button>
 
       <div style={S.nextBtnHint}>
-        Press{' '}
-        <kbd style={S.kbd}>Enter</kbd> to
-        continue
+        Press <kbd style={S.kbd}>Enter</kbd> to continue
       </div>
     </div>
   );
 };
 
-const FeedbackBlock = ({
-  title,
-  value,
-  color,
-  background,
-}) => (
-  <div
-    style={{
-      ...S.feedbackBlock,
-      background,
-      borderColor: `${color}30`,
-    }}
-  >
-    <span style={{ color }}>
-      {title}
-    </span>
-
-    <p>
-      {value ||
-        'No additional feedback was returned.'}
-    </p>
+const FeedbackBlock = ({ icon, title, bullets, color, bg }) => (
+  <div style={{ ...S.feedbackBlock, background: bg, borderColor: `${color}28` }}>
+    <div style={S.fbBlockHeader}>
+      <span style={S.fbBlockIcon}>{icon}</span>
+      <span style={{ ...S.fbBlockTitle, color }}>{title}</span>
+    </div>
+    <div style={S.fbBullets}>
+      {(bullets?.length ? bullets : ['No additional feedback.']).map((pt, i) => (
+        <div key={i} style={S.fbBulletRow}>
+          <span style={{ ...S.fbBulletDot, background: color }} />
+          <span style={S.fbBulletText}>{pt}</span>
+        </div>
+      ))}
+    </div>
   </div>
 );
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MCQ EXPLANATION CARD
+// ═══════════════════════════════════════════════════════════════════════════
+
+const McqExplanation = ({ question, feedback, correct, objColor, userAnswerIndex }) => {
+  // Correct answer text from the question options
+  const correctIndex = question?.correctAnswerIndex;
+  const correctText  = (correctIndex !== null && correctIndex !== undefined)
+    ? question?.options?.[correctIndex]
+    : null;
+
+  // User's chosen option — comes from selectedAnswerIndex in the hook
+  const userIndex = userAnswerIndex ?? null;
+  const userText  = (userIndex !== null && userIndex !== undefined)
+    ? question?.options?.[userIndex]
+    : null;
+
+  // explanation comes from the question object (preserved in normalizeQuestion)
+  // raw is the backend fallback string — use whichever is richer
+  const explanation = question?.explanation || '';
+
+  return (
+    <div style={S.mcqWrap}>
+
+      {/* ── Answer comparison row ──────────────────────────────────────── */}
+      <div style={S.mcqAnswerRow}>
+
+        {/* User's pick */}
+        <div style={{
+          ...S.mcqAnswerBox,
+          borderColor: `${objColor}35`,
+          background: correct ? C.greenTint : C.redTint,
+        }}>
+          <span style={{ ...S.mcqAnswerTag, color: objColor }}>
+            {correct ? '✅ Your answer' : '❌ Your answer'}
+          </span>
+          <span style={S.mcqAnswerText}>
+            {userText || 'No option selected'}
+          </span>
+        </div>
+
+        {/* Correct answer — only shown when wrong */}
+        {!correct && correctText && (
+          <div style={{
+            ...S.mcqAnswerBox,
+            borderColor: `${C.green}35`,
+            background: C.greenTint,
+          }}>
+            <span style={{ ...S.mcqAnswerTag, color: C.green }}>
+              ✓ Correct answer
+            </span>
+            <span style={S.mcqAnswerText}>{correctText}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Explanation ────────────────────────────────────────────────── */}
+      {explanation ? (
+        <div style={S.mcqExplainWrap}>
+          <div style={S.mcqExplainHeader}>
+            <span style={S.mcqExplainIcon}>💡</span>
+            <span style={S.mcqExplainTitle}>Why?</span>
+          </div>
+          <div style={S.mcqExplainBody}>
+            {splitToBullets(explanation).map((pt, i) => (
+              <div key={i} style={S.fbBulletRow}>
+                <span style={{ ...S.fbBulletDot, background: C.blue500, marginTop: 7 }} />
+                <span style={S.mcqExplainText}>{pt}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={S.mcqNoExplain}>
+          Your answer has been recorded.
+        </div>
+      )}
+
+      {/* ── All options map (quick visual reference) ───────────────────── */}
+      {question?.options?.length > 0 && (
+        <div style={S.mcqOptionsWrap}>
+          <span style={S.mcqOptionsLabel}>All options</span>
+          <div style={S.mcqOptionsList}>
+            {question.options.map((opt, i) => {
+              const isCorrect = i === correctIndex;
+              const isUser    = i === userIndex;
+              const both      = isCorrect && isUser;
+              const bg   = isCorrect ? C.greenTint : isUser ? C.redTint : C.cardAlt;
+              const col  = isCorrect ? C.green     : isUser ? C.red     : C.muted;
+              const bord = isCorrect ? `${C.green}35` : isUser ? `${C.red}25` : C.border;
+              return (
+                <div key={i} style={{ ...S.mcqOption, background: bg, borderColor: bord }}>
+                  <span style={{ ...S.mcqOptionBullet, color: col, borderColor: `${col}40`, background: isCorrect || isUser ? `${col}15` : 'transparent' }}>
+                    {String.fromCharCode(65 + i)}
+                  </span>
+                  <span style={{ ...S.mcqOptionText, color: isCorrect ? C.green : isUser ? C.red : C.sub }}>
+                    {opt}
+                  </span>
+                  {both   && <span style={S.mcqOptionBadge}>✓ correct</span>}
+                  {isCorrect && !isUser && <span style={{ ...S.mcqOptionBadge, color: C.green, background: `${C.green}15`, borderColor: `${C.green}30` }}>correct</span>}
+                  {isUser && !isCorrect && <span style={{ ...S.mcqOptionBadge, color: C.red, background: `${C.red}12`, borderColor: `${C.red}25` }}>your pick</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GLOBAL STYLES
@@ -2000,6 +2162,14 @@ const GlobalStyles = () => (
         opacity:1;
         transform:scale(1) rotate(0);
       }
+    }
+
+    @keyframes ivBarGrow {
+      from { width: 0%; }
+    }
+
+    .iv-fb-bar {
+      animation: ivBarGrow 0.7s cubic-bezier(.16,1,.3,1);
     }
 
     @keyframes ivRingPulse {
@@ -2162,6 +2332,10 @@ const GlobalStyles = () => (
 
       .iv-feedback-grid {
         grid-template-columns: 1fr !important;
+      }
+
+      .iv-fb-sample-toggle {
+        font-size: 12px !important;
       }
     }
 
@@ -3152,95 +3326,378 @@ const S = {
   },
 
   feedback: {
-    minHeight: 340,
     display: 'flex',
     flexDirection: 'column',
+    gap: 0,
   },
 
-  feedbackHero: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 13,
-    paddingBottom: 14,
-    borderBottom: `1px solid ${C.border}`,
-  },
-
-  feedbackScore: {
-    width: 52,
-    height: 52,
-    borderRadius: 15,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontFamily: F.display,
-    fontSize: 19,
-    fontWeight: 900,
-    flexShrink: 0,
-  },
-
-  feedbackEyebrow: {
-    color: C.blue500,
-    fontFamily: F.mono,
-    fontSize: 9.5,
-    fontWeight: 700,
-    letterSpacing: '1px',
-  },
-
-  feedbackTitle: {
-    margin: '4px 0 0',
-    color: C.text,
-    fontFamily: F.display,
-    fontSize: 16.5,
-    fontWeight: 800,
-  },
-
-  feedbackGrid: {
-    display: 'grid',
-    gridTemplateColumns:
-      'repeat(2, 1fr)',
-    gap: 9,
-    marginTop: 13,
-  },
-
-  feedbackBlock: {
-    padding: 11,
-    border: '1px solid',
-    borderRadius: 12,
-  },
-
-  sample: {
-    gridColumn: '1 / -1',
-    padding: 11,
-    borderRadius: 12,
-    background: C.cardAlt,
-    border: `1px solid ${C.border}`,
-  },
-
-  objectiveFeedback: {
-    marginTop: 13,
-  },
-
-  feedbackResult: {
+  // ── Score strip ──
+  fbScoreStrip: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-    padding: '12px 14px',
-    border: `1px solid ${C.border}`,
-    borderRadius: 12,
-    background: C.cardAlt,
+    gap: 12,
+    padding: '13px 16px',
+    borderRadius: 14,
+    border: '1px solid',
+    marginBottom: 10,
+  },
+  fbScoreLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 11,
+  },
+  fbScoreEmoji: {
+    fontSize: 24,
+    lineHeight: 1,
+    flexShrink: 0,
+  },
+  fbScoreLabel: {
+    fontFamily: F.display,
+    fontSize: 14,
+    fontWeight: 800,
+    lineHeight: 1.2,
+  },
+  fbScoreVibe: {
+    fontSize: 11.5,
+    color: C.sub,
+    marginTop: 2,
+    lineHeight: 1.4,
+  },
+  fbScoreRight: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 2,
+    flexShrink: 0,
+  },
+  fbScoreNum: {
+    fontFamily: F.display,
+    fontSize: 32,
+    fontWeight: 900,
+    lineHeight: 1,
+    letterSpacing: '-1px',
+  },
+  fbScoreOutOf: {
+    fontSize: 11,
+    color: C.muted,
+    fontFamily: F.mono,
   },
 
-  feedbackNote: {
-    marginTop: 8,
-    padding: 12,
+  // ── Score bar ──
+  fbBarWrap: {
+    position: 'relative',
+    marginBottom: 14,
+    paddingBottom: 4,
+  },
+  fbBarTrack: {
+    height: 6,
+    borderRadius: 999,
+    background: C.border,
+    overflow: 'hidden',
+  },
+  fbBarFill: {
+    height: '100%',
+    borderRadius: 999,
+    transition: 'width 0.7s cubic-bezier(.16,1,.3,1)',
+  },
+  fbBarTicks: {
+    position: 'relative',
+    height: 4,
+    marginTop: 3,
+  },
+  fbBarTick: {
+    position: 'absolute',
+    top: 0,
+    width: 1,
+    height: 4,
+    background: C.border,
+    transform: 'translateX(-50%)',
+  },
+
+  // ── Feedback blocks ──
+  fbBlocks: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  feedbackBlock: {
+    padding: '11px 13px',
+    border: '1px solid',
+    borderRadius: 13,
+  },
+  fbBlockHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 9,
+  },
+  fbBlockIcon: {
+    fontSize: 13,
+    lineHeight: 1,
+    flexShrink: 0,
+  },
+  fbBlockTitle: {
+    fontSize: 11,
+    fontWeight: 800,
+    fontFamily: F.mono,
+    letterSpacing: '0.4px',
+    textTransform: 'uppercase',
+  },
+  fbBullets: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 7,
+  },
+  fbBulletRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  fbBulletDot: {
+    width: 5,
+    height: 5,
+    borderRadius: '50%',
+    flexShrink: 0,
+    marginTop: 6,
+  },
+  fbBulletText: {
+    fontSize: 12.5,
+    lineHeight: 1.6,
+    color: C.sub,
+  },
+
+  // ── Objective feedback ──
+  fbObjNote: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    padding: '12px 14px',
+    borderRadius: 13,
+    background: C.cardAlt,
+    border: `1px solid ${C.border}`,
+    marginBottom: 12,
+  },
+  fbObjPoint: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 9,
+    fontSize: 13,
+    color: C.sub,
+    lineHeight: 1.6,
+  },
+
+  // ── MCQ explanation card ──
+  mcqWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    marginBottom: 4,
+  },
+  mcqAnswerRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8,
+  },
+  mcqAnswerBox: {
+    padding: '10px 13px',
+    borderRadius: 12,
+    border: '1px solid',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 5,
+  },
+  mcqAnswerTag: {
+    fontSize: 10,
+    fontWeight: 800,
+    fontFamily: F.mono,
+    letterSpacing: '0.3px',
+    textTransform: 'uppercase',
+  },
+  mcqAnswerText: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: C.text,
+    lineHeight: 1.45,
+  },
+  mcqExplainWrap: {
+    borderRadius: 13,
+    border: `1px solid ${C.blue100}`,
+    background: C.blue50,
+    overflow: 'hidden',
+  },
+  mcqExplainHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 7,
+    padding: '9px 13px',
+    borderBottom: `1px solid ${C.blue100}`,
+  },
+  mcqExplainIcon: {
+    fontSize: 13,
+  },
+  mcqExplainTitle: {
+    fontSize: 11,
+    fontWeight: 800,
+    fontFamily: F.mono,
+    color: C.blue600,
+    letterSpacing: '0.4px',
+    textTransform: 'uppercase',
+  },
+  mcqExplainBody: {
+    padding: '10px 13px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  mcqExplainText: {
+    fontSize: 12.5,
+    lineHeight: 1.65,
+    color: C.sub,
+  },
+  mcqNoExplain: {
+    fontSize: 12.5,
+    color: C.muted,
+    padding: '10px 14px',
     borderRadius: 12,
     background: C.cardAlt,
     border: `1px solid ${C.border}`,
-    color: C.sub,
+  },
+  mcqOptionsWrap: {
+    borderRadius: 13,
+    border: `1px solid ${C.border}`,
+    overflow: 'hidden',
+  },
+  mcqOptionsLabel: {
+    display: 'block',
+    fontSize: 9.5,
+    fontWeight: 800,
+    fontFamily: F.mono,
+    letterSpacing: '0.8px',
+    color: C.muted,
+    textTransform: 'uppercase',
+    padding: '8px 13px 6px',
+    borderBottom: `1px solid ${C.border}`,
+    background: C.cardAlt,
+  },
+  mcqOptionsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 0,
+  },
+  mcqOption: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '9px 13px',
+    borderBottom: `1px solid ${C.border}`,
+    border: 'none',
+    borderLeft: '2px solid transparent',
+  },
+  mcqOptionBullet: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    border: '1.5px solid',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 9,
+    fontWeight: 800,
+    fontFamily: F.mono,
+    flexShrink: 0,
+  },
+  mcqOptionText: {
     fontSize: 12.5,
-    lineHeight: 1.55,
-    wordBreak: 'break-word',
+    flex: 1,
+    lineHeight: 1.4,
+    fontWeight: 500,
+  },
+  mcqOptionBadge: {
+    fontSize: 9,
+    fontWeight: 800,
+    fontFamily: F.mono,
+    letterSpacing: '0.3px',
+    padding: '2px 7px',
+    borderRadius: 999,
+    border: '1px solid',
+    color: C.green,
+    background: `${C.green}15`,
+    borderColor: `${C.green}30`,
+    flexShrink: 0,
+    textTransform: 'uppercase',
+  },
+
+  // ── Sample answer toggle ──
+  fbSampleWrap: {
+    marginBottom: 4,
+    borderRadius: 13,
+    border: `1px solid ${C.border}`,
+    overflow: 'hidden',
+  },
+  fbSampleToggle: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 7,
+    padding: '10px 14px',
+    background: C.cardAlt,
+    border: 'none',
+    cursor: 'pointer',
+    fontFamily: F.body,
+    fontSize: 12.5,
+    fontWeight: 700,
+    color: C.sub,
+    textAlign: 'left',
+    transition: 'background 0.15s ease',
+  },
+  fbSampleToggleIcon: {
+    fontSize: 10,
+    color: C.muted,
+    flexShrink: 0,
+  },
+  fbSampleBadge: {
+    marginLeft: 'auto',
+    fontSize: 9.5,
+    fontFamily: F.mono,
+    fontWeight: 700,
+    letterSpacing: '0.5px',
+    color: C.faint,
+    textTransform: 'uppercase',
+  },
+  fbSampleBody: {
+    padding: '10px 14px 14px',
+    background: C.card,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    borderTop: `1px solid ${C.border}`,
+  },
+  fbSamplePoint: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  fbSampleDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    background: C.blue50,
+    color: C.blue500,
+    fontSize: 9,
+    fontWeight: 800,
+    fontFamily: F.mono,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  fbSampleText: {
+    fontSize: 12.5,
+    lineHeight: 1.65,
+    color: C.sub,
   },
 
   nextBtn: {

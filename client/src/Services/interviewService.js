@@ -281,3 +281,24 @@ export const getAIFreeform = async (prompt, maxTokens = 400) => {
     throw error;
   }
 };
+
+// --------------------------------------------------
+// --------------------------------------------------
+// FIX BADGES — recomputes badge state server-side
+// Uses a direct axios call because this route lives on
+// /auth, not /interview, so the API instance can't reach it.
+// --------------------------------------------------
+
+export const fixBadges = async () => {
+  try {
+    const response = await axios.post(
+      `${API_BASE}/auth/fix-badges`,
+      {},
+      { withCredentials: true }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Fix badges failed:', error);
+    throw error;
+  }
+};

@@ -2,7 +2,7 @@ import API_BASE from '../config/api.js';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
-import { getAICoach, getAIFreeform, getPerformanceAnalytics, startInterview } from '../Services/interviewService';
+import { getAICoach, getAIFreeform, getPerformanceAnalytics, startInterview , fixBadges} from '../Services/interviewService';
 import { getShareLink } from '../Services/profileServices';
 import PageLoader from '../components/PageLoader';
 
@@ -263,17 +263,7 @@ const bestFixTarget = (topicPerformance, dimensionProfile) => {
 };
 
 /** Per-topic trend across the last N sessions containing that topic — used for sparklines. */
-const topicMomentum = (topicPerformance, scoreTrend) => {
-  // scoreTrend items don't carry per-topic breakdown in this API shape, so we
-  // approximate momentum by correlating overall-session trend direction with
-  // how recently the topic has appeared in topicPerformance ordering (stable
-  // proxy given current API — becomes exact once backend adds topic-tagged trend).
-  const overallSlope = trendSlope(scoreTrend.map(s => s.score || 0).slice(-6));
-  return topicPerformance.map(t => ({
-    ...t,
-    momentum: overallSlope > 1.5 ? 'rising' : overallSlope < -1.5 ? 'falling' : 'stable',
-  }));
-};
+
 
 const useLiveClock = () => {
   const [now, setNow] = useState(new Date());
@@ -562,9 +552,27 @@ const FocusThisWeekCard = ({ topicPerformance, dimensionProfile, weakestDim, sco
 
   const slope = trendSlope((scoreTrend || []).slice(-6).map(s => s.score || 0));
 
-  useEffect(() => {
+useEffect(() => {
     if (!topWeakTopic && !weakestDim) return;
     let cancelled = false;
+
+    // Cache key includes topic + dimension so it invalidates automatically
+    // when either changes after a new interview session.
+    const cacheKey = `mm_focus_week_${topWeakTopic?.topic || 'none'}_${weakestDim?.key || 'none'}`;
+    const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+    // Check cache first — avoids a Gemini call on every dashboard load
+    try {
+      const raw = sessionStorage.getItem(cacheKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Date.now() - parsed.ts < CACHE_TTL) {
+          setFocus(parsed.text);
+          return;
+        }
+      }
+    } catch { /* non-fatal, just fetch fresh */ }
+
     (async () => {
       setLoading(true);
       try {
@@ -578,17 +586,26 @@ Context:
 Reply with ONLY the one sentence. No preamble, no label.`;
 
         const text = await getAIFreeform(prompt, 80);
-        
+        const cleaned = text.trim().replace(/^[\"']|[\"']$/g, '') || null;
+
         if (!cancelled) {
-          setFocus(
-            text.trim().replace(/^["']|["']$/g, '') || null
-          );
+          setFocus(cleaned);
+          // Write to cache only if we got a real response
+          if (cleaned) {
+            try {
+              sessionStorage.setItem(cacheKey, JSON.stringify({ text: cleaned, ts: Date.now() }));
+            } catch { /* non-fatal */ }
+          }
         }
       } catch (err) {
-        if (!cancelled && err?.isQuota) setFocus('⚠ Gemini quota exhausted — set GEMINI_MODEL=gemini-2.5-flash in server/.env and restart.');
+        if (!cancelled && err?.isQuota) {
+          setFocus('⚠ Gemini quota exhausted — set GEMINI_MODEL=gemini-2.5-flash in server/.env and restart.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      finally { if (!cancelled) setLoading(false); }
     })();
+
     return () => { cancelled = true; };
   }, [topWeakTopic?.topic, weakestDim?.key]);
 
@@ -670,6 +687,7 @@ const Dashboard = () => {
   const [starting, setStarting] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
+  const [toast, setToast] = useState(null); 
 
   useEffect(() => {
     (async () => {
@@ -705,43 +723,31 @@ const Dashboard = () => {
 
   // AI Coach modal is handled by AICoachModal component below
 
-  // Fix-badges — recomputes badge state server-side against all completed
-  // sessions, then re-fetches analytics so the badge showcase reflects the
-  // corrected state. Shows a toast so the user knows something happened.
-  const [fixingBadges, setFixingBadges] = useState(false);
-  const handleFixBadges = useCallback(async () => {
-    setFixingBadges(true);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE}/auth/fix-badges`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Fix failed');
-      // Re-fetch analytics so badge counts update in the UI
-      const fresh = await getPerformanceAnalytics();
-      setAnalytics(fresh);
-      const gained = data.newBadges?.length ?? 0;
-      // Simple inline toast via a temporary DOM element (avoids adding a dep)
-      const msg = gained > 0
+// Fix-badges — recomputes badge state server-side against all completed
+// sessions, then re-fetches analytics so the badge showcase reflects the
+// corrected state.
+const [fixingBadges, setFixingBadges] = useState(false);
+const handleFixBadges = useCallback(async () => {
+  setFixingBadges(true);
+  try {
+    const data = await fixBadges();
+    const fresh = await getPerformanceAnalytics();
+    setAnalytics(fresh);
+    const gained = data.newBadges?.length ?? 0;
+    setToast({
+      msg: gained > 0
         ? `✓ ${gained} badge${gained > 1 ? 's' : ''} unlocked`
-        : '✓ Badges are up to date';
-      const el = document.createElement('div');
-      el.textContent = msg;
-      Object.assign(el.style, {
-        position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
-        background: '#1A6EFF', color: '#fff', padding: '10px 20px', borderRadius: '12px',
-        fontWeight: 700, fontSize: '13px', zIndex: 9999, pointerEvents: 'none',
-      });
-      document.body.appendChild(el);
-      setTimeout(() => document.body.removeChild(el), 2800);
-    } catch (e) {
-      console.error('Fix badges failed:', e);
-    } finally {
-      setFixingBadges(false);
-    }
-  }, []);
+        : '✓ Badges are up to date',
+      type: 'success',
+    });
+  } catch (e) {
+    console.error('Fix badges failed:', e);
+    setToast({ msg: '✗ Could not recheck badges — try again', type: 'error' });
+  } finally {
+    setFixingBadges(false);
+    setTimeout(() => setToast(null), 3000);
+  }
+}, []);
 
   // ── Derived raw fields ────────────────────────────────────────────────────
   const totalInterviews = analytics?.totalInterviews ?? analytics?.totalSessions ?? 0;
@@ -849,6 +855,7 @@ const Dashboard = () => {
   return (
     <div style={S.page} className="mm-page">
       <GlobalStyles />
+      <Toast toast={toast} /> 
       <AICoachModal
         open={coachOpen}
         onClose={() => setCoachOpen(false)}
@@ -1212,60 +1219,7 @@ const PredictorCard = ({ prediction, lastScore, averageScore, onStart, starting 
   );
 };
 
-// ─── Recent Sessions — powered by /dashboard/stats recentSessions field ───────
-// This is the only place in the app that surfaces that data. Clicking a row
-// navigates to the full result page via /result/:id (same as History).
-const RecentSessionsCard = ({ sessions, mounted }) => {
-  const navigate = useNavigate();
-  if (!sessions?.length) return null;
 
-  const modeIcon = m => ({ technical: '💻', hr: '🤝', behavioral: '🤝', mixed: '🎲', company: '🏢' })[m?.toLowerCase()] ?? '📋';
-  const scoreCol = s => s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.red;
-
-  return (
-    <div style={S.card}>
-      <div style={S.cardHeader}>
-        <div>
-          <div style={S.eyebrowDark}>RECENT SESSIONS</div>
-          <h2 style={S.cardH2}>Last 5 completed interviews</h2>
-        </div>
-        <button style={S.btnSmall} className="mm-btn-small" onClick={() => navigate('/history')}>Full history →</button>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
-        {sessions.map((s, i) => (
-          <div
-            key={s.id}
-            onClick={() => navigate(`/result/${s.id}`)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '10px 14px', borderRadius: 12,
-              border: `1px solid ${C.border}`, background: C.cardAlt,
-              cursor: 'pointer', transition: 'background 0.15s',
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? 'none' : 'translateY(8px)',
-              transition: `opacity 0.3s ${i * 0.06}s, transform 0.3s ${i * 0.06}s, background 0.15s`,
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = C.blue50}
-            onMouseLeave={e => e.currentTarget.style.background = C.cardAlt}
-          >
-            <div style={{ fontSize: 18, flexShrink: 0 }}>{modeIcon(s.mode)}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, fontFamily: F.body, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {s.company ? `${s.company} — ` : ''}{s.topic || s.mode || 'Interview'}
-              </div>
-              <div style={{ fontSize: 10.5, color: C.muted, fontFamily: F.mono, marginTop: 2 }}>
-                {s.questionCount} Qs · {s.date}
-              </div>
-            </div>
-            <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 800, color: scoreCol(s.score), flexShrink: 0 }}>
-              {s.score ?? '—'}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 // ─── Weekly Digest — condensed 7-day summary, distinct from the heatmap below ─
 const WeeklyDigestCard = ({ scoreTrend, hmStats, totalInterviews, longestStreak }) => {
@@ -1429,44 +1383,7 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted, onFixBadges 
   );
 };
 
-// ─── Topic Momentum — sparkline-style rows, complements dimension breakdown ──
-const TopicMomentumCard = ({ topics, mounted, onDrill, starting }) => {
-  if (!topics.length) return null;
-  const sorted = [...topics].sort((a, b) => (a.averageScore || 0) - (b.averageScore || 0));
-  return (
-    <section style={{ ...S.card, marginBottom: 18 }}>
-      <div style={S.cardHeader}>
-        <div>
-          <div style={S.eyebrowDark}>TOPIC MOMENTUM</div>
-          <h2 style={S.cardH2}>Every topic you've touched, ranked weakest first</h2>
-          <p style={S.cardSub}>Momentum reflects your overall recent trend direction — rising, stable, or falling.</p>
-        </div>
-      </div>
-      <div style={S.momentumList}>
-        {sorted.map(t => {
-          const score = t.averageScore || 0;
-          const col = scoreColor(score);
-          const momCfg = {
-            rising:  { icon: '↑', color: C.green,  label: 'Rising' },
-            falling: { icon: '↓', color: C.red,    label: 'Falling' },
-            stable:  { icon: '→', color: C.blue500,label: 'Stable' },
-          }[t.momentum] || { icon: '→', color: C.muted, label: '—' };
-          return (
-            <div key={t.topic} style={S.momentumRow}>
-              <div style={S.momentumTopic}>{t.topic}</div>
-              <div style={S.momentumBarTrack}>
-                <div style={{ ...S.momentumBarFill, width: mounted ? `${score}%` : '0%', background: col }} />
-              </div>
-              <div style={{ ...S.momentumScore, color: col }}>{score}</div>
-              <div style={{ ...S.momentumBadge, color: momCfg.color, background: `${momCfg.color}15` }}>{momCfg.icon} {momCfg.label}</div>
-              <button style={S.momentumDrillBtn} onClick={() => onDrill(t.topic)} disabled={starting} title={`Drill ${t.topic}`}>Drill</button>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-};
+
 
 // ─── AI Coach Teaser ─────────────────────────────────────────────────────────
 const AICoachTeaserCard = ({ onOpen, weakestDim, irs, tier }) => (
@@ -1636,6 +1553,24 @@ const WeeklyChallenges = ({ scoreTrend, topicPerformance, streakDays }) => {
       </div>
       </div>
     </section>
+  );
+};
+
+const Toast = ({ toast }) => {
+  if (!toast) return null;
+  const isError = toast.type === 'error';
+  return (
+    <div style={{
+      position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+      background: isError ? C.red : C.blue500,
+      color: '#fff', padding: '11px 22px', borderRadius: 14,
+      fontWeight: 700, fontSize: 13, zIndex: 9999, pointerEvents: 'none',
+      fontFamily: F.body, letterSpacing: '-0.1px',
+      boxShadow: `0 8px 28px ${isError ? 'rgba(220,38,38,0.35)' : 'rgba(26,110,255,0.35)'}`,
+      animation: 'fadeUp 0.22s ease',
+    }}>
+      {toast.msg}
+    </div>
   );
 };
 
@@ -1862,26 +1797,7 @@ const HmStat = ({ label, value, sub }) => (
   </div>
 );
 
-// ─── Peer standing ─────────────────────────────────────────────────────────────
-const PeerCard = ({ percentile, currentUser, leaderboardUsers, mounted, onChallenge, starting }) => (
-  <div style={S.card}>
-    <div style={S.eyebrowDark}>PEER STANDING</div>
-    <h2 style={S.cardH2}>Where you rank globally</h2>
-    <div style={S.peerHero}>
-      <div style={S.peerPctBlock}>
-        <div style={S.peerPctNum}>{percentile ?? '—'}{percentile ? <span style={S.peerPctSuffix}>%</span> : null}</div>
-        <div style={S.peerPctLabel}>PERCENTILE</div>
-      </div>
-      <div style={{ flex: 1 }}>
-        <div style={S.peerBig}>{percentile ? `Ahead of ${percentile}% of ranked candidates` : 'Complete interviews to unlock ranking'}</div>
-        {currentUser?.globalRank && <div style={S.peerRankChip}>GLOBAL RANK #{currentUser.globalRank}</div>}
-        <div style={S.peerBar}><div style={{ ...S.peerFill, width: mounted ? `${percentile ?? 0}%` : '0%' }} /></div>
-        <p style={S.peerNote}>Percentile is computed from average score across all users who have completed at least one interview.</p>
-      </div>
-    </div>
-    <button style={{ ...S.btnBlue, marginTop: 14 }} onClick={onChallenge} disabled={starting}>Improve ranking →</button>
-  </div>
-);
+
 
 // ─── Share card ────────────────────────────────────────────────────────────────
 const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions }) => {
@@ -1952,60 +1868,7 @@ const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions
   );
 };
 
-// ─── Leaderboard ──────────────────────────────────────────────────────────────
-const RANK_COLORS = [C.amber, '#9CA3AF', '#B87333'];
 
-const LeaderboardCard = ({ users, currentUser, onChallenge, starting }) => {
-  const top5 = users.slice(0, 5);
-  const userInTop = currentUser && top5.some(u => u._id === currentUser._id);
-
-  return (
-    <section style={{ ...S.card, marginBottom: 18 }}>
-      <div style={S.cardHeader}>
-        <div>
-          <div style={S.eyebrowDark}>GLOBAL RANKING</div>
-          <h2 style={S.cardH2}>Top performers</h2>
-          <p style={S.cardSub}>Weekly rankings — resets every Monday.</p>
-        </div>
-        <button style={S.btnSmall} onClick={onChallenge} disabled={starting}>Climb ranks →</button>
-      </div>
-      {top5.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={S.lbHeader}>
-            <span style={{ width: 36 }}>RANK</span>
-            <span style={{ width: 38 }} />
-            <span style={{ flex: 1 }}>CANDIDATE</span>
-            <span>AVG</span>
-            <span style={{ width: 52, textAlign: 'right' }}>SESSIONS</span>
-          </div>
-          {top5.map((u, i) => (
-            <LBRow key={u._id ?? i} user={u} rank={i + 1} color={RANK_COLORS[i] ?? C.muted} isMe={u._id === currentUser?._id} />
-          ))}
-          {!userInTop && currentUser && (
-            <>
-              <div style={S.lbDots}>· · ·</div>
-              <LBRow user={currentUser} rank={currentUser.globalRank} color={C.blue500} isMe />
-            </>
-          )}
-        </div>
-      ) : (
-        <div style={S.emptyMsg}>No leaderboard data yet — complete interviews to appear in the rankings.</div>
-      )}
-    </section>
-  );
-};
-
-const LBRow = ({ user, rank, color, isMe }) => (
-  <div style={{ ...S.lbRow, background: isMe ? C.blue50 : 'transparent', borderColor: isMe ? C.borderStr : C.border }}>
-    <span style={{ width: 36, fontFamily: F.mono, fontSize: 13, fontWeight: 700, color }}>{String(rank ?? '?').padStart(2, '0')}</span>
-    <div style={S.lbAvatar}>{(user.name ?? 'A')[0].toUpperCase()}</div>
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={S.lbName}>{user.name ?? 'Anonymous'}{isMe && <span style={S.youTag}>YOU</span>}</div>
-    </div>
-    <div style={{ ...S.lbScore, color }}>{user.weeklyAvgScore ?? user.averageScore ?? 0}</div>
-    <div style={{ width: 52, textAlign: 'right', fontFamily: F.mono, fontSize: 11, color: C.muted }}>{user.weeklySessionCount ?? user.totalInterviews ?? 0}</div>
-  </div>
-);
 
 // ─── Global styles ─────────────────────────────────────────────────────────────
 const GlobalStyles = () => (
@@ -2352,32 +2215,12 @@ const S = {
   badgeDetailDesc: { margin: '6px 0 0', fontSize: 12, color: C.sub, lineHeight: 1.6 },
   badgeDetailMeta: { margin: '8px 0 0', fontSize: 11, color: C.blue600, lineHeight: 1.6, fontFamily: F.mono },
 
-  // Topic momentum
-  momentumList: { display: 'flex', flexDirection: 'column', gap: 11 },
-  momentumRow: { display: 'flex', alignItems: 'center', gap: 12 },
-  momentumTopic: { width: 120, fontSize: 12, fontWeight: 700, color: C.text, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  momentumBarTrack: { flex: 1, height: 8, borderRadius: 999, background: C.border, overflow: 'hidden' },
-  momentumBarFill: { height: '100%', borderRadius: 999, transition: 'width 1s ease' },
-  momentumScore: { fontFamily: F.display, fontSize: 13, fontWeight: 800, width: 26, textAlign: 'right', flexShrink: 0 },
-  momentumBadge: { fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 999, flexShrink: 0, fontFamily: F.mono, whiteSpace: 'nowrap' },
-  momentumDrillBtn: { flexShrink: 0, border: `1px solid ${C.borderMd}`, background: C.blue50, color: C.blue600, fontSize: 10.5, fontWeight: 700, padding: '5px 10px', borderRadius: 8, cursor: 'pointer', fontFamily: F.body },
 
   // AI Coach teaser
   coachTeaserCard: { position: 'relative', overflow: 'hidden', padding: '22px 24px', borderRadius: 20, background: `linear-gradient(135deg, ${C.blue900} 0%, #001A50 50%, #00305A 100%)`, boxShadow: C.shadowLg, display: 'flex', flexDirection: 'column' },
   coachTeaserGlow: { position: 'absolute', top: -60, right: -60, width: 180, height: 180, borderRadius: '50%', background: `radial-gradient(circle, rgba(0,200,240,0.22), transparent 68%)`, pointerEvents: 'none' },
   coachTeaserBtn: { position: 'relative', marginTop: 16, alignSelf: 'flex-start', border: 'none', borderRadius: 10, background: `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`, color: '#fff', padding: '10px 18px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,173,224,0.35)', fontFamily: F.body },
 
-  // Peer standing
-  peerHero: { display: 'flex', alignItems: 'flex-start', gap: 18, marginTop: 16 },
-  peerPctBlock: { width: 86, flexShrink: 0, textAlign: 'center' },
-  peerPctNum: { fontFamily: F.display, fontSize: 38, fontWeight: 900, color: C.blue500, lineHeight: 1 },
-  peerPctSuffix: { fontSize: 16, fontWeight: 600 },
-  peerPctLabel: { marginTop: 4, fontFamily: F.mono, fontSize: 9, letterSpacing: '1px', color: C.muted },
-  peerBig: { fontFamily: F.display, fontSize: 14, fontWeight: 700, color: C.text, lineHeight: 1.4 },
-  peerRankChip: { marginTop: 6, display: 'inline-block', fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: C.blue600, background: C.blue50, border: `1px solid ${C.borderMd}`, padding: '3px 9px', borderRadius: 6, letterSpacing: '0.5px' },
-  peerBar: { height: 6, marginTop: 12, borderRadius: 999, background: C.border, overflow: 'hidden' },
-  peerFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.blue500}, ${C.cyan500})`, transition: 'width 1.1s ease' },
-  peerNote: { margin: '10px 0 0', fontSize: 10.5, color: C.muted, lineHeight: 1.55 },
 
     // Weekly challenges
   challengeSummary: {
@@ -2720,13 +2563,6 @@ const S = {
     lineHeight: 1.4,
   },
 
-  lbHeader: { display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px', fontFamily: F.mono, fontSize: 9, letterSpacing: '0.8px', color: C.muted, marginBottom: 4 },
-  lbRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, border: '1px solid', transition: 'background 0.15s' },
-  lbAvatar: { width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: C.blue50, border: `1px solid ${C.borderMd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: C.blue600, fontFamily: F.display },
-  lbName: { fontSize: 13, fontWeight: 600, color: C.text, display: 'flex', alignItems: 'center', gap: 8, fontFamily: F.body },
-  lbScore: { fontFamily: F.display, fontSize: 18, fontWeight: 800 },
-  lbDots: { textAlign: 'center', color: C.muted, fontSize: 18, letterSpacing: 3 },
-  youTag: { fontSize: 9, fontWeight: 700, color: C.blue600, background: C.blue50, border: `1px solid ${C.borderMd}`, padding: '2px 7px', borderRadius: 5, flexShrink: 0, fontFamily: F.mono },
 
   tierBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, padding: '30px 32px', marginBottom: 18, borderRadius: 22, background: `linear-gradient(135deg, ${C.blue50} 0%, ${C.cyanTint} 100%)`, border: `1.5px solid ${C.borderMd}`, boxShadow: `0 4px 24px rgba(26,110,255,0.09)` },
   bannerH2: { margin: '8px 0', fontFamily: F.display, fontSize: 22, fontWeight: 800, color: C.text },

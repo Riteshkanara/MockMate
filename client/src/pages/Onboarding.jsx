@@ -1,1043 +1,1246 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
-import axios from 'axios';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-
 import API_BASE from '../config/api.js';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MOCKMATE — ONBOARDING v2
-// Same blueprint-blue system as Dashboard.jsx (readiness console). Onboarding
-// is reframed as the FIRST readiness reading, not a form — every choice here
-// feeds directly into the IRS model the user will see on day one.
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ─── Design tokens — identical to Dashboard.jsx for visual continuity ───────
+// ─── Design tokens ─────────────────────────────────────────────────────────
 const C = {
-  bg:       '#F0F4FF',
-  bgDeep:   '#E8EEFF',
+  canvas:   '#F0F4FF',
+  surface:  '#FFFFFF',
+  raised:   '#F5F8FF',
 
-  card:     '#FFFFFF',
-  cardAlt:  '#F8FAFF',
+  ink:      '#0F172A',
+  inkMid:   '#334155',
+  inkSub:   '#64748B',
+  inkFaint: '#94A3B8',
 
-  text:     '#0A1628',
-  sub:      '#3D5280',
-  muted:    '#7A8BAF',
-  faint:    '#A8B8D4',
+  border:   '#E2E8F0',
+  borderMd: '#CBD5E1',
 
-  border:   '#DDE5F7',
-  borderMd: '#B8CAF0',
-  borderStr:'#7FA3E8',
+  blu50:  '#EFF6FF',
+  blu100: '#DBEAFE',
+  blu200: '#BFDBFE',
+  blu400: '#60A5FA',
+  blu500: '#3B82F6',
+  blu600: '#2563EB',
+  blu700: '#1D4ED8',
+  blu900: '#1E3A8A',
 
-  blue50:   '#EBF2FF',
-  blue100:  '#C7DAFF',
-  blue200:  '#9DBFFF',
-  blue400:  '#4D8FFF',
-  blue500:  '#1A6EFF',
-  blue600:  '#0057E8',
-  blue700:  '#0044C4',
-  blue900:  '#001F6B',
+  cya500: '#06B6D4',
+  cya600: '#0891B2',
 
-  cyan400:  '#00C8F0',
-  cyan500:  '#00ADE0',
-  cyan600:  '#0093C4',
-  cyanTint: '#E6F9FF',
+  emerald:   '#059669',
+  emeraldBg: '#ECFDF5',
+  amber:     '#D97706',
+  amberBg:   '#FFFBEB',
+  rose:      '#E11D48',
+  roseBg:    '#FFF1F2',
 
-  green:    '#059669',
-  greenTint:'#ECFDF5',
-  greenGlow:'rgba(5,150,105,0.18)',
-
-  amber:    '#D97706',
-  amberTint:'#FFFBEB',
-  orange:   '#EA580C',
-
-  red:      '#DC2626',
-  redTint:  '#FEF2F2',
-
-  shadow:   '0 1px 12px rgba(26,110,255,0.07)',
-  shadowMd: '0 6px 28px rgba(26,110,255,0.12)',
-  shadowLg: '0 16px 56px rgba(0,31,107,0.18)',
+  shadow:     '0 1px 4px rgba(15,23,42,0.06), 0 2px 12px rgba(15,23,42,0.04)',
+  shadowMd:   '0 4px 24px rgba(15,23,42,0.10)',
+  shadowBlue: '0 8px 32px rgba(37,99,235,0.18)',
+  shadowInput:'0 0 0 3px rgba(59,130,246,0.15)',
 };
 
 const F = {
-  display: "'Plus Jakarta Sans', 'Lexend', sans-serif",
-  body:    "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+  display: "'Plus Jakarta Sans', 'Syne', sans-serif",
+  body:    "'Inter', -apple-system, sans-serif",
+  mono:    "'JetBrains Mono', 'Fira Code', monospace",
 };
 
-// ─── Static option data ──────────────────────────────────────────────────────
-const COMPANIES = ['TCS', 'Infosys', 'Wipro', 'Zoho', 'Razorpay', 'FAANG'];
-
+// ─── Static data ────────────────────────────────────────────────────────────
 const BRANCHES = [
-  { value: 'CSE', label: 'Computer Science' },
-  { value: 'IT', label: 'Information Technology' },
-  { value: 'ECE', label: 'Electronics & Communication' },
-  { value: 'CE', label: 'Civil Engineering' },
-  { value: 'ME', label: 'Mechanical Engineering' },
-  { value: 'EEE', label: 'Electrical Engineering' },
+  { value: 'CSE', label: 'Computer Science (CSE)' },
+  { value: 'IT',  label: 'Information Technology (IT)' },
+  { value: 'ECE', label: 'Electronics & Communication (ECE)' },
+  { value: 'EEE', label: 'Electrical Engineering (EEE)' },
+  { value: 'ME',  label: 'Mechanical Engineering (ME)' },
+  { value: 'CE',  label: 'Civil Engineering (CE)' },
 ];
 
-// Six dimensions — same keys, labels and weights as Dashboard's DIMENSIONS,
-// so the self-rating step maps 1:1 onto the real IRS model the user sees later.
-const DIMENSIONS = [
-  { key: 'technical',      label: 'Technical Depth',   icon: '⚙', weight: 0.28, tip: 'DSA, OOP, DBMS, OS, JS' },
-  { key: 'problemSolving', label: 'Problem Solving',   icon: '🔍', weight: 0.22, tip: 'Breaking down unknowns' },
-  { key: 'communication',  label: 'Communication',     icon: '💬', weight: 0.18, tip: 'Clarity under questioning' },
-  { key: 'behavioral',     label: 'Behavioral',        icon: '🤝', weight: 0.12, tip: 'HR & situational rounds' },
-  { key: 'design',         label: 'System Design',     icon: '🏗', weight: 0.10, tip: 'Matters at ₹12 LPA+' },
-  { key: 'fundamentals',   label: 'CS Fundamentals',   icon: '📚', weight: 0.10, tip: 'DBMS, OS, Networking' },
+const TIMELINES = [
+  { value: 'immediate', label: '0–3 months',  sub: 'High urgency',   icon: '🔴' },
+  { value: 'near',      label: '3–6 months',  sub: 'Moderate pace',  icon: '🟡' },
+  { value: 'moderate',  label: '6–12 months', sub: 'Steady ramp',    icon: '🟢' },
+  { value: 'relaxed',   label: '12+ months',  sub: 'Relaxed build',  icon: '🔵' },
+];
+
+const CODING_EXP = [
+  { value: '<1',  label: '< 1 year',  desc: 'Just getting started' },
+  { value: '1-2', label: '1–2 years', desc: 'Built a few projects' },
+  { value: '2-3', label: '2–3 years', desc: 'Comfortable with DSA' },
+  { value: '3+',  label: '3+ years',  desc: 'Strong foundation' },
+];
+
+const LANGUAGES = [
+  { value: 'javascript', label: 'JavaScript', icon: '🟨' },
+  { value: 'python',     label: 'Python',     icon: '🐍' },
+  { value: 'java',       label: 'Java',       icon: '☕' },
+  { value: 'cpp',        label: 'C++',        icon: '⚙️' },
+  { value: 'other',      label: 'Other',      icon: '💻' },
+];
+
+const PRIMARY_GOALS = [
+  { value: 'campus',     label: 'Campus placement',  icon: '🎓', desc: 'College placement drive' },
+  { value: 'offcampus',  label: 'Off-campus job',    icon: '🚀', desc: 'Applying independently' },
+  { value: 'internship', label: 'Internship',        icon: '💼', desc: 'Seasonal or part-time' },
+  { value: 'upskill',    label: 'Skill & switch',    icon: '⚡', desc: 'Working, want better role' },
 ];
 
 const TARGET_ROLES = [
-  { value: 'software',   label: 'Software Engineer',     icon: '⌘' },
-  { value: 'frontend',   label: 'Frontend Developer',    icon: '◫' },
-  { value: 'backend',    label: 'Backend Developer',     icon: '⚙' },
-  { value: 'fullstack',  label: 'Full Stack Developer',  icon: '◆' },
-  { value: 'data',       label: 'Data / Analytics',      icon: '◈' },
-  { value: 'general',    label: 'Placement Generalist',  icon: '✦' },
+  { value: 'sde',       label: 'Software Engineer', icon: '⌘',  color: '#3B82F6' },
+  { value: 'frontend',  label: 'Frontend Dev',      icon: '◫',  color: '#8B5CF6' },
+  { value: 'backend',   label: 'Backend Dev',       icon: '⚙',  color: '#0891B2' },
+  { value: 'fullstack', label: 'Full Stack',        icon: '◆',  color: '#2563EB' },
+  { value: 'data',      label: 'Data / Analytics',  icon: '◈',  color: '#059669' },
+  { value: 'devops',    label: 'DevOps / Cloud',    icon: '☁',  color: '#D97706' },
 ];
 
-const GOALS = [
-  { value: 'campus',     label: 'Campus placement', icon: '🎓' },
-  { value: 'offcampus',  label: 'Off-campus job',    icon: '🚀' },
-  { value: 'internship', label: 'Internship',        icon: '💼' },
-  { value: 'practice',   label: 'Practice + confidence', icon: '🔥' },
+const PACKAGE_TARGETS = [
+  { value: '3-6',   label: '₹3–6 LPA',   tier: 1, desc: 'Service / off-campus',    col: C.inkFaint },
+  { value: '6-12',  label: '₹6–12 LPA',  tier: 2, desc: 'Mid-tier product, MNCs',  col: C.amber   },
+  { value: '12-20', label: '₹12–20 LPA', tier: 3, desc: 'Top product, FAANG-adj.', col: C.blu600  },
+  { value: '20+',   label: '₹20+ LPA',   tier: 4, desc: 'FAANG, unicorn, remote',  col: C.emerald },
+];
+
+const COMPANIES = [
+  { value: 'faang',   label: 'FAANG / Big Tech' },
+  { value: 'unicorn', label: 'Unicorn startups' },
+  { value: 'product', label: 'Mid-tier product' },
+  { value: 'mnc',     label: 'IT MNCs (TCS / Infy)' },
+  { value: 'service', label: 'Service companies' },
+  { value: 'startup', label: 'Early-stage startup' },
+];
+
+const FOCUS_AREAS = [
+  { key: 'arrays',        label: 'Arrays & Strings',          emoji: '📋' },
+  { key: 'linkedList',    label: 'Linked Lists',              emoji: '🔗' },
+  { key: 'trees',         label: 'Trees & BST',               emoji: '🌳' },
+  { key: 'graphs',        label: 'Graphs & BFS/DFS',          emoji: '🕸️' },
+  { key: 'dp',            label: 'Dynamic Programming',       emoji: '🧩' },
+  { key: 'recursion',     label: 'Recursion & Backtracking',  emoji: '🔁' },
+  { key: 'sorting',       label: 'Sorting & Searching',       emoji: '⚡' },
+  { key: 'hashing',       label: 'Hashing & Heaps',           emoji: '🔑' },
+  { key: 'os',            label: 'Operating Systems',         emoji: '💾' },
+  { key: 'dbms',          label: 'DBMS & SQL',                emoji: '🗃️' },
+  { key: 'networking',    label: 'Computer Networks',         emoji: '🌐' },
+  { key: 'oop',           label: 'OOP & Design Patterns',     emoji: '🏗️' },
+  { key: 'systemDesign',  label: 'System Design',             emoji: '⬡' },
+  { key: 'behavioral',    label: 'HR / Behavioral',           emoji: '🤝' },
 ];
 
 const ANSWER_STYLES = [
-  { value: 'explain', label: 'Explain-first', desc: 'Talk through reasoning, then code' },
-  { value: 'code',    label: 'Code-first',    desc: 'Jump into implementation, explain after' },
+  { value: 'explain', label: 'Think aloud',  icon: '💭', desc: 'Reason first, then code' },
+  { value: 'code',    label: 'Code first',   icon: '⚡', desc: 'Implement fast, explain after' },
+  { value: 'mixed',   label: 'Adaptive',     icon: '🎯', desc: 'MockMate picks per question' },
 ];
 
-// Days/week → session target, kept as a small integer scale (not an abstract
-// 1–10 slider) so it reads as a real commitment, not a number to fiddle with.
+const DIFFICULTY_PREFS = [
+  { value: 'easy',   label: 'Start easy',   icon: '🌱', desc: 'Build confidence, ramp slowly' },
+  { value: 'medium', label: 'Balanced',     icon: '⚖️', desc: 'Mix of solvable + stretch' },
+  { value: 'hard',   label: 'Throw me in',  icon: '🔥', desc: 'Hard from day one' },
+];
+
 const CADENCE = [
-  { value: 2, label: '2 days', sub: 'Light' },
-  { value: 4, label: '4 days', sub: 'Steady' },
-  { value: 6, label: '6 days', sub: 'Intense' },
+  { value: 2, label: '2 days/week', sub: 'Light',     dots: 2 },
+  { value: 4, label: '4 days/week', sub: 'Steady',    dots: 4 },
+  { value: 6, label: '6 days/week', sub: 'Intensive', dots: 6 },
 ];
-
-// ─── Package tier bands — identical thresholds to Dashboard's TIERS ─────────
-const TIERS = [
-  { label: '₹3–6 LPA',  minScore: 0,  color: C.muted,   desc: 'Service companies, off-campus starts' },
-  { label: '₹6–12 LPA', minScore: 38, color: C.amber,   desc: 'Mid-tier product, IT MNCs, campus drives' },
-  { label: '₹12–20 LPA',minScore: 60, color: C.blue500, desc: 'Top product companies, FAANG-adjacent' },
-  { label: '₹20 LPA+',  minScore: 80, color: C.cyan500, desc: 'FAANG, unicorn startups, remote-first' },
-];
-
-const tierForScore = (score) => {
-  const reached = TIERS.filter(t => score >= t.minScore);
-  return reached[reached.length - 1] || TIERS[0];
-};
-
-const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(v || 0)));
-
-// ─── Initial state — every field pre-filled with a sane default so nothing
-// blocks forward motion; the user only edits what they want to change. ──────
-const INITIAL_PROFILE = {
-  college: '',
-  branch: '',
-  semester: '',
-  targetCompanies: [],
-  weakAreas: [],
-};
-
-const INITIAL_PREFERENCES = {
-  targetRole: 'software',
-  primaryGoal: 'campus',
-  answerStyle: 'explain',
-  weeklyDays: 4,
-};
-
-const INITIAL_SELF_RATING = DIMENSIONS.reduce((acc, d) => {
-  acc[d.key] = 45; // realistic starting-out default, not 0 and not inflated
-  return acc;
-}, {});
 
 const STEPS = [
-  { key: 'basics',   label: 'Your context' },
-  { key: 'skills',   label: 'Self-rating' },
-  { key: 'training', label: 'Preparation style' },
+  { key: 'profile', label: 'Your Profile',   short: 'Profile', icon: '🎓' },
+  { key: 'goals',   label: 'Goals & Target', short: 'Goals',   icon: '🎯' },
+  { key: 'focus',   label: 'Focus Areas',    short: 'Focus',   icon: '📌' },
+  { key: 'style',   label: 'Training Style', short: 'Style',   icon: '⚙' },
 ];
 
-const Onboarding = () => {
-  const [stepIndex, setStepIndex] = useState(0);
-  const [profile, setProfile] = useState(INITIAL_PROFILE);
-  const [preferences, setPreferences] = useState(INITIAL_PREFERENCES);
-  const [selfRating, setSelfRating] = useState(INITIAL_SELF_RATING);
-  const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
+// ─── Initial state ──────────────────────────────────────────────────────────
+const INIT_PROFILE  = { college: '', branch: '', semester: '', cgpa: '', placementTimeline: 'near', codingExperience: '1-2', preferredLanguage: 'javascript' };
+const INIT_GOALS    = { primaryGoal: 'campus', targetRole: 'sde', packageTarget: '6-12', targetCompanies: [] };
+const INIT_FOCUS    = { weakAreas: [] };
+const INIT_TRAINING = { answerStyle: 'mixed', difficultyPref: 'medium', weeklyDays: 4, projectUrl: '' };
+
+// ─── Main component ─────────────────────────────────────────────────────────
+export default function Onboarding() {
+  const [step, setStep]         = useState(0);
+  const [profile, setProfile]   = useState(INIT_PROFILE);
+  const [goals, setGoals]       = useState(INIT_GOALS);
+  const [focus, setFocus]       = useState(INIT_FOCUS);
+  const [training, setTraining] = useState(INIT_TRAINING);
+  const [loading, setLoading]   = useState(false);
+  const [mounted, setMounted]   = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
 
   useEffect(() => {
-    requestAnimationFrame(() => setTimeout(() => setMounted(true), 40));
+    requestAnimationFrame(() => setTimeout(() => setMounted(true), 60));
   }, []);
 
-  const toggleArrayValue = useCallback((key, value) => {
-    setProfile(previous => {
-      const current = previous[key] || [];
-      const next = current.includes(value)
-        ? current.filter(item => item !== value)
-        : [...current, value];
-      return { ...previous, [key]: next };
-    });
-  }, []);
-
-  const requiredComplete = Boolean(
+  const profileValid = Boolean(
     profile.college.trim() &&
     profile.branch &&
     Number(profile.semester) >= 1 &&
     Number(profile.semester) <= 8
   );
 
-  // ── Live projected IRS — the signature element. Computed the same way
-  // Dashboard computes it post-session, just seeded from self-ratings instead
-  // of real attempts, so onboarding previews the exact system it feeds. ─────
-  const projectedIRS = useMemo(() => {
-    const dimScore = DIMENSIONS.reduce((acc, d) => acc + (selfRating[d.key] * d.weight), 0);
-    // No trend/consistency data exists yet — those components start neutral
-    // at 60% of a first-session assumption, breadth from topics picked.
-    const breadthComponent = Math.min(profile.weakAreas.length / 8, 1) * 100 * 0.15;
-    const dimComponent = clamp(dimScore) * 0.40;
-    const neutralTrend = clamp(dimScore) * 0.25 * 0.85; // slightly conservative
-    const neutralConsistency = 55 * 0.20; // unproven consistency, mid value
-    return clamp(dimComponent + neutralTrend + breadthComponent + neutralConsistency);
-  }, [selfRating, profile.weakAreas]);
-
-  const currentTier = useMemo(() => tierForScore(projectedIRS), [projectedIRS]);
-
-  const completion = useMemo(() => {
-    const checks = [
-      Boolean(profile.college.trim()),
-      Boolean(profile.branch),
-      Boolean(profile.semester),
-      profile.targetCompanies.length > 0,
-      profile.weakAreas.length > 0,
-    ];
-    return Math.round((checks.filter(Boolean).length / checks.length) * 100);
-  }, [profile]);
-
-  const goNext = () => {
-    if (stepIndex === 0 && !requiredComplete) {
-      toast.error('Add your college, branch and semester to continue.');
+  const advance = () => {
+    if (step === 0 && !profileValid) {
+      toast.error('College, branch, and semester are required.');
       return;
     }
-    setStepIndex(i => Math.min(STEPS.length - 1, i + 1));
+    setStep(s => Math.min(STEPS.length - 1, s + 1));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const goBack = () => setStepIndex(i => Math.max(0, i - 1));
+  const retreat = () => {
+    setStep(s => Math.max(0, s - 1));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-  const jumpTo = (index) => {
-    if (index === 0 || requiredComplete) {
-      setStepIndex(index);
-    } else {
-      toast.error('Complete your basic details first.');
-    }
+  const jumpTo = (i) => {
+    if (i === 0 || profileValid) setStep(i);
+    else toast.error('Complete your basic details first.');
   };
 
   const handleComplete = async () => {
-    if (!requiredComplete) {
-      setStepIndex(0);
-      return;
-    }
-
+    if (!profileValid) { setStep(0); return; }
     setLoading(true);
-    const toastId = toast.loading('Building your preparation profile...');
-
+    const tid = toast.loading('Building your prep profile…');
     try {
       const token = localStorage.getItem('token');
+      const payload = {
+        college:           profile.college.trim(),
+        branch:            profile.branch,
+        semester:          Number(profile.semester),
+        cgpa:              profile.cgpa ? Number(profile.cgpa) : null,
+        placementTimeline: profile.placementTimeline,
+        codingExperience:  profile.codingExperience,
+        preferredLanguage: profile.preferredLanguage,
+
+        primaryGoal:     goals.primaryGoal,
+        targetRole:      goals.targetRole,
+        packageTarget:   goals.packageTarget,
+        targetCompanies: goals.targetCompanies,
+
+        weakAreas: focus.weakAreas,
+
+        answerStyle:    training.answerStyle,
+        difficultyPref: training.difficultyPref,
+        weeklyDays:     training.weeklyDays,
+        projectUrl:     training.projectUrl,
+      };
 
       const res = await fetch(`${API_BASE}/auth/onboarding`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  credentials: 'include',
-  body: JSON.stringify(payload),
-});
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
 
-     
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || data.message || 'Onboarding failed');
+      }
 
-      toast.dismiss(toastId);
-      toast.success('Your MockMate profile is ready.');
-
+      toast.dismiss(tid);
+      toast.success("Profile ready — let's begin.");
       window.location.href = '/interview';
-    } catch (error) {
-      console.error('Onboarding failed:', error);
-      toast.dismiss(toastId);
-      toast.error(
-        error?.response?.data?.message || 'Unable to save your onboarding profile.'
-      );
+    } catch (err) {
+      console.error('Onboarding failed:', err);
+      toast.dismiss(tid);
+      toast.error(err.message || 'Could not save your profile. Try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const activeStep = STEPS[stepIndex].key;
-  const isLastStep = stepIndex === STEPS.length - 1;
+  const activeKey = STEPS[step].key;
+  const isLast    = step === STEPS.length - 1;
+  const progress  = (step / (STEPS.length - 1)) * 100;
 
   return (
-    <div style={S.page} className="ob-page">
-      <div style={{ ...S.container, opacity: mounted ? 1 : 0, transform: mounted ? 'none' : 'translateY(10px)' }}>
+    <div style={S.page} className="ob-root">
+      <GlobalStyles />
 
-        {/* ── STATUS STRIP — matches Dashboard exactly ─────────────────── */}
-        <div style={S.strip} className="ob-strip">
-          <div style={S.stripL}>
-            <span style={S.liveDot} />
-            <span style={S.mono}>MOCKMATE READINESS CONSOLE</span>
+      <div style={S.bgBlob1} />
+      <div style={S.bgBlob2} />
+
+      <div style={{
+        ...S.shell,
+        opacity:   mounted ? 1 : 0,
+        transform: mounted ? 'none' : 'translateY(16px)',
+      }}>
+        {/* ── Banner ─────────────────────────────────────────────────── */}
+        <div style={S.banner}>
+          <div style={S.bannerLeft}>
+            <div style={S.bannerLogo}>
+              <div style={S.bannerLogoMark}>M</div>
+              <span style={S.bannerBrand}>MockMate</span>
+            </div>
+            <span style={S.bannerTag}>Interview Readiness Platform</span>
           </div>
-          <div style={S.stripR} className="ob-strip-r">
-            <span style={S.mono}>ONBOARDING</span>
-            <span style={{ color: C.borderMd }}>·</span>
-            <span style={S.mono}>{completion}% PROFILE READY</span>
+          <div style={S.bannerRight}>
+            <div style={S.bannerProgressText}>
+              <span style={S.bannerStepLabel}>{STEPS[step].label}</span>
+              <span style={S.bannerPct}>{Math.round(progress)}%</span>
+            </div>
+            <div style={S.bannerTrack}>
+              <div style={{ ...S.bannerFill, width: `${progress}%` }} />
+            </div>
           </div>
         </div>
 
-        {/* ── HERO — live IRS projection instead of a static welcome ─────── */}
-        <section style={S.hero} className="ob-hero">
-          <div style={S.heroScan} />
-          <div style={S.heroGrid} className="ob-hero-grid">
+        {/* ── Step nav ───────────────────────────────────────────────── */}
+        <nav style={S.stepNav} className="ob-step-nav">
+          {STEPS.map((s, i) => {
+            const done   = i < step;
+            const active = i === step;
+            return (
+              <button key={s.key} type="button" onClick={() => jumpTo(i)}
+                style={{ ...S.stepTab, ...(active ? S.stepTabActive : done ? S.stepTabDone : {}) }}>
+                <span style={{ ...S.stepBubble, ...(active ? S.stepBubbleActive : done ? S.stepBubbleDone : {}) }}>
+                  {done ? '✓' : i + 1}
+                </span>
+                <span style={{ ...S.stepLabel, ...(active ? S.stepLabelActive : {}) }} className="ob-step-label">
+                  {s.short}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
 
-            <div style={S.irsBlock}>
-              <div style={S.irsLabel}>PROJECTED READINESS SCORE</div>
-              <div style={S.irsNum}>
-                {projectedIRS}
-                <span style={S.irsMax}>/100</span>
-              </div>
-              <div style={{ ...S.tierPill, background: `${currentTier.color}22`, color: currentTier.color, border: `1px solid ${currentTier.color}55` }}>
-                {currentTier.label} band
-              </div>
-              <div style={S.irsBar}>
-                <div style={{ ...S.irsBarFill, width: mounted ? `${projectedIRS}%` : '0%' }} />
-              </div>
-              <div style={S.irsGapText}>
-                Based on self-ratings — <span style={{ color: C.cyan400, fontWeight: 700 }}>your first session will replace this</span> with real data.
-              </div>
-            </div>
-
-            <div style={S.verdictBlock}>
-              <div style={S.eyebrow}>
-                <span style={S.eyebrowDot} />
-                STEP {stepIndex + 1} OF {STEPS.length}
-              </div>
-              <h1 style={S.heroH1}>
-                {activeStep === 'basics' && "Let's set your baseline."}
-                {activeStep === 'skills' && 'Rate yourself, honestly.'}
-                {activeStep === 'training' && 'How do you want to train?'}
-              </h1>
-              <p style={S.heroSub}>
-                {activeStep === 'basics' && 'Your college, branch and semester anchor everything MockMate recommends. Takes about 20 seconds.'}
-                {activeStep === 'skills' && 'These sliders seed your Interview Readiness Score. Nothing here is graded — it just tells MockMate where to start.'}
-                {activeStep === 'training' && 'Pick a role, a goal and a pace. You can change all of this later from settings.'}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* ── STEP NAV ──────────────────────────────────────────────────── */}
-        <div style={S.stepNav} className="ob-step-nav">
-          {STEPS.map((s, i) => (
-            <button
-              key={s.key}
-              type="button"
-              onClick={() => jumpTo(i)}
-              style={{
-                ...S.stepPill,
-                ...(i === stepIndex ? S.stepPillActive : {}),
-                ...(i < stepIndex ? S.stepPillDone : {}),
-              }}
-            >
-              <span style={S.stepPillNum}>
-                {i < stepIndex ? '✓' : i + 1}
-              </span>
-              {s.label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── STEP BODY ─────────────────────────────────────────────────── */}
-        <section style={S.card} className="ob-card">
-          {activeStep === 'basics' && (
-            <BasicsStep
-              profile={profile}
-              setProfile={setProfile}
-              toggleArrayValue={toggleArrayValue}
+        {/* ── Step card ──────────────────────────────────────────────── */}
+        <div style={S.card} className="ob-card">
+          {activeKey === 'profile' && (
+            <ProfileStep
+              profile={profile} setProfile={setProfile}
+              focusedField={focusedField} setFocusedField={setFocusedField}
             />
           )}
-
-          {activeStep === 'skills' && (
-            <SkillsStep
-              selfRating={selfRating}
-              setSelfRating={setSelfRating}
-              mounted={mounted}
-            />
+          {activeKey === 'goals' && (
+            <GoalsStep goals={goals} setGoals={setGoals} />
           )}
-
-          {activeStep === 'training' && (
+          {activeKey === 'focus' && (
+            <FocusStep focus={focus} setFocus={setFocus} />
+          )}
+          {activeKey === 'style' && (
             <TrainingStep
-              preferences={preferences}
-              setPreferences={setPreferences}
+              training={training} setTraining={setTraining}
+              profile={profile} goals={goals}
             />
           )}
-        </section>
+        </div>
 
-        {/* ── NAV FOOTER ────────────────────────────────────────────────── */}
-        <div style={S.navFooter} className="ob-nav-footer">
-          <button
-            type="button"
-            style={{ ...S.btnGhostDark, visibility: stepIndex === 0 ? 'hidden' : 'visible' }}
-            onClick={goBack}
-            disabled={loading}
-          >
+        {/* ── Nav footer ─────────────────────────────────────────────── */}
+        <div style={S.navRow} className="ob-nav-row">
+          <button type="button"
+            style={{ ...S.btnBack, visibility: step === 0 ? 'hidden' : 'visible' }}
+            onClick={retreat} disabled={loading}>
             ← Back
           </button>
-
-          <div style={S.navFooterRight}>
-            <span style={S.navHint}>
-              {activeStep === 'basics' && 'Required: college, branch, semester'}
-              {activeStep === 'skills' && 'Optional — defaults are fine to start'}
-              {activeStep === 'training' && 'You can adjust this anytime'}
-            </span>
-
-            {!isLastStep ? (
-              <button type="button" style={S.btnPrimaryBlue} onClick={goNext}>
-                Continue →
+          <div style={S.navRight}>
+            <span style={S.navCount}>{step + 1} of {STEPS.length}</span>
+            {!isLast ? (
+              <button type="button" style={S.btnNext} onClick={advance}>
+                Continue <span>→</span>
               </button>
             ) : (
-              <button
-                type="button"
-                style={S.btnPrimaryBlue}
-                onClick={handleComplete}
-                disabled={loading}
-              >
-                {loading ? 'Creating profile…' : 'Enter MockMate →'}
+              <button type="button"
+                style={{ ...S.btnNext, ...(loading ? S.btnDisabled : {}) }}
+                onClick={handleComplete} disabled={loading}>
+                {loading
+                  ? <><span style={S.spinner} /> Saving…</>
+                  : <>Enter MockMate <span>→</span></>
+                }
               </button>
             )}
           </div>
         </div>
-
-        <footer style={S.footerRow}>
-          <span style={S.mono}>MOCKMATE ONBOARDING v2.0</span>
-          <span style={S.mono}>PROJECTED IRS SEEDS THE SAME MODEL AS YOUR DASHBOARD</span>
-        </footer>
       </div>
-      <GlobalStyles />
     </div>
   );
-};
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
-// STEP 1 — BASICS
+// STEP 1 — PROFILE
 // ═══════════════════════════════════════════════════════════════════════════
-const BasicsStep = ({ profile, setProfile, toggleArrayValue }) => (
-  <>
-    <div style={S.stepHeader}>
-      <div style={S.eyebrowDark}>PROFILE BASICS</div>
-      <h2 style={S.cardH2}>Start with your real context.</h2>
-      <p style={S.cardSub}>This becomes the foundation MockMate uses for every recommendation.</p>
-    </div>
-
-    <div style={S.formGrid} className="ob-form-grid">
-      <Field label="College / University" full>
-        <input
-          type="text"
-          value={profile.college}
-          placeholder="e.g. Gandhinagar University"
-          style={S.input}
-          onChange={e => setProfile(p => ({ ...p, college: e.target.value }))}
-        />
-      </Field>
-
-      <Field label="Branch">
-        <select
-          value={profile.branch}
-          style={S.select}
-          onChange={e => setProfile(p => ({ ...p, branch: e.target.value }))}
-        >
-          <option value="">Choose your branch</option>
-          {BRANCHES.map(b => (
-            <option key={b.value} value={b.value}>{b.label}</option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label="Semester">
-        <input
-          type="number"
-          min="1"
-          max="8"
-          value={profile.semester}
-          placeholder="1 – 8"
-          style={S.input}
-          onChange={e => setProfile(p => ({ ...p, semester: e.target.value }))}
-        />
-      </Field>
-    </div>
-
-    <div style={S.groupBlock}>
-      <div style={S.groupHead}>
-        <strong style={S.groupTitle}>Companies on your radar</strong>
-        <span style={S.groupTag}>OPTIONAL · TAP ANY</span>
-      </div>
-      <div style={S.chipGrid}>
-        {COMPANIES.map(company => {
-          const active = profile.targetCompanies.includes(company);
-          return (
-            <button
-              key={company}
-              type="button"
-              style={{ ...S.chip, ...(active ? S.chipActive : {}) }}
-              onClick={() => toggleArrayValue('targetCompanies', company)}
-            >
-              {company}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-
-    <div style={S.groupBlock}>
-      <div style={S.groupHead}>
-        <strong style={S.groupTitle}>Where do you want more reps?</strong>
-        <span style={S.groupTag}>OPTIONAL · TAP ANY</span>
-      </div>
-      <div style={S.chipGrid}>
-        {DIMENSIONS.map(d => {
-          const active = profile.weakAreas.includes(d.label);
-          return (
-            <button
-              key={d.key}
-              type="button"
-              style={{ ...S.chip, ...(active ? S.chipActive : {}) }}
-              onClick={() => toggleArrayValue('weakAreas', d.label)}
-            >
-              <span style={{ marginRight: 6 }}>{d.icon}</span>
-              {d.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  </>
-);
-
-const Field = ({ label, full, children }) => (
-  <div style={{ ...S.field, ...(full ? S.fieldFull : {}) }}>
-    <label style={S.fieldLabel}>{label}</label>
-    {children}
-  </div>
-);
-
-// ═══════════════════════════════════════════════════════════════════════════
-// STEP 2 — SELF-RATING (dimension sliders that feed the real IRS model)
-// ═══════════════════════════════════════════════════════════════════════════
-const SkillsStep = ({ selfRating, setSelfRating, mounted }) => {
-  const setDim = (key, value) => setSelfRating(prev => ({ ...prev, [key]: value }));
+function ProfileStep({ profile, setProfile, focusedField, setFocusedField }) {
+  const set = (k, v) => setProfile(p => ({ ...p, [k]: v }));
 
   return (
     <>
-      <div style={S.stepHeader}>
-        <div style={S.eyebrowDark}>SIX-DIMENSION BASELINE</div>
-        <h2 style={S.cardH2}>Where do you stand today?</h2>
-        <p style={S.cardSub}>
-          Same six dimensions your Dashboard tracks after every session. Move each slider to
-          roughly where you'd honestly place yourself — the readiness score above updates live.
-        </p>
+      <StepHeader
+        eyebrow="Step 1 of 4"
+        title="Your academic profile"
+        sub="This calibrates question difficulty, urgency, and company filters to your actual situation."
+      />
+
+      {/* Academic fields */}
+      <div style={S.formGrid} className="ob-form-grid">
+        <FormField label="College / University" full required>
+          <InputWrap focused={focusedField === 'college'} check={Boolean(profile.college.trim())}>
+            <span style={S.iIcon}>🏫</span>
+            <input type="text" value={profile.college}
+              placeholder="e.g. CHARUSAT University"
+              style={S.iInner}
+              onFocus={() => setFocusedField('college')}
+              onBlur={() => setFocusedField(null)}
+              onChange={e => set('college', e.target.value)}
+            />
+          </InputWrap>
+        </FormField>
+
+        <FormField label="Branch / Stream" required>
+          <InputWrap focused={focusedField === 'branch'}>
+            <span style={S.iIcon}>📐</span>
+            <select value={profile.branch} style={S.iSelect}
+              onFocus={() => setFocusedField('branch')}
+              onBlur={() => setFocusedField(null)}
+              onChange={e => set('branch', e.target.value)}>
+              <option value="">Select branch</option>
+              {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+            </select>
+          </InputWrap>
+        </FormField>
+
+        <FormField label="Current semester" hint="1–8" required>
+          <InputWrap focused={focusedField === 'semester'}>
+            <span style={S.iIcon}>📅</span>
+            <input type="number" min="1" max="8"
+              value={profile.semester} placeholder="e.g. 6"
+              style={S.iInner}
+              onFocus={() => setFocusedField('semester')}
+              onBlur={() => setFocusedField(null)}
+              onChange={e => set('semester', e.target.value)}
+            />
+          </InputWrap>
+        </FormField>
+
+        <FormField label="CGPA" hint="Optional">
+          <InputWrap focused={focusedField === 'cgpa'}>
+            <span style={S.iIcon}>⭐</span>
+            <input type="number" min="0" max="10" step="0.01"
+              value={profile.cgpa} placeholder="e.g. 8.25"
+              style={S.iInner}
+              onFocus={() => setFocusedField('cgpa')}
+              onBlur={() => setFocusedField(null)}
+              onChange={e => set('cgpa', e.target.value)}
+            />
+          </InputWrap>
+        </FormField>
       </div>
 
-      <div style={S.dimSliderList}>
-        {DIMENSIONS.map(d => {
-          const value = selfRating[d.key];
-          const col = value >= 70 ? C.green : value >= 45 ? C.blue500 : C.amber;
+      {/* Coding experience */}
+      <GroupBlock title="How long have you been coding?" tag="Pick one">
+        <div style={S.expGrid}>
+          {CODING_EXP.map(opt => {
+            const active = profile.codingExperience === opt.value;
+            return (
+              <button key={opt.value} type="button"
+                style={{ ...S.expCard, ...(active ? S.expCardActive : {}) }}
+                onClick={() => set('codingExperience', opt.value)}>
+                <strong style={{ ...S.expLabel, color: active ? C.blu700 : C.ink }}>{opt.label}</strong>
+                <span style={{ ...S.expDesc, color: active ? C.blu500 : C.inkFaint }}>{opt.desc}</span>
+                {active && <div style={S.activeBar} />}
+              </button>
+            );
+          })}
+        </div>
+      </GroupBlock>
+
+      {/* Preferred language */}
+      <GroupBlock title="Primary coding language" tag="Pick one">
+        <div style={S.langGrid}>
+          {LANGUAGES.map(l => {
+            const active = profile.preferredLanguage === l.value;
+            return (
+              <button key={l.value} type="button"
+                style={{ ...S.langCard, ...(active ? S.langCardActive : {}) }}
+                onClick={() => set('preferredLanguage', l.value)}>
+                <span style={S.langEmoji}>{l.icon}</span>
+                <span style={{ ...S.langLabel, color: active ? C.blu700 : C.ink }}>{l.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </GroupBlock>
+
+      {/* Placement timeline */}
+      <GroupBlock title="When are your placements?" tag="Pick one">
+        <div style={S.timelineGrid}>
+          {TIMELINES.map(t => {
+            const active = profile.placementTimeline === t.value;
+            return (
+              <button key={t.value} type="button"
+                style={{ ...S.timelineCard, ...(active ? S.timelineCardActive : {}) }}
+                onClick={() => set('placementTimeline', t.value)}>
+                <span style={S.timelineEmoji}>{t.icon}</span>
+                <strong style={{ ...S.timelineLabel, color: active ? C.blu600 : C.ink }}>{t.label}</strong>
+                <span style={{ ...S.timelineSub, color: active ? C.blu500 : C.inkFaint }}>{t.sub}</span>
+                {active && <div style={S.activeBar} />}
+              </button>
+            );
+          })}
+        </div>
+      </GroupBlock>
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 2 — GOALS
+// ═══════════════════════════════════════════════════════════════════════════
+function GoalsStep({ goals, setGoals }) {
+  const set       = (k, v) => setGoals(p => ({ ...p, [k]: v }));
+  const toggleArr = (k, v) => setGoals(p => {
+    const cur = p[k] || [];
+    return { ...p, [k]: cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v] };
+  });
+
+  return (
+    <>
+      <StepHeader
+        eyebrow="Step 2 of 4"
+        title="Goals & targets"
+        sub="Your targets determine which company-specific question banks and difficulty curves MockMate pulls from."
+      />
+
+      <GroupBlock title="Primary goal" tag="Pick one">
+        <div style={S.goalGrid} className="ob-goal-grid">
+          {PRIMARY_GOALS.map(g => {
+            const active = goals.primaryGoal === g.value;
+            return (
+              <button key={g.value} type="button"
+                style={{ ...S.goalCard, ...(active ? S.goalCardActive : {}) }}
+                onClick={() => set('primaryGoal', g.value)}>
+                <span style={S.goalEmoji}>{g.icon}</span>
+                <strong style={{ ...S.goalLabel, color: active ? C.blu700 : C.ink }}>{g.label}</strong>
+                <span style={S.goalDesc}>{g.desc}</span>
+                {active && <div style={S.goalCheck}>✓</div>}
+              </button>
+            );
+          })}
+        </div>
+      </GroupBlock>
+
+      <GroupBlock title="Target role" tag="Pick one">
+        <div style={S.roleGrid} className="ob-role-grid">
+          {TARGET_ROLES.map(r => {
+            const active = goals.targetRole === r.value;
+            return (
+              <button key={r.value} type="button"
+                style={{ ...S.roleCard, ...(active ? S.roleCardActive : {}) }}
+                onClick={() => set('targetRole', r.value)}>
+                <span style={{ ...S.roleIcon, color: active ? r.color : C.inkSub }}>{r.icon}</span>
+                <span style={{ ...S.roleLabel, color: active ? r.color : C.ink }}>{r.label}</span>
+                {active && <div style={{ ...S.activeBar, background: r.color }} />}
+              </button>
+            );
+          })}
+        </div>
+      </GroupBlock>
+
+      <GroupBlock title="Target package" tag="Pick one">
+        <div style={S.pkgGrid}>
+          {PACKAGE_TARGETS.map(p => {
+            const active = goals.packageTarget === p.value;
+            return (
+              <button key={p.value} type="button"
+                style={{
+                  ...S.pkgCard,
+                  ...(active ? { ...S.pkgCardActive, borderColor: p.col, background: `${p.col}10` } : {}),
+                }}
+                onClick={() => set('packageTarget', p.value)}>
+                <div style={{ ...S.pkgTier, background: active ? p.col : C.border }}>T{p.tier}</div>
+                <strong style={{ ...S.pkgLabel, color: active ? p.col : C.ink }}>{p.label}</strong>
+                <span style={S.pkgDesc}>{p.desc}</span>
+              </button>
+            );
+          })}
+        </div>
+      </GroupBlock>
+
+      <GroupBlock title="Companies on your radar" tag="Select all that apply">
+        <div style={S.chipGrid}>
+          {COMPANIES.map(c => {
+            const active = goals.targetCompanies.includes(c.value);
+            return (
+              <button key={c.value} type="button"
+                style={{ ...S.chip, ...(active ? S.chipActive : {}) }}
+                onClick={() => toggleArr('targetCompanies', c.value)}>
+                {active && <span style={S.chipCheck}>✓</span>}
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+        <p style={S.chipHint}>Filters company-specific question banks in Company Specific mode.</p>
+      </GroupBlock>
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 3 — FOCUS AREAS
+// ═══════════════════════════════════════════════════════════════════════════
+function FocusStep({ focus, setFocus }) {
+  const toggle = (key) => setFocus(p => {
+    const cur = p.weakAreas || [];
+    return { ...p, weakAreas: cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key] };
+  });
+
+  const selected = focus.weakAreas || [];
+
+  return (
+    <>
+      <StepHeader
+        eyebrow="Step 3 of 4"
+        title="Where do you want to focus?"
+        sub="Selected topics appear 2× more often in your sessions. Pick everything you want to strengthen — there's no wrong answer."
+      />
+
+      <div style={S.focusGrid} className="ob-focus-grid">
+        {FOCUS_AREAS.map(t => {
+          const active = selected.includes(t.key);
           return (
-            <div key={d.key} style={S.dimSliderRow}>
-              <div style={S.dimSliderMeta}>
-                <div style={S.dimSliderLeft}>
-                  <span style={S.dimIcon}>{d.icon}</span>
-                  <div>
-                    <span style={S.dimName}>{d.label}</span>
-                    <span style={S.dimWeight}>{d.tip} · {Math.round(d.weight * 100)}% weight</span>
-                  </div>
-                </div>
-                <span style={{ ...S.dimScore, color: col }}>{value}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={value}
-                onChange={e => setDim(d.key, Number(e.target.value))}
-                style={{ ...S.rangeInput, accentColor: col }}
-              />
-              <div style={S.dimTrackBg}>
-                <div style={{
-                  ...S.dimTrackFill,
-                  width: mounted ? `${value}%` : '0%',
-                  background: col,
-                }} />
-              </div>
-            </div>
+            <button key={t.key} type="button"
+              style={{ ...S.focusCard, ...(active ? S.focusCardActive : {}) }}
+              onClick={() => toggle(t.key)}>
+              <span style={S.focusEmoji}>{t.emoji}</span>
+              <span style={{ ...S.focusLabel, color: active ? C.blu700 : C.ink }}>{t.label}</span>
+              {active && (
+                <div style={S.focusCheckmark}>✓</div>
+              )}
+            </button>
           );
         })}
+      </div>
+
+      {selected.length > 0 && (
+        <div style={S.focusSummary}>
+          <span style={S.focusSummaryIcon}>📌</span>
+          <span style={S.focusSummaryText}>
+            <strong>{selected.length}</strong> topic{selected.length !== 1 ? 's' : ''} selected —
+            these will get boosted frequency in every session.
+          </span>
+        </div>
+      )}
+
+      <InfoBox icon="💡" title="Tip">
+        You can change your focus areas at any time from Settings.
+        Start with your honest weak spots for the fastest improvement.
+      </InfoBox>
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 4 — TRAINING STYLE
+// ═══════════════════════════════════════════════════════════════════════════
+function TrainingStep({ training, setTraining, profile, goals }) {
+  const set = (k, v) => setTraining(p => ({ ...p, [k]: v }));
+
+  const targetRole  = TARGET_ROLES.find(r => r.value === goals.targetRole)?.label ?? '';
+  const primaryGoal = PRIMARY_GOALS.find(g => g.value === goals.primaryGoal)?.label ?? '';
+
+  return (
+    <>
+      <StepHeader
+        eyebrow="Step 4 of 4"
+        badge="Final step"
+        badgeColor={C.emerald}
+        title="How do you want to train?"
+        sub="Sets your default session experience. All of these can be changed from Settings at any time."
+      />
+
+      <GroupBlock title="How you answer best" tag="Pick one">
+        <div style={S.triGrid}>
+          {ANSWER_STYLES.map(opt => {
+            const active = training.answerStyle === opt.value;
+            return (
+              <button key={opt.value} type="button"
+                style={{ ...S.styleCard, ...(active ? S.styleCardActive : {}) }}
+                onClick={() => set('answerStyle', opt.value)}>
+                {active && <div style={S.styleTopBar} />}
+                <span style={S.styleEmoji}>{opt.icon}</span>
+                <strong style={{ ...S.styleLabel, color: active ? C.blu700 : C.ink }}>{opt.label}</strong>
+                <span style={S.styleDesc}>{opt.desc}</span>
+              </button>
+            );
+          })}
+        </div>
+      </GroupBlock>
+
+      <GroupBlock title="Starting difficulty" tag="Pick one">
+        <div style={S.triGrid}>
+          {DIFFICULTY_PREFS.map(opt => {
+            const active = training.difficultyPref === opt.value;
+            return (
+              <button key={opt.value} type="button"
+                style={{ ...S.styleCard, ...(active ? S.styleCardActive : {}) }}
+                onClick={() => set('difficultyPref', opt.value)}>
+                {active && <div style={S.styleTopBar} />}
+                <span style={S.styleEmoji}>{opt.icon}</span>
+                <strong style={{ ...S.styleLabel, color: active ? C.blu700 : C.ink }}>{opt.label}</strong>
+                <span style={S.styleDesc}>{opt.desc}</span>
+              </button>
+            );
+          })}
+        </div>
+      </GroupBlock>
+
+      <GroupBlock title="Weekly practice cadence" tag="Pick one">
+        <div style={S.cadGrid}>
+          {CADENCE.map(c => {
+            const active = training.weeklyDays === c.value;
+            return (
+              <button key={c.value} type="button"
+                style={{ ...S.cadCard, ...(active ? S.cadCardActive : {}) }}
+                onClick={() => set('weeklyDays', c.value)}>
+                <div style={S.cadDots}>
+                  {[1, 2, 3, 4, 5, 6].map(d => (
+                    <div key={d} style={{
+                      ...S.cadDot,
+                      background: d <= c.value ? (active ? C.blu500 : C.borderMd) : C.border,
+                    }} />
+                  ))}
+                </div>
+                <strong style={{ ...S.cadLabel, color: active ? C.blu600 : C.ink }}>{c.label}</strong>
+                <span style={{ ...S.cadSub, color: active ? C.blu400 : C.inkFaint }}>{c.sub}</span>
+              </button>
+            );
+          })}
+        </div>
+      </GroupBlock>
+
+      {/* Optional GitHub / portfolio */}
+      <GroupBlock title="Portfolio or GitHub URL" tag="Optional — helps the AI personalize project-defence questions">
+        <div style={{ ...S.urlWrap, ...(training._urlFocused ? S.urlWrapFocused : {}) }}>
+          <span style={S.iIcon}>🔗</span>
+          <input
+            type="url"
+            value={training.projectUrl}
+            placeholder="https://github.com/yourusername"
+            style={S.iInner}
+            onFocus={() => set('_urlFocused', true)}
+            onBlur={() => set('_urlFocused', false)}
+            onChange={e => set('projectUrl', e.target.value)}
+          />
+        </div>
+      </GroupBlock>
+
+      {/* Summary card */}
+      <div style={S.summaryCard}>
+        <div style={S.summaryHead}>
+          <div style={S.summaryHeadLeft}>
+            <div style={S.summaryBadge}>✦</div>
+            <strong style={S.summaryTitle}>Your MockMate profile</strong>
+          </div>
+        </div>
+        <div style={S.summaryDivider} />
+        <div style={S.summaryGrid}>
+          {[
+            { label: 'Role',       val: targetRole },
+            { label: 'Goal',       val: primaryGoal },
+            { label: 'Package',    val: PACKAGE_TARGETS.find(p => p.value === goals.packageTarget)?.label },
+            { label: 'Timeline',   val: TIMELINES.find(t => t.value === profile.placementTimeline)?.label },
+            { label: 'Cadence',    val: `${training.weeklyDays} days/week` },
+            { label: 'Difficulty', val: DIFFICULTY_PREFS.find(d => d.value === training.difficultyPref)?.label },
+            { label: 'Language',   val: LANGUAGES.find(l => l.value === profile.preferredLanguage)?.label },
+            { label: 'Style',      val: ANSWER_STYLES.find(a => a.value === training.answerStyle)?.label },
+          ].map(row => (
+            <div key={row.label} style={S.summaryItem}>
+              <span style={S.summaryItemLabel}>{row.label}</span>
+              <span style={S.summaryItemVal}>{row.val}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </>
   );
-};
+}
 
-// ═══════════════════════════════════════════════════════════════════════════
-// STEP 3 — TRAINING PREFERENCES
-// ═══════════════════════════════════════════════════════════════════════════
-const TrainingStep = ({ preferences, setPreferences }) => (
-  <>
+// ─── Shared primitives ──────────────────────────────────────────────────────
+function StepHeader({ eyebrow, badge, badgeColor = C.blu600, title, sub }) {
+  return (
     <div style={S.stepHeader}>
-      <div style={S.eyebrowDark}>PREPARATION PROFILE</div>
-      <h2 style={S.cardH2}>Tell MockMate how you want to train.</h2>
-      <p style={S.cardSub}>Every default here is already a reasonable choice — change only what matters to you.</p>
+      <div style={S.eyebrowRow}>
+        <span style={S.eyebrow}>{eyebrow}</span>
+        {badge && (
+          <span style={{ ...S.eyebrowBadge, color: badgeColor, background: `${badgeColor}14`, borderColor: `${badgeColor}30` }}>
+            {badge}
+          </span>
+        )}
+      </div>
+      <h2 style={S.cardH2}>{title}</h2>
+      {sub && <p style={S.cardSub}>{sub}</p>}
     </div>
+  );
+}
 
-    <div style={S.groupBlock}>
+function FormField({ label, hint, full, required, children }) {
+  return (
+    <div style={{ ...S.field, ...(full ? { gridColumn: '1 / -1' } : {}) }}>
+      <label style={S.fieldLabel}>
+        {label}
+        {required && <span style={{ color: C.rose, marginLeft: 3 }}>*</span>}
+        {hint && <span style={S.fieldHint}> · {hint}</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function InputWrap({ focused, check, children }) {
+  return (
+    <div style={{ ...S.inputWrap, ...(focused ? S.inputWrapFocused : {}) }}>
+      {children}
+      {check && <span style={{ color: C.emerald, paddingRight: 12, fontSize: 14 }}>✓</span>}
+    </div>
+  );
+}
+
+function GroupBlock({ title, tag, children }) {
+  return (
+    <div style={S.group}>
       <div style={S.groupHead}>
-        <strong style={S.groupTitle}>Target role</strong>
-        <span style={S.groupTag}>ONE</span>
+        <strong style={S.groupTitle}>{title}</strong>
+        {tag && <span style={S.groupTag}>{tag}</span>}
       </div>
-      <div style={S.roleGrid} className="ob-role-grid">
-        {TARGET_ROLES.map(role => {
-          const active = preferences.targetRole === role.value;
-          return (
-            <button
-              key={role.value}
-              type="button"
-              style={{ ...S.roleCard, ...(active ? S.roleCardActive : {}) }}
-              onClick={() => setPreferences(p => ({ ...p, targetRole: role.value }))}
-            >
-              <div style={{ ...S.roleIcon, ...(active ? S.roleIconActive : {}) }}>{role.icon}</div>
-              <strong style={S.roleLabel}>{role.label}</strong>
-            </button>
-          );
-        })}
+      {children}
+    </div>
+  );
+}
+
+function InfoBox({ icon, title, children }) {
+  return (
+    <div style={S.infoBox}>
+      <span style={{ fontSize: 15, flexShrink: 0 }}>{icon}</span>
+      <div>
+        {title && <strong style={{ fontSize: 12, fontWeight: 700, color: C.blu700 }}>{title} · </strong>}
+        <span style={{ fontSize: 12, color: C.inkMid, lineHeight: 1.65 }}>{children}</span>
       </div>
     </div>
+  );
+}
 
-    <div style={S.groupBlock}>
-      <div style={S.groupHead}>
-        <strong style={S.groupTitle}>Main objective</strong>
-        <span style={S.groupTag}>ONE</span>
-      </div>
-      <div style={S.goalGrid} className="ob-goal-grid">
-        {GOALS.map(goal => {
-          const active = preferences.primaryGoal === goal.value;
-          return (
-            <button
-              key={goal.value}
-              type="button"
-              style={{ ...S.goalCard, ...(active ? S.goalCardActive : {}) }}
-              onClick={() => setPreferences(p => ({ ...p, primaryGoal: goal.value }))}
-            >
-              <div style={S.goalIcon}>{goal.icon}</div>
-              <strong style={S.goalLabel}>{goal.label}</strong>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+// ─── Global styles ──────────────────────────────────────────────────────────
+function GlobalStyles() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-    <div style={S.groupBlock}>
-      <div style={S.groupHead}>
-        <strong style={S.groupTitle}>How you answer best</strong>
-        <span style={S.groupTag}>ONE</span>
-      </div>
-      <div style={S.answerStyleGrid}>
-        {ANSWER_STYLES.map(opt => {
-          const active = preferences.answerStyle === opt.value;
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              style={{ ...S.answerStyleCard, ...(active ? S.answerStyleCardActive : {}) }}
-              onClick={() => setPreferences(p => ({ ...p, answerStyle: opt.value }))}
-            >
-              <strong style={S.roleLabel}>{opt.label}</strong>
-              <span style={S.answerStyleDesc}>{opt.desc}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body { background: ${C.canvas}; }
 
-    <div style={S.groupBlock}>
-      <div style={S.groupHead}>
-        <strong style={S.groupTitle}>Practice cadence</strong>
-        <span style={S.groupTag}>ONE</span>
-      </div>
-      <div style={S.cadenceGrid}>
-        {CADENCE.map(c => {
-          const active = preferences.weeklyDays === c.value;
-          return (
-            <button
-              key={c.value}
-              type="button"
-              style={{ ...S.cadenceCard, ...(active ? S.cadenceCardActive : {}) }}
-              onClick={() => setPreferences(p => ({ ...p, weeklyDays: c.value }))}
-            >
-              <strong style={S.cadenceLabel}>{c.label}</strong>
-              <span style={S.cadenceSub}>{c.sub} pace</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+      .ob-root button:focus-visible,
+      .ob-root input:focus-visible,
+      .ob-root select:focus-visible {
+        outline: 2px solid ${C.blu500}; outline-offset: 2px;
+      }
+      .ob-root select { -webkit-appearance: none; appearance: none; cursor: pointer; }
+      .ob-root input::placeholder { color: ${C.inkFaint}; }
 
-    <div style={S.summaryBox}>
-      <div style={S.summaryIcon}>✦</div>
-      <div style={{ flex: 1 }}>
-        <strong style={S.summaryTitle}>Ready when you are</strong>
-        <span style={S.summarySub}>
-          {TARGET_ROLES.find(r => r.value === preferences.targetRole)?.label} ·{' '}
-          {GOALS.find(g => g.value === preferences.primaryGoal)?.label} ·{' '}
-          {preferences.weeklyDays} days/week
-        </span>
-      </div>
-    </div>
-  </>
-);
+      @keyframes ob-spin { to { transform: rotate(360deg); } }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// GLOBAL STYLES — fonts + responsive overrides
-// ═══════════════════════════════════════════════════════════════════════════
-const GlobalStyles = () => (
-  <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+      @media (prefers-reduced-motion: reduce) {
+        .ob-root * { transition: none !important; animation: none !important; }
+      }
 
-    @keyframes obSpin      { to { transform: rotate(360deg); } }
-    @keyframes obLivePulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
-    @keyframes obScan      { 0% { transform:translateX(-100%); } 100% { transform:translateX(320%); } }
+      /* Tablet */
+      @media (max-width: 860px) {
+        .ob-root { padding: 16px 16px 60px !important; }
+        .ob-card { padding: 20px 18px !important; }
+      }
 
-    *, *::before, *::after { box-sizing: border-box; }
+      /* Mobile */
+      @media (max-width: 600px) {
+        .ob-step-label { display: none !important; }
+        .ob-form-grid  { grid-template-columns: 1fr !important; }
+        .ob-goal-grid  { grid-template-columns: repeat(2,1fr) !important; }
+        .ob-role-grid  { grid-template-columns: repeat(2,1fr) !important; }
+        .ob-focus-grid { grid-template-columns: repeat(2,1fr) !important; }
+        .ob-nav-row    { flex-direction: column-reverse !important; gap: 10px !important; }
+        .ob-step-nav   { overflow-x: auto !important; }
+      }
 
-    .ob-page input[type="range"] {
-      -webkit-appearance: none;
-      appearance: none;
-      height: 6px;
-      border-radius: 999px;
-      background: ${C.border};
-      outline: none;
-    }
-    .ob-page input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      background: #fff;
-      border: 3px solid ${C.blue500};
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(26,110,255,0.3);
-    }
-    .ob-page input[type="range"]::-moz-range-thumb {
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      background: #fff;
-      border: 3px solid ${C.blue500};
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(26,110,255,0.3);
-    }
+      /* Very small */
+      @media (max-width: 420px) {
+        .ob-focus-grid { grid-template-columns: 1fr !important; }
+      }
+    `}</style>
+  );
+}
 
-    .ob-page button:focus-visible,
-    .ob-page input:focus-visible,
-    .ob-page select:focus-visible {
-      outline: 2px solid ${C.blue500};
-      outline-offset: 2px;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .ob-page * { animation: none !important; transition: none !important; }
-    }
-
-    @media (max-width: 1020px) {
-      .ob-hero-grid { grid-template-columns: 1fr !important; gap: 28px !important; }
-    }
-    @media (max-width: 760px) {
-      .ob-strip-r { display: none !important; }
-      .ob-role-grid { grid-template-columns: repeat(2, 1fr) !important; }
-      .ob-goal-grid { grid-template-columns: repeat(2, 1fr) !important; }
-      .ob-form-grid { grid-template-columns: 1fr !important; }
-      .ob-step-nav { overflow-x: auto !important; }
-      .ob-nav-footer { flex-direction: column !important; align-items: stretch !important; gap: 12px !important; }
-    }
-    @media (max-width: 480px) {
-      .ob-page { padding: 14px 12px 60px !important; }
-      .ob-card { padding: 18px !important; }
-    }
-  `}</style>
-);
-
-// ═══════════════════════════════════════════════════════════════════════════
-// STYLES
-// ═══════════════════════════════════════════════════════════════════════════
+// ─── Styles ─────────────────────────────────────────────────────────────────
 const S = {
   page: {
+    display: 'flex',
+    justifyContent: 'center',
     minHeight: '100vh',
-    background: C.bg,
-    backgroundImage: `radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.07) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(0,173,224,0.05) 0%, transparent 42%)`,
-    padding: '24px 28px 80px',
+    background: C.canvas,
+    backgroundImage: `
+      radial-gradient(ellipse 700px 500px at -10% -10%, rgba(59,130,246,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 600px 400px at 110% 110%, rgba(6,182,212,0.05) 0%, transparent 60%)
+    `,
+    padding: '24px 24px 80px',
     fontFamily: F.body,
-  },
-  container: {
-    maxWidth: 1120,
-    margin: '0 auto',
-    transition: 'opacity 0.55s ease, transform 0.55s cubic-bezier(.16,1,.3,1)',
-  },
-
-  strip: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '9px 16px', marginBottom: 20, borderRadius: 10,
-    background: C.card, border: `1px solid ${C.border}`,
-    boxShadow: C.shadow,
-  },
-  stripL: { display: 'flex', alignItems: 'center', gap: 9 },
-  stripR: { display: 'flex', alignItems: 'center', gap: 10 },
-  liveDot: {
-    width: 7, height: 7, borderRadius: '50%', background: C.green,
-    animation: 'obLivePulse 2.4s ease-in-out infinite',
-    boxShadow: `0 0 8px ${C.greenGlow}`,
-  },
-  mono: { fontFamily: F.mono, fontSize: 10.5, letterSpacing: '0.5px', color: C.muted },
-
-  hero: {
-    position: 'relative', overflow: 'hidden',
-    padding: '36px 32px', marginBottom: 18, borderRadius: 24,
-    background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 45%, ${C.blue600} 75%, ${C.cyan600} 100%)`,
-    boxShadow: '0 24px 64px rgba(0,31,107,0.32)',
-  },
-  heroScan: {
-    position: 'absolute', top: 0, left: 0, width: '25%', height: '100%',
-    background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent)',
-    animation: 'obScan 9s linear infinite',
-  },
-  heroGrid: {
     position: 'relative',
-    display: 'grid', gridTemplateColumns: '260px 1fr', gap: 36, alignItems: 'center',
   },
 
-  irsBlock: {},
-  irsLabel: {
-    fontFamily: F.mono, fontSize: 9.5, fontWeight: 600,
-    letterSpacing: '1.4px', color: 'rgba(255,255,255,0.6)', marginBottom: 10,
+  bgBlob1: {
+    position: 'fixed', top: -120, left: -120,
+    width: 400, height: 400, borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%)',
+    pointerEvents: 'none', zIndex: 0,
   },
-  irsNum: {
-    fontFamily: F.display, fontSize: 62, fontWeight: 900, lineHeight: 1,
-    color: '#fff', letterSpacing: '-2px',
-  },
-  irsMax: { fontSize: 20, fontWeight: 600, color: 'rgba(255,255,255,0.5)', letterSpacing: 0 },
-  tierPill: {
-    display: 'inline-flex', alignItems: 'center',
-    marginTop: 12, padding: '6px 14px', borderRadius: 999,
-    fontSize: 11.5, fontWeight: 700, letterSpacing: '0.3px',
-  },
-  irsBar: {
-    position: 'relative', height: 6, marginTop: 14, borderRadius: 999,
-    background: 'rgba(255,255,255,0.15)', overflow: 'hidden',
-  },
-  irsBarFill: {
-    height: '100%', borderRadius: 999,
-    background: `linear-gradient(90deg, ${C.blue200}, ${C.cyan400})`,
-    transition: 'width 0.5s cubic-bezier(.16,1,.3,1)',
-  },
-  irsGapText: {
-    marginTop: 10, fontSize: 11.5, lineHeight: 1.6,
-    color: 'rgba(255,255,255,0.65)',
+  bgBlob2: {
+    position: 'fixed', bottom: -80, right: -80,
+    width: 320, height: 320, borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(6,182,212,0.05) 0%, transparent 70%)',
+    pointerEvents: 'none', zIndex: 0,
   },
 
-  verdictBlock: {},
-  eyebrow: {
-    display: 'flex', alignItems: 'center', gap: 7,
-    fontFamily: F.mono, fontSize: 10, fontWeight: 700,
-    letterSpacing: '1.6px', color: 'rgba(255,255,255,0.7)', marginBottom: 12,
+  shell: {
+    width: '100%',
+    maxWidth: 720,
+    zIndex: 1,
+    transition: 'opacity 0.5s ease, transform 0.5s cubic-bezier(.16,1,.3,1)',
   },
-  eyebrowDot: { width: 6, height: 6, borderRadius: '50%', background: C.cyan400 },
-  heroH1: {
-    margin: 0, fontFamily: F.display, fontSize: 28, fontWeight: 800,
-    color: '#fff', lineHeight: 1.28, letterSpacing: '-0.4px', maxWidth: 640,
-  },
-  heroSub: { margin: '13px 0 0', fontSize: 14, lineHeight: 1.72, color: 'rgba(255,255,255,0.78)', maxWidth: 560 },
 
-  stepNav: {
-    display: 'flex', gap: 8, marginBottom: 18,
+  // ── Banner ──
+  banner: {
+    background: `linear-gradient(135deg, ${C.blu700} 0%, ${C.blu600} 55%, ${C.cya600} 100%)`,
+    borderRadius: 18,
+    padding: '16px 22px',
+    marginBottom: 14,
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
+    boxShadow: C.shadowBlue,
+    flexWrap: 'wrap',
   },
-  stepPill: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    padding: '10px 16px', borderRadius: 999,
-    border: `1px solid ${C.border}`, background: C.card,
-    color: C.muted, fontFamily: F.body, fontSize: 12.5, fontWeight: 700,
-    cursor: 'pointer', whiteSpace: 'nowrap',
-    transition: 'all 0.15s ease',
-  },
-  stepPillActive: {
-    borderColor: C.blue500, background: C.blue50, color: C.blue700,
-    boxShadow: `0 4px 14px rgba(26,110,255,0.14)`,
-  },
-  stepPillDone: {
-    borderColor: C.borderMd, color: C.sub,
-  },
-  stepPillNum: {
+  bannerLeft: { display: 'flex', flexDirection: 'column', gap: 3 },
+  bannerLogo: { display: 'flex', alignItems: 'center', gap: 8 },
+  bannerLogoMark: {
+    width: 28, height: 28, borderRadius: 7,
+    background: 'rgba(255,255,255,0.2)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    width: 20, height: 20, borderRadius: '50%',
-    background: C.blue50, color: C.blue600,
-    fontFamily: F.mono, fontSize: 10.5, fontWeight: 700, flexShrink: 0,
+    color: '#fff', fontFamily: F.display, fontSize: 14, fontWeight: 800,
   },
+  bannerBrand: { color: '#fff', fontFamily: F.display, fontSize: 17, fontWeight: 800, letterSpacing: '-0.3px' },
+  bannerTag: { color: 'rgba(255,255,255,0.6)', fontSize: 10.5, fontFamily: F.mono },
+  bannerRight: { display: 'flex', flexDirection: 'column', gap: 5, minWidth: 130 },
+  bannerProgressText: { display: 'flex', justifyContent: 'space-between' },
+  bannerStepLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: 600 },
+  bannerPct: { color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: F.mono },
+  bannerTrack: { height: 4, background: 'rgba(255,255,255,0.2)', borderRadius: 999, overflow: 'hidden' },
+  bannerFill: { height: '100%', borderRadius: 999, background: 'rgba(255,255,255,0.9)', transition: 'width 0.5s cubic-bezier(.16,1,.3,1)' },
 
+  // ── Step nav ──
+  stepNav: {
+    display: 'flex', gap: 4, marginBottom: 14,
+    background: C.surface, borderRadius: 14, padding: '5px',
+    border: `1px solid ${C.border}`, boxShadow: C.shadow,
+  },
+  stepTab: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    padding: '8px 10px', borderRadius: 10,
+    border: 'none', background: 'none',
+    color: C.inkFaint, fontFamily: F.body, fontSize: 12, fontWeight: 600,
+    cursor: 'pointer', whiteSpace: 'nowrap',
+    transition: 'all 0.18s ease',
+  },
+  stepTabActive: { background: C.blu50, color: C.blu600 },
+  stepTabDone:   { color: C.inkSub },
+  stepBubble: {
+    width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+    background: C.raised, color: C.inkFaint,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 9, fontWeight: 700, fontFamily: F.mono,
+    border: `1.5px solid ${C.border}`,
+    transition: 'all 0.18s ease',
+  },
+  stepBubbleActive: { background: C.blu600, color: '#fff', borderColor: C.blu600 },
+  stepBubbleDone:   { background: C.emeraldBg, color: C.emerald, borderColor: `${C.emerald}40`, fontSize: 11 },
+  stepLabel: { fontSize: 12, fontWeight: 600 },
+  stepLabelActive: { color: C.blu700 },
+
+  // ── Card ──
   card: {
-    background: C.card, border: `1px solid ${C.border}`,
-    borderRadius: 20, padding: 28, boxShadow: C.shadow,
-    marginBottom: 18,
+    background: C.surface, borderRadius: 20,
+    border: `1px solid ${C.border}`, boxShadow: C.shadow,
+    padding: '26px 26px 22px', marginBottom: 12,
   },
-  stepHeader: { marginBottom: 22 },
-  eyebrowDark: {
-    fontFamily: F.mono, fontSize: 9.5, fontWeight: 700,
-    letterSpacing: '1.5px', color: C.blue500, marginBottom: 6,
-  },
-  cardH2: { margin: 0, fontFamily: F.display, fontSize: 20, fontWeight: 800, color: C.text },
-  cardSub: { margin: '7px 0 0', fontSize: 13, lineHeight: 1.65, color: C.sub, maxWidth: 560 },
 
-  formGrid: {
-    display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 14,
-    marginBottom: 22,
-  },
+  // ── Step header ──
+  stepHeader: { marginBottom: 24 },
+  eyebrowRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 },
+  eyebrow: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 600, letterSpacing: '1.2px', color: C.blu500, textTransform: 'uppercase' },
+  eyebrowBadge: { fontSize: 10, fontWeight: 700, fontFamily: F.mono, padding: '2px 8px', borderRadius: 999, border: '1px solid' },
+  cardH2: { fontFamily: F.display, fontSize: 22, fontWeight: 800, color: C.ink, letterSpacing: '-0.4px', lineHeight: 1.25 },
+  cardSub: { marginTop: 8, fontSize: 13.5, lineHeight: 1.7, color: C.inkMid, maxWidth: 580 },
+
+  // ── Form ──
+  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 22 },
   field: { display: 'flex', flexDirection: 'column' },
-  fieldFull: { gridColumn: '1 / -1' },
-  fieldLabel: { marginBottom: 7, color: C.sub, fontSize: 12, fontWeight: 700 },
-  input: {
-    width: '100%', height: 46, padding: '0 14px',
-    border: `1px solid ${C.borderMd}`, borderRadius: 11,
-    background: C.cardAlt, color: C.text,
-    fontFamily: F.body, fontSize: 13.5, outline: 'none',
+  fieldLabel: { marginBottom: 7, fontSize: 12, fontWeight: 700, color: C.inkSub, letterSpacing: '0.2px' },
+  fieldHint: { color: C.inkFaint, fontWeight: 400, fontSize: 11 },
+
+  inputWrap: {
+    display: 'flex', alignItems: 'center',
+    height: 46, borderRadius: 11,
+    border: `1.5px solid ${C.borderMd}`,
+    background: C.raised, overflow: 'hidden',
+    transition: 'border-color 0.18s ease, box-shadow 0.18s ease',
   },
-  select: {
-    width: '100%', height: 46, padding: '0 14px',
-    border: `1px solid ${C.borderMd}`, borderRadius: 11,
-    background: C.cardAlt, color: C.text,
-    fontFamily: F.body, fontSize: 13.5, outline: 'none',
+  inputWrapFocused: { borderColor: C.blu500, boxShadow: C.shadowInput, background: C.surface },
+  iIcon: { padding: '0 10px 0 12px', fontSize: 14, flexShrink: 0, color: C.inkFaint },
+  iInner: {
+    flex: 1, height: '100%',
+    border: 'none', background: 'transparent',
+    color: C.ink, fontFamily: F.body, fontSize: 13.5,
+    outline: 'none', paddingRight: 12,
+  },
+  iSelect: {
+    flex: 1, height: '100%',
+    border: 'none', background: 'transparent',
+    color: C.ink, fontFamily: F.body, fontSize: 13.5,
+    outline: 'none', paddingRight: 12,
   },
 
-  groupBlock: { marginBottom: 22 },
-  groupHead: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    gap: 10, marginBottom: 10,
+  // ── URL field (same look as inputWrap but standalone) ──
+  urlWrap: {
+    display: 'flex', alignItems: 'center',
+    height: 46, borderRadius: 11,
+    border: `1.5px solid ${C.borderMd}`,
+    background: C.raised, overflow: 'hidden',
+    transition: 'border-color 0.18s ease, box-shadow 0.18s ease',
   },
-  groupTitle: { color: C.text, fontFamily: F.display, fontSize: 13.5, fontWeight: 800 },
-  groupTag: { color: C.muted, fontFamily: F.mono, fontSize: 9.5, letterSpacing: '0.5px' },
+  urlWrapFocused: { borderColor: C.blu500, boxShadow: C.shadowInput, background: C.surface },
 
-  chipGrid: { display: 'flex', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    border: `1px solid ${C.border}`, background: C.card, color: C.sub,
-    borderRadius: 999, padding: '9px 14px', cursor: 'pointer',
-    fontFamily: F.body, fontSize: 12.5, fontWeight: 700,
-  },
-  chipActive: {
-    borderColor: C.blue500, background: C.blue50, color: C.blue700,
-    boxShadow: `0 4px 12px rgba(26,110,255,0.1)`,
-  },
+  // ── Groups ──
+  group: { marginBottom: 24 },
+  groupHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11 },
+  groupTitle: { fontSize: 13.5, fontWeight: 700, color: C.ink },
+  groupTag: { fontFamily: F.mono, fontSize: 9.5, letterSpacing: '0.4px', color: C.inkFaint, textTransform: 'uppercase' },
 
-  // Dimension sliders (skills step)
-  dimSliderList: { display: 'flex', flexDirection: 'column', gap: 18 },
-  dimSliderRow: {
-    padding: '14px 16px', borderRadius: 14,
-    background: C.cardAlt, border: `1px solid ${C.border}`,
-  },
-  dimSliderMeta: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  dimSliderLeft: { display: 'flex', alignItems: 'center', gap: 11 },
-  dimIcon: { fontSize: 18, width: 24, textAlign: 'center', flexShrink: 0 },
-  dimName: { fontSize: 13.5, fontWeight: 700, color: C.text, display: 'block' },
-  dimWeight: { fontSize: 10.5, color: C.muted, fontFamily: F.mono, display: 'block', marginTop: 2 },
-  dimScore: { fontFamily: F.display, fontSize: 19, fontWeight: 800, minWidth: 36, textAlign: 'right' },
-  rangeInput: { width: '100%', margin: '2px 0 8px' },
-  dimTrackBg: { height: 5, borderRadius: 999, background: C.border, overflow: 'hidden' },
-  dimTrackFill: { height: '100%', borderRadius: 999, transition: 'width 0.3s ease' },
+  // ── Shared active bar ──
+  activeBar: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: C.blu500 },
 
-  // Role cards
-  roleGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 9 },
-  roleCard: {
-    border: `1px solid ${C.border}`, borderRadius: 14, background: C.card,
-    padding: 13, textAlign: 'left', cursor: 'pointer',
+  // ── Coding experience ──
+  expGrid: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 },
+  expCard: {
+    border: `1.5px solid ${C.border}`, borderRadius: 13, background: C.raised,
+    padding: '13px 10px', textAlign: 'center', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column', gap: 4,
+    transition: 'all 0.16s ease', position: 'relative', overflow: 'hidden',
   },
-  roleCardActive: { borderColor: C.blue500, background: C.blue50 },
-  roleIcon: {
-    width: 34, height: 34, borderRadius: 10, background: C.cardAlt, color: C.blue500,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 9,
-    fontWeight: 900, fontSize: 15,
-  },
-  roleIconActive: { background: '#fff', color: C.blue600 },
-  roleLabel: { display: 'block', color: C.text, fontFamily: F.display, fontSize: 12, fontWeight: 800 },
+  expCardActive: { borderColor: C.blu400, background: C.blu50, boxShadow: `0 0 0 1px ${C.blu200}` },
+  expLabel: { fontSize: 13, fontWeight: 800 },
+  expDesc:  { fontSize: 10.5, fontFamily: F.mono },
 
-  // Goal cards
-  goalGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 9 },
+  // ── Language ──
+  langGrid: { display: 'flex', flexWrap: 'wrap', gap: 8 },
+  langCard: {
+    display: 'inline-flex', alignItems: 'center', gap: 7,
+    border: `1.5px solid ${C.border}`, borderRadius: 10, background: C.raised,
+    padding: '9px 14px', cursor: 'pointer',
+    transition: 'all 0.16s ease',
+  },
+  langCardActive: { borderColor: C.blu400, background: C.blu50, boxShadow: `0 0 0 1px ${C.blu200}` },
+  langEmoji: { fontSize: 15 },
+  langLabel: { fontSize: 13, fontWeight: 700 },
+
+  // ── Timeline ──
+  timelineGrid: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 },
+  timelineCard: {
+    border: `1.5px solid ${C.border}`, borderRadius: 13, background: C.raised,
+    padding: '14px 10px 12px', textAlign: 'center', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+    transition: 'all 0.16s ease', position: 'relative', overflow: 'hidden',
+  },
+  timelineCardActive: { borderColor: C.blu400, background: C.blu50, boxShadow: `0 0 0 1px ${C.blu200}` },
+  timelineEmoji: { fontSize: 18 },
+  timelineLabel: { fontSize: 12.5, fontWeight: 800, display: 'block' },
+  timelineSub: { fontSize: 10.5, display: 'block', fontFamily: F.mono },
+
+  // ── Goals ──
+  goalGrid: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 },
   goalCard: {
-    border: `1px solid ${C.border}`, borderRadius: 14, background: C.card,
-    padding: 13, textAlign: 'left', cursor: 'pointer',
+    border: `1.5px solid ${C.border}`, borderRadius: 13, background: C.raised,
+    padding: '14px 10px', textAlign: 'center', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+    transition: 'all 0.16s ease', position: 'relative',
   },
-  goalCardActive: { borderColor: C.green, background: C.greenTint },
-  goalIcon: { fontSize: 19 },
-  goalLabel: { display: 'block', marginTop: 8, color: C.text, fontFamily: F.display, fontSize: 11, lineHeight: 1.35 },
+  goalCardActive: { borderColor: C.blu400, background: C.blu50, boxShadow: `0 0 0 1px ${C.blu200}` },
+  goalEmoji: { fontSize: 22 },
+  goalLabel: { fontSize: 12, fontWeight: 800 },
+  goalDesc:  { fontSize: 10, color: C.inkFaint, lineHeight: 1.4 },
+  goalCheck: {
+    position: 'absolute', top: 7, right: 7,
+    width: 16, height: 16, borderRadius: '50%',
+    background: C.blu600, color: '#fff', fontSize: 9, fontWeight: 800,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
 
-  // Answer style
-  answerStyleGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 9 },
-  answerStyleCard: {
-    border: `1px solid ${C.border}`, borderRadius: 14, background: C.card,
-    padding: 14, textAlign: 'left', cursor: 'pointer',
+  // ── Roles ──
+  roleGrid: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 },
+  roleCard: {
+    border: `1.5px solid ${C.border}`, borderRadius: 13, background: C.raised,
+    padding: '13px 10px', textAlign: 'center', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+    transition: 'all 0.16s ease', position: 'relative', overflow: 'hidden',
   },
-  answerStyleCardActive: { borderColor: C.blue500, background: C.blue50 },
-  answerStyleDesc: { display: 'block', marginTop: 5, color: C.muted, fontSize: 11.5, lineHeight: 1.5 },
+  roleCardActive: { borderColor: C.blu300, background: C.blu50, boxShadow: `0 0 0 1px ${C.blu200}` },
+  roleIcon: { fontSize: 20, fontWeight: 900, transition: 'color 0.16s ease' },
+  roleLabel: { fontSize: 11.5, fontWeight: 700, transition: 'color 0.16s ease' },
 
-  // Cadence
-  cadenceGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 9 },
-  cadenceCard: {
-    border: `1px solid ${C.border}`, borderRadius: 14, background: C.card,
-    padding: 14, textAlign: 'center', cursor: 'pointer',
+  // ── Package ──
+  pkgGrid: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 },
+  pkgCard: {
+    border: `1.5px solid ${C.border}`, borderRadius: 13, background: C.raised,
+    padding: '13px 10px', textAlign: 'center', cursor: 'pointer',
+    transition: 'all 0.16s ease',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
   },
-  cadenceCardActive: { borderColor: C.blue500, background: C.blue50 },
-  cadenceLabel: { display: 'block', color: C.text, fontFamily: F.display, fontSize: 15, fontWeight: 800 },
-  cadenceSub: { display: 'block', marginTop: 3, color: C.muted, fontSize: 11, fontFamily: F.mono },
+  pkgCardActive: { boxShadow: `0 0 0 1px ${C.blu200}` },
+  pkgTier: {
+    width: 22, height: 22, borderRadius: 6,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 9, fontWeight: 800, color: '#fff', fontFamily: F.mono,
+    transition: 'background 0.18s ease',
+  },
+  pkgLabel: { fontSize: 13, fontWeight: 800, transition: 'color 0.18s ease' },
+  pkgDesc:  { fontSize: 10, color: C.inkFaint, lineHeight: 1.35 },
 
-  summaryBox: {
-    display: 'flex', alignItems: 'center', gap: 13,
-    marginTop: 4, padding: 16, borderRadius: 15,
-    border: `1px solid ${C.borderMd}`,
-    background: `linear-gradient(135deg, ${C.blue50}, ${C.cyanTint})`,
+  // ── Chips ──
+  chipGrid: { display: 'flex', flexWrap: 'wrap', gap: 7 },
+  chip: {
+    display: 'inline-flex', alignItems: 'center', gap: 5,
+    border: `1.5px solid ${C.border}`, background: C.raised, color: C.inkMid,
+    borderRadius: 999, padding: '8px 14px', cursor: 'pointer',
+    fontFamily: F.body, fontSize: 12.5, fontWeight: 600,
+    transition: 'all 0.14s ease',
   },
-  summaryIcon: {
-    width: 40, height: 40, borderRadius: 11, flexShrink: 0,
-    background: '#fff', color: C.blue500,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
-  },
-  summaryTitle: { display: 'block', color: C.text, fontFamily: F.display, fontSize: 13, fontWeight: 800 },
-  summarySub: { display: 'block', marginTop: 3, color: C.sub, fontSize: 12 },
+  chipActive: { borderColor: C.blu400, background: C.blu50, color: C.blu700 },
+  chipCheck: { fontSize: 10, color: C.blu600, fontWeight: 800 },
+  chipHint: { marginTop: 8, fontSize: 11, color: C.inkFaint },
 
-  navFooter: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    gap: 16, marginBottom: 18,
+  // ── Focus grid ──
+  focusGrid: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 16 },
+  focusCard: {
+    border: `1.5px solid ${C.border}`, borderRadius: 13, background: C.raised,
+    padding: '12px 12px', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+    textAlign: 'center', position: 'relative', overflow: 'hidden',
+    transition: 'all 0.16s ease',
   },
-  navFooterRight: { display: 'flex', alignItems: 'center', gap: 16 },
-  navHint: { fontFamily: F.mono, fontSize: 10.5, color: C.faint },
-  btnGhostDark: {
-    border: `1px solid ${C.borderMd}`, borderRadius: 12,
-    background: C.card, color: C.sub,
-    padding: '12px 18px', fontSize: 13, fontWeight: 700,
+  focusCardActive: { borderColor: C.blu400, background: C.blu50, boxShadow: `0 0 0 1px ${C.blu200}` },
+  focusEmoji: { fontSize: 20 },
+  focusLabel: { fontSize: 11.5, fontWeight: 700 },
+  focusCheckmark: {
+    position: 'absolute', top: 6, right: 6,
+    width: 16, height: 16, borderRadius: '50%',
+    background: C.blu600, color: '#fff', fontSize: 9, fontWeight: 800,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  focusSummary: {
+    display: 'flex', gap: 8, alignItems: 'center',
+    padding: '10px 14px', borderRadius: 10,
+    background: C.blu50, border: `1px solid ${C.blu100}`,
+    marginBottom: 14,
+  },
+  focusSummaryIcon: { fontSize: 14 },
+  focusSummaryText: { fontSize: 12.5, color: C.inkMid },
+
+  // ── Info box ──
+  infoBox: {
+    display: 'flex', gap: 10, alignItems: 'flex-start',
+    padding: '12px 14px', borderRadius: 11,
+    background: C.blu50, border: `1px solid ${C.blu100}`,
+  },
+
+  // ── Training style ──
+  triGrid: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 },
+  styleCard: {
+    border: `1.5px solid ${C.border}`, borderRadius: 13, background: C.raised,
+    padding: '15px 13px', textAlign: 'left', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column', gap: 5,
+    transition: 'all 0.16s ease', position: 'relative', overflow: 'hidden',
+  },
+  styleCardActive: { borderColor: C.blu400, background: C.blu50, boxShadow: `0 0 0 1px ${C.blu200}` },
+  styleTopBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: C.blu500 },
+  styleEmoji: { fontSize: 20, marginBottom: 2 },
+  styleLabel: { fontSize: 13, fontWeight: 800 },
+  styleDesc:  { fontSize: 11.5, color: C.inkFaint, lineHeight: 1.55 },
+
+  // ── Cadence ──
+  cadGrid: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 },
+  cadCard: {
+    border: `1.5px solid ${C.border}`, borderRadius: 13, background: C.raised,
+    padding: '15px 13px', textAlign: 'center', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+    transition: 'all 0.16s ease',
+  },
+  cadCardActive: { borderColor: C.blu400, background: C.blu50, boxShadow: `0 0 0 1px ${C.blu200}` },
+  cadDots: { display: 'flex', gap: 4 },
+  cadDot: { width: 8, height: 8, borderRadius: 2, transition: 'background 0.18s ease' },
+  cadLabel: { fontSize: 13, fontWeight: 800 },
+  cadSub:   { fontSize: 10.5, fontFamily: F.mono },
+
+  // ── Summary card ──
+  summaryCard: {
+    marginTop: 8, padding: '16px 18px', borderRadius: 16,
+    border: `1.5px solid ${C.blu200}`,
+    background: `linear-gradient(135deg, ${C.blu50} 0%, rgba(224,242,254,0.4) 100%)`,
+    boxShadow: `0 4px 16px rgba(37,99,235,0.08)`,
+  },
+  summaryHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  summaryHeadLeft: { display: 'flex', alignItems: 'center', gap: 9 },
+  summaryBadge: {
+    width: 26, height: 26, borderRadius: 7,
+    background: `linear-gradient(135deg, ${C.blu600}, ${C.cya500})`,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: '#fff', fontSize: 12,
+  },
+  summaryTitle: { fontSize: 13.5, fontWeight: 800, color: C.ink, fontFamily: F.display },
+  summaryDivider: { height: 1, background: C.blu100, marginBottom: 13 },
+  summaryGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 18px' },
+  summaryItem: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    padding: '5px 0', borderBottom: `1px solid ${C.blu100}`,
+  },
+  summaryItemLabel: { fontSize: 11.5, color: C.inkSub },
+  summaryItemVal:   { fontSize: 12, fontWeight: 700, color: C.ink },
+
+  // ── Nav row ──
+  navRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  navRight: { display: 'flex', alignItems: 'center', gap: 12 },
+  navCount: { fontFamily: F.mono, fontSize: 10.5, color: C.inkFaint },
+
+  btnBack: {
+    border: `1.5px solid ${C.borderMd}`, borderRadius: 10,
+    background: C.surface, color: C.inkSub,
+    padding: '11px 20px', fontSize: 13, fontWeight: 600,
     fontFamily: F.body, cursor: 'pointer',
+    transition: 'all 0.14s ease',
   },
-  btnPrimaryBlue: {
-    border: 'none', borderRadius: 12,
-    background: `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`,
-    color: '#fff', padding: '12px 22px',
-    fontSize: 13.5, fontWeight: 800, fontFamily: F.body,
-    cursor: 'pointer', boxShadow: `0 6px 20px rgba(26,110,255,0.28)`,
+  btnNext: {
+    display: 'inline-flex', alignItems: 'center', gap: 7,
+    border: 'none', borderRadius: 10,
+    background: `linear-gradient(135deg, ${C.blu600} 0%, ${C.blu700} 100%)`,
+    color: '#fff',
+    padding: '12px 22px', fontSize: 13.5, fontWeight: 700,
+    fontFamily: F.body, cursor: 'pointer',
+    boxShadow: `0 4px 14px rgba(37,99,235,0.30)`,
+    transition: 'opacity 0.14s ease',
   },
-
-  footerRow: {
-    display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6,
-    padding: '4px 4px 0', opacity: 0.5,
+  btnDisabled: { opacity: 0.65, cursor: 'not-allowed' },
+  spinner: {
+    display: 'inline-block',
+    width: 14, height: 14, borderRadius: '50%',
+    border: `2px solid rgba(255,255,255,0.3)`,
+    borderTopColor: '#fff',
+    animation: 'ob-spin 0.7s linear infinite',
   },
 };
-
-export default Onboarding;

@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@lottiefiles/dotlottie-react": "^0.19.16",
     "@tailwindcss/vite": "^4.3.2",
     "axios": "^1.19.0",
     "framer-motion": "^13.1.1",

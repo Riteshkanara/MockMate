@@ -135,11 +135,12 @@ export const useInterview = () => {
       topic = '',
       difficulty = 'mixed'
     ) => {
-      setIsLoading(true);
-      setError('');
+setIsLoading(true);
+setError('');
 
-      
-      try {
+const toastId = toast.loading('Generating your interview...');
+
+try {
         const data =
           await startInterview({
             mode,

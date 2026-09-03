@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -417,229 +417,678 @@ const LivingAura = ({ data: radarData, irs, scoreTrend = [], onDrillDimension, c
   );
 };
 
-// ─── Topic Heat Grid — replaces Confidence vs Accuracy + ROI Point-Loss Map ──
-// A single richer section: colored tiles per topic, score-colored + ROI-sized,
-// with calibration label and drill CTA. Unique to Analytics, not on Dashboard.
-const TopicHeatGrid = ({ topicPerformance, dimensionProfile, avgTimePerQ, navigate, mounted }) => {
-  const [hoveredTopic, setHoveredTopic] = useState(null);
+// ═══════════════════════════════════════════════════════════════════════════
+// TopicIntelligenceGrid — MockMate Analytics
+//
+// Replaces the old card-hover grid with a TERRAIN MAP:
+//   • Hexagonal cells sized by session count, colored by score tier
+//   • One orchestrated entrance (stagger); motion only on user action after
+//   • Click → slide-in detail panel with sparkline + next-action drill
+//   • Keyboard navigable, reduced-motion respected
+//
+// Props
+//   topicData  — array from backend topicPerformance:
+//     { topic, avgScore, sessionCount, trend, lastScore, sessions[] }
+//   onDrill    — (topic) => void, called when user clicks "Drill"
+// ═══════════════════════════════════════════════════════════════════════════
 
-  const enriched = useMemo(() => {
-    return topicPerformance.map(t => {
-      const score = t.averageScore || 0;
-      const timePerQ = t.avgTimePerQ || avgTimePerQ || 40;
-      const confidence = Math.max(0, Math.min(100, 100 - (timePerQ / 90) * 100));
-      const divergence = Math.round(confidence - score);
-      const calibration = divergence > 15
-        ? { label: "Overconfident", color: C.orange, bg: C.orangeTint, icon: "⚠" }
-        : divergence < -10
-        ? { label: "Underrated", color: C.blue500, bg: C.blue50, icon: "🎯" }
-        : { label: "Calibrated", color: C.green, bg: C.greenTint, icon: "✓" };
-      const dim = dimensionProfile.find(d =>
-        (d.contributingTopics || []).some(ct => ct.toLowerCase() === t.topic.toLowerCase())
-      );
-      const roi = topicROI(t.topic, dimensionProfile);
-      const dimColor = dim ? (C.dimColors[dim.key] || scoreColor(score)) : scoreColor(score);
-      return { ...t, score, confidence: Math.round(confidence), divergence, calibration, dim, roi, dimColor };
-    }).sort((a, b) => b.roi - a.roi);
-  }, [topicPerformance, dimensionProfile, avgTimePerQ]);
 
-  if (!enriched.length) return null;
 
-  const maxROI = Math.max(...enriched.map(t => t.roi), 1);
-  const hovered = enriched.find(t => t.topic === hoveredTopic);
+// ── Score tier helpers ───────────────────────────────────────────────────
+const tier = (s) => {
+  const n = Number(s) || 0;
+  if (n >= 80) return { label: 'Mastered', color: C.green,  glow: 'rgba(5,150,105,.30)',  bg: C.greenTint, key: 'mastered' };
+  if (n >= 60) return { label: 'Solid',    color: C.blue500, glow: 'rgba(26,110,255,.28)', bg: C.blue50,    key: 'solid'    };
+  if (n >= 40) return { label: 'Building', color: C.amber,   glow: 'rgba(217,119,6,.28)', bg: C.amberTint, key: 'building' };
+  return         { label: 'Weak',    color: C.red,    glow: 'rgba(220,38,38,.30)',  bg: C.redTint,   key: 'weak'     };
+};
+
+const trendLabel = (t) => {
+  if (!t || t === 0) return { icon: '→', color: C.muted,  word: 'Stable' };
+  if (t > 0)         return { icon: '↑', color: C.green,  word: `+${t} pts` };
+  return               { icon: '↓', color: C.red,    word: `${t} pts` };
+};
+
+// ── Seed data (used when no props passed — remove in production) ─────────
+const SEED_TOPICS = [
+  { topic: 'Arrays & Hashing',    avgScore: 84, sessionCount: 12, trend:  6, lastScore: 88, sessions: [72,76,80,82,84,86,88] },
+  { topic: 'Dynamic Programming', avgScore: 51, sessionCount:  9, trend: -3, lastScore: 48, sessions: [60,55,58,52,50,53,48] },
+  { topic: 'Trees & Graphs',      avgScore: 73, sessionCount: 11, trend:  4, lastScore: 77, sessions: [62,66,70,71,74,75,77] },
+  { topic: 'System Design',       avgScore: 38, sessionCount:  6, trend: -5, lastScore: 34, sessions: [45,42,40,38,36,35,34] },
+  { topic: 'OOP Concepts',        avgScore: 91, sessionCount: 14, trend:  2, lastScore: 93, sessions: [85,87,88,90,91,92,93] },
+  { topic: 'SQL & Databases',     avgScore: 67, sessionCount:  8, trend:  8, lastScore: 73, sessions: [52,55,60,63,67,70,73] },
+  { topic: 'OS Fundamentals',     avgScore: 44, sessionCount:  7, trend:  1, lastScore: 45, sessions: [40,41,43,44,44,45,45] },
+  { topic: 'Recursion',           avgScore: 78, sessionCount: 10, trend:  3, lastScore: 81, sessions: [68,70,73,76,77,79,81] },
+  { topic: 'Bit Manipulation',    avgScore: 29, sessionCount:  4, trend: -8, lastScore: 22, sessions: [38,34,30,26,22] },
+  { topic: 'Greedy Algorithms',   avgScore: 62, sessionCount:  7, trend:  5, lastScore: 67, sessions: [50,53,57,60,63,65,67] },
+  { topic: 'Two Pointers',        avgScore: 88, sessionCount: 13, trend:  1, lastScore: 89, sessions: [80,83,84,86,87,88,89] },
+  { topic: 'Backtracking',        avgScore: 55, sessionCount:  8, trend:  6, lastScore: 60, sessions: [42,45,48,52,55,57,60] },
+];
+
+// ── Sparkline SVG ────────────────────────────────────────────────────────
+const Sparkline = ({ values = [], color = C.blue500, width = 140, height = 38 }) => {
+  if (!values.length) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const pad = 3;
+  const W = width - pad * 2;
+  const H = height - pad * 2;
+  const pts = values.map((v, i) => [
+    pad + (i / (values.length - 1)) * W,
+    pad + H - ((v - min) / range) * H,
+  ]);
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const fill = [...pts, [pts[pts.length - 1][0], pad + H], [pts[0][0], pad + H]];
+  const fillD = fill.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ') + ' Z';
 
   return (
-    <section style={{ ...S.card, marginBottom: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ ...S.eyebrow, color: C.violet }}>TOPIC INTELLIGENCE GRID</div>
-          <h2 style={S.cardH2}>Every topic you've touched — ranked by impact</h2>
-          <p style={S.cardSub}>
-            Tile size reflects ROI = dimension weight × score gap. Darker tile = lower score = more IRS to unlock.
-            Speed vs accuracy calibration is shown per topic.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 8, background: C.orangeTint, border: `1px solid ${C.orange}30` }}>
-            <span style={{ fontSize: 10 }}>⚠</span>
-            <span style={{ fontFamily: F.mono, fontSize: 9, color: C.orange, fontWeight: 700 }}>OVERCONFIDENT</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 8, background: C.greenTint, border: `1px solid ${C.green}30` }}>
-            <span style={{ fontSize: 10 }}>✓</span>
-            <span style={{ fontFamily: F.mono, fontSize: 9, color: C.green, fontWeight: 700 }}>CALIBRATED</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 8, background: C.blue50, border: `1px solid ${C.blue500}30` }}>
-            <span style={{ fontSize: 10 }}>🎯</span>
-            <span style={{ fontFamily: F.mono, fontSize: 9, color: C.blue500, fontWeight: 700 }}>UNDERRATED</span>
-          </div>
-        </div>
-      </div>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', overflow: 'visible' }}>
+      <defs>
+        <linearGradient id={`spk-fill-${color.replace('#','')}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={fillD} fill={`url(#spk-fill-${color.replace('#','')})`} />
+      <path d={d} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Last dot */}
+      <circle cx={pts[pts.length-1][0]} cy={pts[pts.length-1][1]} r="3.5" fill={color} />
+      <circle cx={pts[pts.length-1][0]} cy={pts[pts.length-1][1]} r="6" fill={color} fillOpacity="0.18" />
+    </svg>
+  );
+};
 
-      {/* Heat grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 18 }}>
-        {enriched.map((t, i) => {
-          const isHovered = hoveredTopic === t.topic;
-          const roiPct = t.roi / maxROI;
-          // Opacity maps score: low score = darker/more opaque
-          const bgOpacity = 0.08 + (1 - t.score / 100) * 0.22;
-          const rankLabel = i === 0 ? "TOP PRIORITY" : i === 1 ? "2ND" : i === 2 ? "3RD" : `#${i + 1}`;
+// ── Hex cell SVG path generator ─────────────────────────────────────────
+// Flat-top hexagon with given radius
+const hexPath = (r) => {
+  const pts = Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 180) * (60 * i);
+    return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`;
+  });
+  return `M${pts.join('L')}Z`;
+};
+
+// ── Hex cell component ───────────────────────────────────────────────────
+const HexCell = ({ data, index, isSelected, onClick, reducedMotion }) => {
+  const t = tier(data.avgScore);
+  const trnd = trendLabel(data.trend);
+
+  // Size scales with session count (6 → 14 sessions → r 46 → 60)
+  const minR = 44, maxR = 62;
+  const minSess = 4, maxSess = 14;
+  const r = minR + ((Math.min(data.sessionCount, maxSess) - minSess) / (maxSess - minSess)) * (maxR - minR);
+  const dim = r * 2 + 8;
+
+  const [mounted, setMounted] = useState(false);
+  const [pulsing, setPulsing] = useState(false);
+
+  useEffect(() => {
+    if (reducedMotion) { setMounted(true); return; }
+    const t = setTimeout(() => setMounted(true), index * 60);
+    return () => clearTimeout(t);
+  }, [index, reducedMotion]);
+
+  // Pulse only when selected
+  useEffect(() => {
+    if (!isSelected) { setPulsing(false); return; }
+    setPulsing(true);
+  }, [isSelected]);
+
+  const path = hexPath(r);
+
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={isSelected}
+      aria-label={`${data.topic}: ${data.avgScore} score, ${t.label}`}
+      style={{
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: dim,
+        height: dim,
+        flexShrink: 0,
+        opacity: mounted ? 1 : 0,
+        transform: mounted ? 'scale(1) translateY(0)' : 'scale(0.72) translateY(12px)',
+        transition: reducedMotion ? 'none' : `opacity .4s ease ${index * 60}ms, transform .5s cubic-bezier(.22,1,.36,1) ${index * 60}ms`,
+        outline: 'none',
+        position: 'relative',
+        zIndex: isSelected ? 2 : 1,
+      }}
+      className="tig-hex-btn"
+    >
+      <svg
+        width={dim}
+        height={dim}
+        viewBox={`${-dim/2} ${-dim/2} ${dim} ${dim}`}
+        style={{ overflow: 'visible', display: 'block' }}
+      >
+        <defs>
+          <radialGradient id={`hg-${index}`} cx="35%" cy="30%" r="65%">
+            <stop offset="0%" stopColor={t.color} stopOpacity={isSelected ? '0.28' : '0.12'} />
+            <stop offset="100%" stopColor={t.color} stopOpacity={isSelected ? '0.18' : '0.04'} />
+          </radialGradient>
+          <filter id={`hf-${index}`} x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation={isSelected ? '4' : '2'} result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+
+        {/* Glow ring (selected only) */}
+        {isSelected && (
+          <path
+            d={hexPath(r + 5)}
+            fill="none"
+            stroke={t.color}
+            strokeWidth="2"
+            strokeOpacity="0.35"
+            style={{ filter: `blur(4px)` }}
+          />
+        )}
+
+        {/* Pulse ring */}
+        {pulsing && !reducedMotion && (
+          <path
+            d={hexPath(r + 10)}
+            fill="none"
+            stroke={t.color}
+            strokeWidth="1.5"
+            strokeOpacity="0"
+            style={{ animation: 'tig-pulse 1.8s ease-out forwards' }}
+          />
+        )}
+
+        {/* Border hex */}
+        <path
+          d={path}
+          fill={`url(#hg-${index})`}
+          stroke={isSelected ? t.color : t.color + '55'}
+          strokeWidth={isSelected ? 2 : 1.5}
+          style={{
+            transition: reducedMotion ? 'none' : 'stroke .22s ease, stroke-width .22s ease',
+            filter: isSelected ? `drop-shadow(0 0 8px ${t.glow})` : 'none',
+          }}
+        />
+
+        {/* Score arc */}
+        {(() => {
+          const arcR = r - 7;
+          const circ = 2 * Math.PI * arcR;
+          const pct = Math.max(0, Math.min(100, data.avgScore));
+          const offset = circ - (pct / 100) * circ;
           return (
-            <div
-              key={t.topic}
-              onMouseEnter={() => setHoveredTopic(t.topic)}
-              onMouseLeave={() => setHoveredTopic(null)}
-              onClick={() => navigate("/interview")}
-              style={{
-                position: "relative",
-                padding: "14px 13px",
-                borderRadius: 14,
-                background: isHovered ? `${t.dimColor}18` : `${t.dimColor}${Math.round(bgOpacity * 255).toString(16).padStart(2, "0")}`,
-                border: `1.5px solid ${isHovered ? t.dimColor : `${t.dimColor}40`}`,
-                cursor: "pointer",
-                transition: "all 0.18s ease",
-                transform: isHovered ? "translateY(-3px) scale(1.02)" : "none",
-                boxShadow: isHovered ? `0 8px 24px ${t.dimColor}30` : "none",
-                overflow: "hidden",
-              }}
-            >
-              {/* ROI bar — bottom fill */}
-              <div style={{
-                position: "absolute", bottom: 0, left: 0, right: 0,
-                height: `${Math.round(roiPct * 5)}px`,
-                background: `${t.dimColor}55`,
-                borderRadius: "0 0 12px 12px",
-              }} />
-
-              {/* Rank badge */}
-              {i < 3 && (
-                <div style={{
-                  position: "absolute", top: 8, right: 8,
-                  fontSize: 7.5, fontWeight: 800, fontFamily: F.mono,
-                  color: i === 0 ? "#fff" : t.dimColor,
-                  background: i === 0 ? t.dimColor : `${t.dimColor}20`,
-                  padding: "2px 5px", borderRadius: 4, letterSpacing: "0.4px",
-                }}>{rankLabel}</div>
-              )}
-
-              <div style={{ fontSize: 11.5, fontWeight: 800, color: C.text, marginBottom: 8, paddingRight: i < 3 ? 36 : 0, lineHeight: 1.3 }}>
-                {t.topic}
-              </div>
-
-              {/* Score big */}
-              <div style={{ display: "flex", alignItems: "baseline", gap: 3, marginBottom: 6 }}>
-                <span style={{ fontFamily: F.display, fontSize: 26, fontWeight: 900, color: t.dimColor, lineHeight: 1 }}>{t.score}</span>
-                <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>/100</span>
-              </div>
-
-              {/* Score bar */}
-              <div style={{ height: 4, borderRadius: 999, background: `${t.dimColor}25`, overflow: "hidden", marginBottom: 8 }}>
-                <div style={{
-                  height: "100%", borderRadius: 999,
-                  width: mounted ? `${t.score}%` : "0%",
-                  background: t.dimColor,
-                  transition: "width 1.1s cubic-bezier(.16,1,.3,1)",
-                }} />
-              </div>
-
-              {/* Calibration + dim chip */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{
-                  fontSize: 9, fontWeight: 800, fontFamily: F.mono,
-                  color: t.calibration.color,
-                  background: t.calibration.bg,
-                  padding: "2px 6px", borderRadius: 4,
-                }}>
-                  {t.calibration.icon} {t.calibration.label.toUpperCase()}
-                </span>
-                {t.dim && (
-                  <span style={{ fontSize: 8, color: C.muted, fontFamily: F.mono, textAlign: "right", lineHeight: 1.2 }}>
-                    {t.dim.icon}
-                  </span>
-                )}
-              </div>
-
-              {/* ROI on hover */}
-              {isHovered && (
-                <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${t.dimColor}30`, fontSize: 9, color: C.sub, fontFamily: F.mono }}>
-                  ROI {t.roi.toFixed(1)} · {100 - t.score} pts headroom · Drill →
-                </div>
-              )}
-            </div>
+            <>
+              <circle cx="0" cy="0" r={arcR} fill="none" stroke={t.color} strokeWidth="2.5" strokeOpacity="0.10" />
+              <circle
+                cx="0" cy="0" r={arcR}
+                fill="none"
+                stroke={t.color}
+                strokeWidth="2.5"
+                strokeOpacity="0.75"
+                strokeDasharray={circ}
+                strokeDashoffset={offset}
+                strokeLinecap="round"
+                transform="rotate(-90)"
+                style={{ transition: reducedMotion ? 'none' : 'stroke-dashoffset 1s cubic-bezier(.16,1,.3,1)' }}
+              />
+            </>
           );
-        })}
+        })()}
+
+        {/* Score number */}
+        <text
+          textAnchor="middle"
+          dominantBaseline="middle"
+          y="-4"
+          fill={t.color}
+          style={{
+            fontFamily: F.display,
+            fontSize: r > 54 ? '20px' : '17px',
+            fontWeight: 900,
+            letterSpacing: '-0.04em',
+            filter: isSelected ? `drop-shadow(0 0 6px ${t.glow})` : 'none',
+          }}
+        >
+          {data.avgScore}
+        </text>
+
+        {/* Trend indicator */}
+        <text
+          textAnchor="middle"
+          dominantBaseline="middle"
+          y="13"
+          fill={trnd.color}
+          style={{ fontFamily: F.mono, fontSize: '9px', fontWeight: 700 }}
+        >
+          {trnd.icon} {trnd.word}
+        </text>
+      </svg>
+
+      {/* Label below hex */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: -22,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          whiteSpace: 'nowrap',
+          color: isSelected ? t.color : C.sub,
+          fontFamily: F.body,
+          fontSize: '10.5px',
+          fontWeight: isSelected ? 800 : 600,
+          letterSpacing: '-0.01em',
+          transition: reducedMotion ? 'none' : 'color .2s ease, font-weight .2s ease',
+          pointerEvents: 'none',
+        }}
+      >
+        {data.topic.length > 16 ? data.topic.slice(0, 15) + '…' : data.topic}
+      </div>
+    </button>
+  );
+};
+
+// ── Detail panel ─────────────────────────────────────────────────────────
+const DetailPanel = ({ data, onClose, onDrill, reducedMotion }) => {
+  const t = tier(data.avgScore);
+  const trnd = trendLabel(data.trend);
+
+  const drillSuggestions = {
+    mastered: ['Tackle hard LeetCode variants', 'Attempt timed mock without hints', 'Teach-back: explain in 90 sec'],
+    solid:    ['Focus on edge cases', 'Try company-tagged variants', 'Work 2 unseen problems this week'],
+    building: ['Redo the pattern from scratch', 'Slow down: write the invariant first', 'Watch one focused 20-min tutorial'],
+    weak:     ['Start with concept recall — no code yet', 'Solve 3 easy variants back-to-back', 'Flag for SOS session with Coach'],
+  };
+
+  const drills = drillSuggestions[t.key] || drillSuggestions.building;
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        padding: '20px',
+        borderRadius: '20px',
+        border: `1.5px solid ${t.color}30`,
+        background: `linear-gradient(150deg, ${t.bg} 0%, #fff 55%)`,
+        boxShadow: `0 16px 48px ${t.glow}, 0 4px 14px rgba(0,31,107,.06), inset 0 1px 0 rgba(255,255,255,.9)`,
+        animation: reducedMotion ? 'none' : 'tig-panel-in .28s cubic-bezier(.22,1,.36,1)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Accent top stripe */}
+      <div style={{
+        position: 'absolute', top: 0, left: '10%', right: '10%', height: '2px', borderRadius: '0 0 4px 4px',
+        background: `linear-gradient(90deg, transparent, ${t.color}, transparent)`,
+        opacity: 0.6,
+      }} />
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 16 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            fontFamily: F.display, fontSize: '15px', fontWeight: 900,
+            color: C.text, letterSpacing: '-0.03em', lineHeight: 1.1,
+          }}>
+            {data.topic}
+          </div>
+          <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '3px 8px', borderRadius: '999px',
+              background: t.color + '18', border: `1px solid ${t.color}40`,
+              color: t.color, fontFamily: F.mono, fontSize: '9px', fontWeight: 800,
+            }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: t.color, boxShadow: `0 0 6px ${t.color}` }} />
+              {t.label}
+            </span>
+            <span style={{
+              color: trnd.color, fontFamily: F.mono, fontSize: '9px', fontWeight: 700,
+            }}>
+              {trnd.icon} {trnd.word}
+            </span>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            width: 28, height: 28, borderRadius: 9, border: `1px solid ${C.border}`,
+            background: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center',
+            color: C.muted, flexShrink: 0, transition: 'all .16s ease',
+            fontFamily: F.mono, fontSize: '12px',
+          }}
+          className="tig-close-btn"
+        >
+          ✕
+        </button>
       </div>
 
-      {/* Detail panel — shows on hover */}
-      {hovered && (
-        <div style={{
-          padding: "16px 18px", borderRadius: 14,
-          background: `linear-gradient(135deg, ${hovered.dimColor}10, ${hovered.dimColor}05)`,
-          border: `1.5px solid ${hovered.dimColor}40`,
-          display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap",
-          transition: "all 0.2s ease",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
-            <div style={{
-              width: 48, height: 48, borderRadius: 13, flexShrink: 0,
-              background: `${hovered.dimColor}18`,
-              border: `1.5px solid ${hovered.dimColor}50`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontFamily: F.display, fontSize: 20, fontWeight: 900, color: hovered.dimColor,
-            }}>{hovered.score}</div>
-            <div>
-              <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: C.text }}>{hovered.topic}</div>
-              <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>
-                {hovered.dim ? `${hovered.dim.icon} ${hovered.dim.label} · ${Math.round((hovered.dim.weight ?? 0) * 100)}% IRS weight` : "Unmapped topic"}
-              </div>
+      {/* Stats row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 7, marginBottom: 16 }}>
+        {[
+          { label: 'Avg Score', value: data.avgScore, color: t.color },
+          { label: 'Sessions',  value: data.sessionCount, color: C.blue500 },
+          { label: 'Last',      value: data.lastScore ?? '—', color: data.lastScore >= data.avgScore ? C.green : C.red },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{
+            padding: '9px 8px', borderRadius: 12,
+            background: '#fff', border: `1px solid ${C.border}`,
+            textAlign: 'center',
+          }}>
+            <div style={{ fontFamily: F.display, fontSize: '17px', fontWeight: 900, color, letterSpacing: '-0.04em' }}>
+              {value}
             </div>
-          </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {[
-              { label: "SCORE", val: `${hovered.score}/100`, color: hovered.dimColor },
-              { label: "SPEED CONFIDENCE", val: `${hovered.confidence}/100`, color: C.amber },
-              { label: "CALIBRATION", val: `${hovered.calibration.icon} ${hovered.calibration.label}`, color: hovered.calibration.color },
-              { label: "IRS ROI", val: hovered.roi.toFixed(1), color: C.violet },
-            ].map(item => (
-              <div key={item.label} style={{ textAlign: "center", minWidth: 72 }}>
-                <div style={{ fontFamily: F.mono, fontSize: 8, color: C.muted, letterSpacing: "0.5px", marginBottom: 3 }}>{item.label}</div>
-                <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: item.color }}>{item.val}</div>
-              </div>
-            ))}
-          </div>
-          <button onClick={() => navigate("/interview")} style={{
-            border: "none", borderRadius: 10, flexShrink: 0,
-            background: `linear-gradient(135deg, ${hovered.dimColor}, ${hovered.dimColor}CC)`,
-            color: "#fff", padding: "9px 16px", fontSize: 12, fontWeight: 800, cursor: "pointer",
-            fontFamily: F.body, boxShadow: `0 4px 14px ${hovered.dimColor}40`,
-          }}>
-            ⚡ Drill {hovered.topic} →
-          </button>
-        </div>
-      )}
-
-      {/* Footer — top 3 priorities summary */}
-      <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-        {enriched.slice(0, 3).map((t, i) => (
-          <div key={t.topic} style={{
-            padding: "11px 13px", borderRadius: 11,
-            background: i === 0 ? C.redTint : i === 1 ? C.amberTint : C.blue50,
-            border: `1px solid ${i === 0 ? "#FECACA" : i === 1 ? "#FDE68A" : C.borderMd}`,
-            display: "flex", alignItems: "center", gap: 10,
-          }}>
-            <div style={{
-              width: 24, height: 24, borderRadius: 7, flexShrink: 0,
-              background: i === 0 ? C.red : i === 1 ? C.amber : C.blue500,
-              color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 11, fontWeight: 900, fontFamily: F.mono,
-            }}>{i + 1}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 800, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.topic}</div>
-              <div style={{ fontSize: 9.5, color: C.sub, fontFamily: F.mono, marginTop: 2 }}>{t.score}/100 · ROI {t.roi.toFixed(1)}</div>
+            <div style={{ marginTop: 2, fontFamily: F.mono, fontSize: '7.5px', fontWeight: 700, color: C.muted, letterSpacing: '0.4px' }}>
+              {label}
             </div>
           </div>
         ))}
       </div>
-    </section>
+
+      {/* Sparkline */}
+      {data.sessions?.length > 1 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: F.mono, fontSize: '8px', fontWeight: 700, color: C.muted, marginBottom: 6, letterSpacing: '0.6px' }}>
+            SCORE TRAJECTORY
+          </div>
+          <div style={{
+            padding: '10px 12px', borderRadius: 12,
+            background: '#fff', border: `1px solid ${C.border}`,
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <Sparkline values={data.sessions} color={t.color} width={140} height={38} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: F.mono, fontSize: '8px', color: C.muted, marginBottom: 3 }}>
+                {data.sessions.length} sessions
+              </div>
+              <div style={{
+                fontFamily: F.display, fontSize: '12px', fontWeight: 700, color: C.sub,
+              }}>
+                {data.sessions[data.sessions.length - 1] > data.sessions[0]
+                  ? 'Improving over time'
+                  : data.sessions[data.sessions.length - 1] === data.sessions[0]
+                  ? 'Consistent performance'
+                  : 'Needs attention'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Drill suggestions */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontFamily: F.mono, fontSize: '8px', fontWeight: 700, color: C.muted, marginBottom: 6, letterSpacing: '0.6px' }}>
+          NEXT ACTIONS
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {drills.map((d, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 8,
+              padding: '8px 10px', borderRadius: 10,
+              background: '#fff', border: `1px solid ${C.border}`,
+            }}>
+              <span style={{
+                width: 18, height: 18, borderRadius: 6, flexShrink: 0, marginTop: 1,
+                background: t.color + '18', color: t.color,
+                display: 'grid', placeItems: 'center',
+                fontFamily: F.mono, fontSize: '8px', fontWeight: 800,
+              }}>
+                {i + 1}
+              </span>
+              <span style={{ fontFamily: F.body, fontSize: '11.5px', fontWeight: 500, color: C.sub, lineHeight: 1.4 }}>
+                {d}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* CTA */}
+      <button
+        onClick={() => onDrill(data.topic)}
+        style={{
+          width: '100%', height: 42, borderRadius: 12, border: 'none',
+          background: `linear-gradient(150deg, ${t.color}ee 0%, ${t.color} 100%)`,
+          color: '#fff', cursor: 'pointer',
+          fontFamily: F.body, fontSize: '12.5px', fontWeight: 700,
+          letterSpacing: '-0.01em',
+          boxShadow: `0 8px 22px ${t.glow}, inset 0 1px 0 rgba(255,255,255,.30)`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          transition: reducedMotion ? 'none' : 'transform .2s ease, box-shadow .2s ease',
+          position: 'relative', overflow: 'hidden',
+        }}
+        className="tig-drill-btn"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="2.5" width="6" height="11" rx="3" />
+          <path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
+          <path d="M12 17.5V21M8.5 21h7" />
+        </svg>
+        Start Drill Session
+      </button>
+    </div>
+  );
+};
+
+// ── Legend ────────────────────────────────────────────────────────────────
+const Legend = () => (
+  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+    {[
+      { label: 'Mastered', color: C.green,  range: '80+' },
+      { label: 'Solid',    color: C.blue500, range: '60–79' },
+      { label: 'Building', color: C.amber,   range: '40–59' },
+      { label: 'Weak',     color: C.red,     range: '< 40' },
+    ].map(({ label, color, range }) => (
+      <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{
+          width: 24, height: 24, display: 'inline-block',
+          background: `${color}18`, border: `1.5px solid ${color}55`,
+          borderRadius: 5,
+        }} />
+        <span style={{ fontFamily: F.body, fontSize: '11px', fontWeight: 600, color: C.sub }}>
+          {label}
+          <span style={{ marginLeft: 4, fontFamily: F.mono, fontSize: '9px', color: C.muted }}>
+            ({range})
+          </span>
+        </span>
+      </div>
+    ))}
+    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ fontFamily: F.mono, fontSize: '9px', color: C.muted }}>Cell size</span>
+      <span style={{ width: 14, height: 14, borderRadius: 3, background: C.border }} />
+      <span style={{ fontFamily: F.mono, fontSize: '9px', color: C.muted }}>= session count</span>
+    </div>
+  </div>
+);
+
+// ── Summary bar ───────────────────────────────────────────────────────────
+const SummaryBar = ({ topics }) => {
+  const counts = { mastered: 0, solid: 0, building: 0, weak: 0 };
+  topics.forEach(t => { counts[tier(t.avgScore).key]++; });
+  const total = topics.length;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* Progress bar */}
+      <div style={{ flex: 1, height: 8, borderRadius: 99, background: C.border, overflow: 'hidden', display: 'flex' }}>
+        {[
+          { key: 'mastered', color: C.green  },
+          { key: 'solid',    color: C.blue500 },
+          { key: 'building', color: C.amber   },
+          { key: 'weak',     color: C.red     },
+        ].map(({ key, color }) => (
+          counts[key] > 0 && (
+            <div key={key} style={{
+              width: `${(counts[key] / total) * 100}%`, height: '100%',
+              background: color, transition: 'width .8s cubic-bezier(.22,1,.36,1)',
+            }} />
+          )
+        ))}
+      </div>
+
+      {/* Counts */}
+      <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+        {[
+          { key: 'mastered', color: C.green,   label: `${counts.mastered} mastered` },
+          { key: 'weak',     color: C.red,      label: `${counts.weak} weak`         },
+        ].map(({ color, label }) => (
+          <span key={label} style={{
+            fontFamily: F.mono, fontSize: '9px', fontWeight: 700, color,
+          }}>
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ── Main component ────────────────────────────────────────────────────────
+const TopicIntelligenceGrid = ({ topicData, onDrill }) => {
+  const topics = topicData?.length ? topicData : SEED_TOPICS;
+  const [selected, setSelected] = useState(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReducedMotion(mq.matches);
+    const handler = (e) => setReducedMotion(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const handleSelect = useCallback((topic) => {
+    setSelected(prev => prev?.topic === topic.topic ? null : topic);
+  }, []);
+
+  const handleDrill = useCallback((topicName) => {
+    if (onDrill) onDrill(topicName);
+    else alert(`Launching drill session: ${topicName}`);
+  }, [onDrill]);
+
+  // Sort: weak first (need attention), then building, solid, mastered
+  const sorted = [...topics].sort((a, b) => {
+    const order = { weak: 0, building: 1, solid: 2, mastered: 3 };
+    return order[tier(a.avgScore).key] - order[tier(b.avgScore).key];
+  });
+
+  return (
+    <>
+      <style>{`
+        @keyframes tig-pulse {
+          0%   { stroke-opacity: 0.6; stroke-dashoffset: 0; }
+          100% { stroke-opacity: 0; stroke-dashoffset: -60; }
+        }
+        @keyframes tig-panel-in {
+          from { opacity: 0; transform: translateX(14px) scale(.97); }
+          to   { opacity: 1; transform: translateX(0) scale(1); }
+        }
+        .tig-hex-btn:focus-visible { outline: 2px solid #1A6EFF; outline-offset: 4px; border-radius: 6px; }
+        .tig-hex-btn:hover > svg path:first-child,
+        .tig-hex-btn:hover > svg circle:last-child {
+          filter: brightness(1.1);
+        }
+        .tig-drill-btn:hover { transform: translateY(-2px); }
+        .tig-drill-btn:active { transform: scale(.97); }
+        .tig-close-btn:hover { background: #FEF2F2; border-color: #fca5a5; color: #DC2626; }
+        @media (prefers-reduced-motion: reduce) {
+          * { animation: none !important; transition: none !important; }
+        }
+      `}</style>
+
+      <div style={{
+        padding: '24px',
+        borderRadius: '24px',
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        boxShadow: '0 8px 32px rgba(0,31,107,.07), 0 2px 8px rgba(0,31,107,.04)',
+      }}>
+
+        {/* Header */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+            <div>
+              <h2 style={{
+                margin: 0, fontFamily: F.display, fontSize: '17px', fontWeight: 900,
+                color: C.text, letterSpacing: '-0.04em',
+              }}>
+                Topic Intelligence
+              </h2>
+              <p style={{ margin: '4px 0 0', fontFamily: F.body, fontSize: '12px', color: C.muted, fontWeight: 500 }}>
+                {topics.length} topics mapped · click any cell to drill down
+              </p>
+            </div>
+
+            {/* Session count scale indicator */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+              padding: '6px 10px', borderRadius: 10, background: C.bgDeep, border: `1px solid ${C.border}`,
+            }}>
+              {[18, 24, 30].map((r, i) => (
+                <div key={i} style={{
+                  width: r, height: r, borderRadius: '50%',
+                  background: `${C.blue500}${['12','1a','24'][i]}`,
+                  border: `1.5px solid ${C.blue500}${['30','44','66'][i]}`,
+                }} />
+              ))}
+              <span style={{ fontFamily: F.mono, fontSize: '8px', color: C.muted, fontWeight: 700 }}>sessions</span>
+            </div>
+          </div>
+
+          <SummaryBar topics={topics} />
+        </div>
+
+        {/* Two-column layout: grid + panel */}
+        <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 240px' : '1fr', gap: 20, alignItems: 'start' }}>
+
+          {/* Hex terrain */}
+          <div style={{ minWidth: 0 }}>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '36px 18px',
+              padding: '12px 8px 36px',
+              justifyContent: 'flex-start',
+            }}>
+              {sorted.map((topic, i) => (
+                <HexCell
+                  key={topic.topic}
+                  data={topic}
+                  index={i}
+                  isSelected={selected?.topic === topic.topic}
+                  onClick={() => handleSelect(topic)}
+                  reducedMotion={reducedMotion}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Detail panel */}
+          {selected && (
+            <div ref={panelRef} style={{ position: 'sticky', top: 100 }}>
+              <DetailPanel
+                data={selected}
+                onClose={() => setSelected(null)}
+                onDrill={handleDrill}
+                reducedMotion={reducedMotion}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Legend */}
+        <div style={{ marginTop: 4, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <Legend />
+        </div>
+      </div>
+    </>
   );
 };
 
@@ -2088,13 +2537,17 @@ const Analytics = () => {
         </AnimatedSection>
 
         <AnimatedSection delay={0}>
-        {/* ── TOPIC HEAT GRID (replaces Confidence vs Accuracy + ROI Point-Loss Map) ── */}
-        <TopicHeatGrid
-          topicPerformance={topicPerformance}
-          dimensionProfile={dimensionProfile}
-          avgTimePerQ={avgTimePerQ}
-          navigate={navigate}
-          mounted={mounted}
+        {/* ── TOPIC INTELLIGENCE GRID ───────────────────────────────────── */}
+        <TopicIntelligenceGrid
+          topicData={topicPerformance.map(t => ({
+            topic:        t.topic,
+            avgScore:     t.averageScore ?? t.avgScore ?? 0,
+            sessionCount: t.sessionCount ?? t.count ?? 1,
+            trend:        t.trend ?? 0,
+            lastScore:    t.lastScore ?? t.averageScore ?? 0,
+            sessions:     t.sessions ?? t.scoreHistory ?? [],
+          }))}
+          onDrill={(topic) => navigate(`/interview?topic=${encodeURIComponent(topic)}`)}
         />
 
         </AnimatedSection>

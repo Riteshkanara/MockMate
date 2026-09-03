@@ -26,3 +26,8 @@ export const getPublicProfile = async (slug) => {
   const response = await API.get(`/${slug}`);
   return response.data;
 };
+
+export const getMyProfile = async () => {
+  const response = await AuthAPI.get("/me");
+  return response.data;
+};

@@ -520,14 +520,14 @@ const HexCell = ({ data, index, isSelected, onClick, reducedMotion }) => {
   const r = minR + ((Math.min(data.sessionCount, maxSess) - minSess) / (maxSess - minSess)) * (maxR - minR);
   const dim = r * 2 + 8;
 
-  const [mounted, setMounted] = useState(false);
-  const [pulsing, setPulsing] = useState(false);
+const [mounted, setMounted] = useState(false);
+const [pulsing, setPulsing] = useState(false);
 
-  useEffect(() => {
-    if (reducedMotion) { setMounted(true); return; }
-    const t = setTimeout(() => setMounted(true), index * 60);
-    return () => clearTimeout(t);
-  }, [index, reducedMotion]);
+useEffect(() => {
+  if (reducedMotion) { setMounted(true); return; }
+  const t = setTimeout(() => setMounted(true), index * 60);
+  return () => clearTimeout(t);
+}, [index, reducedMotion]);
 
   // Pulse only when selected
   useEffect(() => {
@@ -2008,32 +2008,24 @@ const Analytics = () => {
   const [selectedCompany, setSelectedCompany] = useState(null);
   const hasFetched = useRef(false);
 
-  // ── CRITICAL: always mount at top — prevents scroll-to-bottom from child effects
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "instant" });
-  }, []);
 
-  // FIX: single ref-guarded useEffect — no more duplicate fetch
-  useEffect(() => {
-    if (hasFetched.current) return;
-    hasFetched.current = true;
-    (async () => {
-      try {
-        const [result] = await Promise.all([
-          getAnalytics(),
-          new Promise(resolve => setTimeout(resolve, 1500)),
-        ]);
-        setData(result);
-      } catch (err) {
-        console.error("Analytics load failed:", err);
-        setError("Unable to load your performance data.");
-      } finally {
-        setLoading(false);
-        requestAnimationFrame(() => setTimeout(() => setMounted(true), 50));
-      }
-    })();
-  }, []);
 
+  useEffect(() => {
+  setLoading(true);
+  setError("");
+  (async () => {
+    try {
+      const result = await getAnalytics();
+      setData(result);
+    } catch (err) {
+      console.error("Analytics load failed:", err);
+      setError("Unable to load your performance data.");
+    } finally {
+      setLoading(false);
+      requestAnimationFrame(() => setTimeout(() => setMounted(true), 50));
+    }
+  })();
+}, []); // empty deps = runs fresh every mount
   // ── Derived state ───────────────────────────────────────────────────────
   const topicPerformance = useMemo(() => data?.topicPerformance ?? [], [data]);
   const scoreTrend       = useMemo(() => data?.scoreTrend ?? [], [data]);
@@ -2098,15 +2090,18 @@ const Analytics = () => {
   const slope       = trendSlope(scoreTrend.map(s => s.score || 0));
   const sd          = stdDev(scoreTrend.map(s => s.score || 0));
 
-  // ── Loading / error states ───────────────────────────────────────────────
-  if (loading) return (
-    <div style={S.page}>
-      <div style={S.center}>
-        <BookLoader />
-        <p style={{ color: C.sub, marginTop: 14, fontSize: 13, fontFamily: F.body }}>Building your readiness profile…</p>
-      </div>
-    </div>
-  );
+if (loading) return (
+  <div style={{
+    height: 'calc(100vh - 100px)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#F0F4FF',
+  }}>
+    <BookLoader />
+  </div>
+);
 
   if (error) return (
     <div style={S.page}>
@@ -2232,7 +2227,7 @@ const Analytics = () => {
       `}</style>
 
       <div style={S.container} className="an-page">
-        <AnimatedSection delay={0}>
+        <>
         {/* ── PAGE HEADER ──────────────────────────────────────────────── */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 24, marginBottom: 28, flexWrap: "wrap" }}>
           <div>
@@ -2246,9 +2241,9 @@ const Analytics = () => {
           <button style={S.btnPrimary} className="an-btn-primary" onClick={() => navigate("/interview")}>🎯 New Interview</button>
         </div>
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={60}>
+        <>
         {/* ── HERO: LIVING AURA + IRS RING ─────────────────────────────── */}
         <section style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 18, marginBottom: 18 }} className="an-hero-grid">
           <div style={{ ...S.card, background: `linear-gradient(145deg, ${C.card} 0%, ${C.violetTint} 100%)` }}>
@@ -2318,9 +2313,9 @@ const Analytics = () => {
         </section>
         
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── IRS BREAKDOWN ────────────────────────────────────────────── */}
         <section style={{ ...S.card, marginBottom: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
@@ -2370,15 +2365,15 @@ const Analytics = () => {
           </div>
         </section>
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── SESSION QUALITY ───────────────────────────────────────────── */}
         <div style={{ marginBottom: 18 }}><SessionQualityCard /></div>
  
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── STAT CARDS — each with unique accent ─────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }} className="an-stats">
           <MetricCard icon="🎤" label="SESSIONS"   value={totalSessions}           sub={`${topicPerformance.length} topics covered`}                                                    color={C.violet}  accentColor={C.violet} />
@@ -2387,9 +2382,9 @@ const Analytics = () => {
           <MetricCard icon="⏱"  label="AVG TIME/Q" value={`${avgTimePerQ ?? "—"}s`} sub={avgTimePerQ ? (avgTimePerQ < 30 ? "Fast paced" : avgTimePerQ > 55 ? "Methodical" : "Balanced") : "No data"} color={C.blue600} accentColor={C.blue500} />
         </div>
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── TIER READINESS ────────────────────────────────────────────── */}
         <section style={{ ...S.card, marginBottom: 18 }}>
           <div style={{ ...S.eyebrow, color: C.violet }}>PACKAGE TIER READINESS</div>
@@ -2423,9 +2418,9 @@ const Analytics = () => {
           </div>
         </section>
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── DNA FINGERPRINT + STREAK CALENDAR ───────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
           <div style={S.card} className="an-card">
@@ -2464,9 +2459,9 @@ const Analytics = () => {
           </div>
         </div>
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── PERFORMANCE TRAJECTORY + TOPIC MOMENTUM ─────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
           <div style={S.card} className="an-card">
@@ -2528,15 +2523,15 @@ const Analytics = () => {
           </div>
         </div>
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── SKILL VELOCITY ────────────────────────────────────────────── */}
         <SkillVelocityGraph scoreTrend={scoreTrend} />
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── TOPIC INTELLIGENCE GRID ───────────────────────────────────── */}
         <TopicIntelligenceGrid
           topicData={topicPerformance.map(t => ({
@@ -2550,15 +2545,15 @@ const Analytics = () => {
           onDrill={(topic) => navigate(`/interview?topic=${encodeURIComponent(topic)}`)}
         />
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── BLIND SPOT ALERTS ────────────────────────────────────────── */}
         <BlindSpotAlertCard />
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── SIX DIMENSIONS GRID ──────────────────────────────────────── */}
         <section style={{ ...S.card, marginBottom: 18 }}>
           <div style={{ ...S.eyebrow, color: C.violet }}>PREPARATION PROFILE</div>
@@ -2598,9 +2593,9 @@ const Analytics = () => {
           </div>
         </section>
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── FULL AI PROFILE — War Room Edition ───────────────────────── */}
         <FullAIProfileSection
           dimensionProfile={dimensionProfile}
@@ -2613,15 +2608,15 @@ const Analytics = () => {
           strongest={strongestDim}
         />
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── COLD START vs WARM UP ────────────────────────────────────── */}
         <ColdStartWarmUpCard />
 
-        </AnimatedSection>
+        </>
 
-        <AnimatedSection delay={0}>
+        <>
         {/* ── SMART FOCUS + IRS CLIMB ───────────────────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }} className="an-two-col">
           {/* Smart Focus */}
@@ -2694,7 +2689,7 @@ const Analytics = () => {
           </div>
         </div>
 
-        </AnimatedSection>
+        </>
 
         <AnimatedSection delay={0}>
         {/* ── COACH BANNER — violet war-room identity ───────────────────── */}
@@ -2737,14 +2732,20 @@ const Analytics = () => {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const S = {
   page: {
-    minHeight: "100vh",
+  minHeight: "calc(100vh - 84px)",
     background: C.bg,
     backgroundImage: `radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.07) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(26,110,255,0.05) 0%, transparent 42%), radial-gradient(ellipse at 50% 100%, rgba(26,110,255,0.04) 0%, transparent 55%)`,
     padding: "36px 28px 80px",
     fontFamily: F.body,
   },
   container: { maxWidth: 1220, margin: "0 auto" },
-  center: { minHeight: "70vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" },
+center: { 
+  minHeight: "calc(100vh - 84px)",  // subtract navbar height
+  display: "flex", 
+  flexDirection: "column", 
+  alignItems: "center", 
+  justifyContent: "center" 
+},
 
   eyebrow: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.6px", color: C.violet, marginBottom: 6 },
   pageTitle: { margin: 0, fontFamily: F.display, fontSize: "clamp(26px, 4vw, 38px)", lineHeight: 1.1, fontWeight: 800, letterSpacing: "-0.8px", color: C.text },

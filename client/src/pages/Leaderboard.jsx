@@ -1,142 +1,106 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import API_BASE from '../config/api.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Leaderboard — Blueprint Blue edition
-//
-// Supports:
-//   1. This Week
-//   2. Overall
-//
-// Each period supports:
-//   - Global leaderboard
-//   - College leaderboard
-//
-// Backend response expected:
-// {
-//   weekly: {
-//     global: [],
-//     college: [],
-//     globalTotal: 0,
-//     collegeTotal: 0,
-//   },
-//   overall: {
-//     global: [],
-//     college: [],
-//     globalTotal: 0,
-//     collegeTotal: 0,
-//   },
-//   currentUser: {
-//     name,
-//     college,
-//     weekly: {...},
-//     overall: {...},
-//   },
-//   weekStart
-// }
+// MOCKMATE — LEADERBOARD v3 (Readiness Terminal v6 design language, premium pass)
+// Hero updated to match Coach's CommandHeader — brighter cyan/blue gradient,
+// glow orbs, uppercase mono eyebrow, glowing progress bar, gradient CTA.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const C = {
-  bg: '#F0F4FF',
-  card: '#FFFFFF',
-  cardAlt: '#F8FAFF',
+  paper:        '#F6F8FD',
+  paperDeep:    '#EEF2FC',
 
-  text: '#0A1628',
-  sub: '#3D5280',
-  muted: '#7A8BAF',
-  faint: '#A8B8D4',
+  surface:      '#FFFFFF',
+  surfaceSunk:  '#F3F6FD',
 
-  border: '#DDE5F7',
-  borderMd: '#B8CAF0',
-  borderStr: '#7FA3E8',
+  ink:          '#0A1628',
+  ink2:         '#111F38',
+  sub:          '#41547B',
+  muted:        '#7C8CAD',
+  faint:        '#AFBCDA',
 
-  blue50: '#EBF2FF',
-  blue100: '#C7DAFF',
-  blue200: '#9DBFFF',
-  blue400: '#4D8FFF',
-  blue500: '#1A6EFF',
-  blue600: '#0057E8',
-  blue700: '#0044C4',
-  blue900: '#001F6B',
+  line:         '#DEE6F7',
+  lineMd:       '#C4D2F0',
+  lineStr:      '#8FAAE8',
 
-  cyan400: '#00C8F0',
-  cyan500: '#00ADE0',
-  cyan600: '#0093C4',
-  cyanTint: '#E6F9FF',
+  signal:       '#0057E8',
+  signalDeep:   '#0041B8',
+  signalTint:   '#EAF1FF',
+  signalSoft:   '#4D8FFF',
 
-  green: '#059669',
-  greenTint: '#ECFDF5',
+  pulse:        '#00C2E8',
+  pulseDeep:    '#0093C4',
+  pulseTint:    '#E6FAFF',
 
-  amber: '#D97706',
-  amberTint: '#FFFBEB',
-  orange: '#EA580C',
-  orangeTint: '#FFF7ED',
+  green:        '#0E8F63',
+  greenTint:    '#E9F9F1',
+  amber:        '#B4790A',
+  amberTint:    '#FFF6E5',
+  orange:       '#C2530C',
+  orangeTint:   '#FFF1E6',
+  red:          '#C22626',
+  redTint:      '#FDECEC',
 
-  red: '#DC2626',
-  redTint: '#FEF2F2',
+  bronze:       '#9C6A3E',
+  bronzeTint:   '#F7EEE3',
+  silver:       '#6E7B99',
+  silverTint:   '#EFF2F8',
+  gold:         '#AD7F10',
+  goldTint:     '#FBF3DE',
+  platinum:     '#4C57C7',
+  platinumTint: '#EDEEFC',
 
-  // Podium metals
-  gold: '#F59E0B',
-  goldTint: '#FFFBEB',
-  silver: '#94A3B8',
-  silverTint: '#F8FAFC',
-  bronze: '#D97706',
-  bronzeTint: '#FFFBEB',
+  // Coach-style hero accents (brighter cyan/blue)
+  heroDark0:    '#080F1E',
+  heroDark1:    '#0A1628',
+  heroDark2:    '#0D1F3C',
+  heroBlue900:  '#001F6B',
+  cyanBright:   '#00C8F0',
+  blueBright:   '#1A6EFF',
+
+  shadow:   '0 1px 2px rgba(10,22,40,0.04), 0 8px 24px rgba(15,45,120,0.06)',
+  shadowMd: '0 4px 14px rgba(15,45,120,0.08), 0 1px 3px rgba(10,22,40,0.05)',
+  shadowLg: '0 24px 64px rgba(6,16,50,0.28)',
 };
 
 const F = {
-  display: "'Plus Jakarta Sans', 'Lexend', sans-serif",
-  body: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+  serif: "'Fraunces', 'Georgia', serif",
+  body:  "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+  mono:  "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const scoreColor = (score) => {
   const s = Number(score) || 0;
-
-  return s >= 80
-    ? C.green
-    : s >= 60
-      ? C.blue500
-      : s >= 40
-        ? C.amber
-        : C.orange;
+  return s >= 80 ? C.green : s >= 60 ? C.signal : s >= 40 ? C.amber : C.orange;
 };
 
-const scoreBg = (score) => {
-  const s = Number(score) || 0;
-
-  return s >= 80
-    ? C.greenTint
-    : s >= 60
-      ? C.blue50
-      : s >= 40
-        ? C.amberTint
-        : C.orangeTint;
-};
-
-// Efficiency = average score per completed session.
-// NOTE:
-// This is intentionally the same concept as your previous UI.
 const efficiency = (score, sessions) => {
   const numericScore = Number(score) || 0;
   const numericSessions = Number(sessions) || 0;
-
   return numericSessions > 0
     ? Math.round((numericScore / numericSessions) * 10) / 10
     : 0;
 };
 
-// Weekly-only visual rank movement mock.
-// Overall leaderboard doesn't pretend to have historical movement data.
 const mockDelta = (rank, seed = 0) => {
   const safeRank = Number(rank) || 0;
   const safeSeed = Number(seed) || 0;
-
   return ((safeSeed * 7 + safeRank * 3) % 9) - 4;
+};
+
+const percentileOf = (rank, total) => {
+  if (!rank || !total) return null;
+  return Math.max(0, Math.min(100, Math.round(((total - rank) / total) * 100)));
+};
+
+const isPlatinumBand = (rank, total) => {
+  const pct = percentileOf(rank, total);
+  return pct !== null && pct >= 95;
 };
 
 // ─── Animated counter ───────────────────────────────────────────────────────
@@ -146,495 +110,226 @@ const CountUp = ({ target = 0, duration = 1100, suffix = '' }) => {
   const [val, setVal] = useState(0);
 
   useEffect(() => {
-    let animationFrame;
+    let raf;
     let start = null;
-
     const step = (ts) => {
       if (!start) start = ts;
-
       const p = Math.min((ts - start) / duration, 1);
       const ease = 1 - Math.pow(1 - p, 3);
-
       setVal(Math.round(ease * safeTarget));
-
-      if (p < 1) {
-        animationFrame = requestAnimationFrame(step);
-      }
+      if (p < 1) raf = requestAnimationFrame(step);
     };
-
-    animationFrame = requestAnimationFrame(step);
-
-    return () => {
-      cancelAnimationFrame(animationFrame);
-    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
   }, [safeTarget, duration]);
 
-  return (
-    <span>
-      {val}
-      {suffix}
-    </span>
-  );
+  return <span>{val}{suffix}</span>;
 };
 
-// ─── Rank delta badge ────────────────────────────────────────────────────────
+// ─── Delta badge ─────────────────────────────────────────────────────────────
 
 const DeltaBadge = ({ delta, isNew = false, showDelta = true }) => {
-  if (!showDelta) {
-    return (
-      <span
-        style={{
-          fontFamily: F.mono,
-          fontSize: 9,
-          fontWeight: 700,
-          color: C.faint,
-        }}
-      >
-        —
-      </span>
-    );
+  if (!showDelta || (delta === 0 && !isNew)) {
+    return <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.faint }}>—</span>;
   }
-
   if (isNew) {
     return (
-      <span
-        style={{
-          fontFamily: F.mono,
-          fontSize: 9,
-          fontWeight: 800,
-          padding: '2px 7px',
-          borderRadius: 99,
-          background: C.cyanTint,
-          color: C.cyan600,
-          letterSpacing: '0.3px',
-        }}
-      >
+      <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 99, background: C.pulseTint, color: C.pulseDeep, letterSpacing: '0.3px' }}>
         NEW
       </span>
     );
   }
-
-  if (delta === 0) {
-    return (
-      <span
-        style={{
-          fontFamily: F.mono,
-          fontSize: 9,
-          fontWeight: 700,
-          color: C.faint,
-        }}
-      >
-        —
-      </span>
-    );
-  }
-
   const up = delta < 0;
-
   return (
-    <span
-      style={{
-        fontFamily: F.mono,
-        fontSize: 9,
-        fontWeight: 800,
-        padding: '2px 7px',
-        borderRadius: 99,
-        background: up ? C.greenTint : C.redTint,
-        color: up ? C.green : C.red,
-      }}
-    >
+    <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 99, background: up ? C.greenTint : C.redTint, color: up ? C.green : C.red }}>
       {up ? `↑${Math.abs(delta)}` : `↓${Math.abs(delta)}`}
     </span>
   );
 };
 
-// ─── Score mini-bar ──────────────────────────────────────────────────────────
+// ─── Score bar ───────────────────────────────────────────────────────────────
 
 const ScoreBar = ({ score, max }) => {
   const safeScore = Number(score) || 0;
   const safeMax = Number(max) || 0;
-
-  const pct = safeMax > 0
-    ? Math.min((safeScore / safeMax) * 100, 100)
-    : 0;
-
+  const pct = safeMax > 0 ? Math.min((safeScore / safeMax) * 100, 100) : 0;
   const color = scoreColor(safeScore);
-
   return (
-    <div
-      style={{
-        width: 64,
-        height: 4,
-        borderRadius: 99,
-        background: C.border,
-        overflow: 'hidden',
-      }}
-    >
-      <div
-        style={{
-          height: '100%',
-          width: `${pct}%`,
-          background: `linear-gradient(90deg, ${color}88, ${color})`,
-          borderRadius: 99,
-          transition: 'width 0.9s cubic-bezier(.16,1,.3,1)',
-        }}
-      />
+    <div style={{ width: 64, height: 4, borderRadius: 99, background: C.line, overflow: 'hidden' }}>
+      <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${color}88, ${color})`, borderRadius: 99, transition: 'width 0.9s cubic-bezier(.16,1,.3,1)' }} />
     </div>
   );
 };
 
-// ─── Percentile strip ────────────────────────────────────────────────────────
+// ─── Mini sparkline (row expansion) ──────────────────────────────────────────
 
-const PercentileStrip = ({ rank, total }) => {
-  if (!rank || !total) return null;
-
-  const safeRank = Number(rank);
-  const safeTotal = Number(total);
-
-  const pct = Math.max(
-    0,
-    Math.min(
-      100,
-      Math.round(((safeTotal - safeRank) / safeTotal) * 100)
-    )
-  );
-
-  const color =
-    pct >= 90
-      ? C.green
-      : pct >= 70
-        ? C.blue500
-        : pct >= 50
-          ? C.amber
-          : C.orange;
-
-  const label =
-    pct >= 90
-      ? 'Top 10%'
-      : pct >= 75
-        ? 'Top 25%'
-        : pct >= 50
-          ? 'Top 50%'
-          : 'Needs work';
-
+const MiniTrend = ({ points = [] }) => {
+  if (!points.length) {
+    return <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>No recent session data for this trend.</div>;
+  }
+  const max = Math.max(...points, 100);
   return (
-    <div style={{ marginTop: 14 }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 6,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: F.mono,
-            fontSize: 9,
-            fontWeight: 700,
-            color: 'rgba(255,255,255,0.55)',
-            letterSpacing: '0.5px',
-          }}
-        >
-          PERCENTILE
-        </span>
-
-        <span
-          style={{
-            fontFamily: F.display,
-            fontSize: 11,
-            fontWeight: 800,
-            color: '#fff',
-          }}
-        >
-          {label} · {pct}th
-        </span>
-      </div>
-
-      <div
-        style={{
-          height: 5,
-          borderRadius: 99,
-          background: 'rgba(255,255,255,0.15)',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            height: '100%',
-            width: `${pct}%`,
-            borderRadius: 99,
-            background: `linear-gradient(90deg, ${C.blue400}, ${C.cyan400})`,
-            transition: 'width 1.2s cubic-bezier(.16,1,.3,1)',
-          }}
-        />
-      </div>
-
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          marginTop: 4,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: F.mono,
-            fontSize: 8,
-            color: 'rgba(255,255,255,0.35)',
-          }}
-        >
-          Rank #{safeRank}
-        </span>
-
-        <span
-          style={{
-            fontFamily: F.mono,
-            fontSize: 8,
-            color: 'rgba(255,255,255,0.35)',
-          }}
-        >
-          {safeTotal} total
-        </span>
-      </div>
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 46 }}>
+      {points.map((p, i) => {
+        const h = Math.max(6, Math.round((p / max) * 100));
+        const col = scoreColor(p);
+        return (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 20 }}>
+            <div style={{ width: '100%', height: 40, display: 'flex', alignItems: 'flex-end', borderRadius: 4, background: C.surfaceSunk, border: `1px solid ${C.line}`, overflow: 'hidden' }}>
+              <div style={{ width: '100%', height: `${h}%`, background: col, borderRadius: '4px 4px 0 0' }} />
+            </div>
+            <span style={{ fontFamily: F.mono, fontSize: 8, color: C.muted }}>{p}</span>
+          </div>
+        );
+      })}
     </div>
   );
 };
 
-// ─── Podium block ────────────────────────────────────────────────────────────
+// ─── Premium podium block ────────────────────────────────────────────────────
 
-const PodiumBlock = ({
-  entry,
-  place,
-  delay,
-}) => {
-  const heights = {
-    1: 138,
-    2: 104,
-    3: 82,
-  };
+const PODIUM_METALS = {
+  1: { medal: '🥇', color: '#AD7F10', bright: '#F0B93D', tint: '#FBF3DE', glow: 'rgba(173,127,16,0.38)', label: '1st', laurel: '❧' },
+  2: { medal: '🥈', color: '#6E7B99', bright: '#A7B3CE', tint: '#EFF2F8', glow: 'rgba(110,123,153,0.30)', label: '2nd', laurel: '' },
+  3: { medal: '🥉', color: '#9C6A3E', bright: '#C88E5C', tint: '#F7EEE3', glow: 'rgba(156,106,62,0.30)', label: '3rd', laurel: '' },
+};
 
-  const metals = {
-    1: {
-      medal: '🥇',
-      color: C.gold,
-      tint: C.goldTint,
-      glow: 'rgba(245,158,11,0.35)',
-      label: '1st',
-    },
-
-    2: {
-      medal: '🥈',
-      color: C.silver,
-      tint: C.silverTint,
-      glow: 'rgba(148,163,184,0.30)',
-      label: '2nd',
-    },
-
-    3: {
-      medal: '🥉',
-      color: C.bronze,
-      tint: C.bronzeTint,
-      glow: 'rgba(217,119,6,0.28)',
-      label: '3rd',
-    },
-  };
-
-  const {
-    medal,
-    color,
-    tint,
-    glow,
-    label,
-  } = metals[place];
-
+const PodiumBlock = ({ entry, place, delay, isPlatinum, mounted }) => {
+  const heights = { 1: 168, 2: 124, 3: 98 };
+  const meta = PODIUM_METALS[place];
   const h = heights[place];
-  const avatarSize = place === 1 ? 62 : 50;
+  const avatarSize = place === 1 ? 76 : place === 2 ? 60 : 54;
+  const platinumHere = isPlatinum && place === 1;
 
   const avgScore = Number(entry?.avgScore) || 0;
   const sessionCount = Number(entry?.sessionCount) || 0;
+  const ringColor = platinumHere ? C.platinum : meta.color;
 
   return (
     <div
+      className={`lb-podium-col${place === 1 ? ' lb-podium-lead' : ''}`}
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        flex: place === 1 ? 1.2 : 1,
-        animation: `lbPodiumRise 0.72s cubic-bezier(.34,1.56,.64,1) ${delay}ms both`,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end',
+        flex: place === 1 ? 1.28 : 1,
+        opacity: mounted ? 1 : 0,
+        animation: mounted ? `lbPodiumRise 0.82s cubic-bezier(.22,1.4,.44,1) ${delay}ms both` : 'none',
+        position: 'relative',
       }}
     >
-      {/* Avatar + info above platform */}
+      {/* Rank chip floating above avatar */}
       <div
         style={{
-          textAlign: 'center',
-          marginBottom: 14,
-          padding: '0 4px',
+          position: 'relative',
+          width: place === 1 ? 34 : 28,
+          height: place === 1 ? 34 : 28,
+          borderRadius: '50%',
+          marginBottom: -14,
+          zIndex: 3,
+          background: `linear-gradient(135deg, ${meta.bright}, ${meta.color})`,
+          border: '2.5px solid #fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: F.mono, fontSize: place === 1 ? 13 : 11, fontWeight: 800, color: '#fff',
+          boxShadow: `0 4px 14px ${meta.glow}`,
         }}
       >
+        {place}
+      </div>
+
+      <div style={{ textAlign: 'center', marginBottom: 16, padding: '0 4px', position: 'relative', zIndex: 2 }}>
+        {platinumHere && (
+          <div
+            title="Top 1% — Platinum band"
+            style={{
+              position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)',
+              fontFamily: F.mono, fontSize: 8.5, fontWeight: 800, letterSpacing: '0.5px',
+              color: '#fff', background: `linear-gradient(135deg, ${C.platinum}, #7B84E8)`,
+              padding: '3px 10px', borderRadius: 99, whiteSpace: 'nowrap',
+              boxShadow: '0 4px 12px rgba(76,87,199,0.4)',
+            }}
+          >
+            ♛ PLATINUM
+          </div>
+        )}
+
+        {/* Avatar with glow ring + idle float on 1st */}
         <div
+          className={place === 1 ? 'lb-avatar-float' : undefined}
           style={{
-            width: avatarSize,
-            height: avatarSize,
-            borderRadius: '50%',
-            margin: '0 auto 6px',
-            background: `linear-gradient(135deg, ${color}44, ${color}BB)`,
-            border: `3px solid ${color}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontFamily: F.display,
-            fontSize: place === 1 ? 24 : 19,
-            fontWeight: 900,
-            color,
-            boxShadow: `0 6px 24px ${glow}`,
+            position: 'relative',
+            width: avatarSize, height: avatarSize, borderRadius: '50%', margin: platinumHere ? '18px auto 8px' : '0 auto 8px',
           }}
         >
-          {entry?.name?.charAt(0).toUpperCase() ?? '?'}
+          <div style={{
+            position: 'absolute', inset: -6, borderRadius: '50%',
+            background: `conic-gradient(from 0deg, ${ringColor}, ${meta.bright}, ${ringColor})`,
+            opacity: place === 1 ? 0.9 : 0.55,
+            filter: 'blur(0.5px)',
+          }} />
+          <div style={{
+            position: 'absolute', inset: -6, borderRadius: '50%',
+            boxShadow: `0 0 0 4px #fff, 0 10px 28px ${meta.glow}`,
+          }} />
+          <div style={{
+            position: 'absolute', inset: 0, borderRadius: '50%',
+            background: `linear-gradient(135deg, ${meta.color}33, ${meta.color}CC)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: F.serif, fontSize: place === 1 ? 28 : place === 2 ? 21 : 18, fontWeight: 600, color: '#fff',
+          }}>
+            {entry?.name?.charAt(0).toUpperCase() ?? '?'}
+          </div>
         </div>
 
-        <div
-          style={{
-            fontSize: place === 1 ? 20 : 16,
-            marginBottom: 5,
-          }}
-        >
-          {medal}
-        </div>
+        <div style={{ fontSize: place === 1 ? 22 : 16, marginBottom: 6 }}>{meta.medal}</div>
 
-        <div
-          style={{
-            fontFamily: F.display,
-            fontSize: place === 1 ? 13.5 : 11.5,
-            fontWeight: 800,
-            color: C.text,
-            maxWidth: 100,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <div style={{ fontFamily: F.body, fontSize: place === 1 ? 14.5 : 12, fontWeight: 700, color: C.ink, maxWidth: 112, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 auto' }}>
           {entry?.name ?? '—'}
         </div>
 
-        <div
-          style={{
-            fontFamily: F.display,
-            fontSize: place === 1 ? 19 : 15,
-            fontWeight: 900,
-            color,
-            marginTop: 3,
-            lineHeight: 1,
-          }}
-        >
-          {entry ? (
-            <CountUp
-              target={avgScore}
-              duration={900 + delay}
-            />
-          ) : (
-            '—'
-          )}
-
-          <span
-            style={{
-              fontFamily: F.mono,
-              fontSize: 9,
-              fontWeight: 600,
-              color: C.muted,
-            }}
-          >
-            /100
-          </span>
+        <div style={{ fontFamily: F.serif, fontSize: place === 1 ? 26 : 19, fontWeight: 500, color: meta.color, marginTop: 4, lineHeight: 1 }}>
+          {entry ? <CountUp target={avgScore} duration={950 + delay} /> : '—'}
+          <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 600, color: C.muted }}>/100</span>
         </div>
 
         {entry && (
-          <div
-            style={{
-              fontFamily: F.mono,
-              fontSize: 9,
-              color: C.muted,
-              marginTop: 4,
-              maxWidth: 108,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
+          <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 5, maxWidth: 116, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '5px auto 0' }}>
             {entry.college || '—'}
           </div>
         )}
 
         {entry && (
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              marginTop: 6,
-              padding: '2px 8px',
-              borderRadius: 99,
-              background: C.blue50,
-              border: `1px solid ${C.borderMd}`,
-            }}
-          >
-            <span
-              style={{
-                fontFamily: F.mono,
-                fontSize: 8,
-                color: C.blue600,
-                fontWeight: 700,
-              }}
-            >
-              ⚡
-              {efficiency(avgScore, sessionCount)}
-              /session
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8, padding: '3px 9px', borderRadius: 99, background: C.signalTint, border: `1px solid ${C.lineMd}` }}>
+            <span style={{ fontFamily: F.mono, fontSize: 8, color: C.signalDeep, fontWeight: 700 }}>
+              ⚡{efficiency(avgScore, sessionCount)}/session
             </span>
           </div>
         )}
       </div>
 
-      {/* Platform block */}
+      {/* Platform */}
       <div
+        className="lb-podium-plinth"
         style={{
-          width: '100%',
-          height: h,
-          borderRadius: '12px 12px 0 0',
-          background: `linear-gradient(180deg, ${tint} 0%, ${color}1A 100%)`,
-          border: `2px solid ${color}44`,
-          borderBottom: 'none',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: `0 -6px 24px ${glow}`,
-          position: 'relative',
-          overflow: 'hidden',
+          width: '100%', height: h, borderRadius: '16px 16px 0 0',
+          background: `linear-gradient(180deg, ${meta.tint} 0%, ${meta.color}22 100%)`,
+          border: `2px solid ${meta.color}4A`, borderBottom: 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: `0 -10px 32px ${meta.glow}, inset 0 1px 0 rgba(255,255,255,0.6)`,
+          position: 'relative', overflow: 'hidden',
         }}
       >
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: '30%',
-            width: '40%',
-            height: '100%',
-            background:
-              'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, transparent 100%)',
-            pointerEvents: 'none',
-          }}
-        />
-
-        <span
-          style={{
-            fontFamily: F.display,
-            fontSize: 30,
-            fontWeight: 900,
-            color: `${color}44`,
-            userSelect: 'none',
-          }}
-        >
-          {label}
+        {/* Diagonal shine sweep, looping only on 1st */}
+        <div className={place === 1 ? 'lb-plinth-sweep' : undefined} style={{
+          position: 'absolute', top: 0, left: '-40%', width: '55%', height: '100%',
+          background: 'linear-gradient(100deg, transparent, rgba(255,255,255,0.55), transparent)',
+          pointerEvents: 'none', transform: 'skewX(-18deg)',
+        }} />
+        <div style={{
+          position: 'absolute', top: 0, left: '30%', width: '40%', height: '100%',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.4) 0%, transparent 100%)',
+          pointerEvents: 'none',
+        }} />
+        <span style={{ fontFamily: F.serif, fontSize: 36, fontWeight: 600, color: `${meta.color}66`, userSelect: 'none', position: 'relative', zIndex: 1 }}>
+          {meta.label}
         </span>
       </div>
     </div>
@@ -645,39 +340,25 @@ const PodiumBlock = ({
 
 const Leaderboard = () => {
   const navigate = useNavigate();
+  const heroRef = useRef(null);
 
-  const EMPTY_BOARD = useMemo(
-    () => ({
-      global: [],
-      college: [],
-      globalTotal: 0,
-      collegeTotal: 0,
-    }),
-    []
-  );
+  const EMPTY_BOARD = useMemo(() => ({ global: [], college: [], globalTotal: 0, collegeTotal: 0 }), []);
 
   const [activePeriod, setActivePeriod] = useState('weekly');
   const [activeTab, setActiveTab] = useState('global');
+  const [query, setQuery] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
+  const [showSticky, setShowSticky] = useState(false);
 
   const [leaderboardData, setLeaderboardData] = useState({
-    weekly: {
-      global: [],
-      college: [],
-      globalTotal: 0,
-      collegeTotal: 0,
-    },
-
-    overall: {
-      global: [],
-      college: [],
-      globalTotal: 0,
-      collegeTotal: 0,
-    },
+    weekly: { global: [], college: [], globalTotal: 0, collegeTotal: 0 },
+    overall: { global: [], college: [], globalTotal: 0, collegeTotal: 0 },
   });
 
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [podiumMounted, setPodiumMounted] = useState(false);
 
   // ─── Load leaderboard ──────────────────────────────────────────────────────
 
@@ -690,226 +371,139 @@ const Leaderboard = () => {
           method: 'GET',
           credentials: 'include',
           cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache',
-          },
+          headers: { 'Cache-Control': 'no-cache' },
         });
-
         const data = await res.json();
 
-        console.log('Leaderboard response:', {
-          status: res.status,
-          ok: res.ok,
-          data,
-        });
-
         if (!res.ok) {
-          throw new Error(
-            data?.message ||
-              data?.error ||
-              `Leaderboard request failed with ${res.status}`
-          );
+          throw new Error(data?.message || data?.error || `Leaderboard request failed with ${res.status}`);
         }
-
         if (cancelled) return;
 
         setLeaderboardData({
-          weekly: {
-            ...EMPTY_BOARD,
-            ...(data.weekly || {}),
-          },
-
-          overall: {
-            ...EMPTY_BOARD,
-            ...(data.overall || {}),
-          },
+          weekly: { ...EMPTY_BOARD, ...(data.weekly || {}) },
+          overall: { ...EMPTY_BOARD, ...(data.overall || {}) },
         });
-
         setCurrentUser(data.currentUser ?? null);
       } catch (error) {
         console.error('Leaderboard load error:', error);
-
-        if (!cancelled) {
-          toast.error(
-            error?.message || 'Failed to load leaderboard'
-          );
-        }
+        if (!cancelled) toast.error(error?.message || 'Failed to load leaderboard');
       } finally {
         if (!cancelled) {
           setIsLoading(false);
-
-          requestAnimationFrame(() => {
-            setTimeout(() => {
-              setMounted(true);
-            }, 50);
-          });
+          requestAnimationFrame(() => setTimeout(() => setMounted(true), 50));
+          setTimeout(() => setPodiumMounted(true), 260);
         }
       }
     };
 
     load();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [EMPTY_BOARD]);
+
+  // Replay podium entrance whenever period/scope changes
+  useEffect(() => {
+    setPodiumMounted(false);
+    const t = setTimeout(() => setPodiumMounted(true), 60);
+    return () => clearTimeout(t);
+  }, [activePeriod, activeTab]);
+
+  // ─── Sticky rank bar on scroll ───────────────────────────────────────────
+
+  useEffect(() => {
+    const onScroll = () => {
+      if (!heroRef.current) return;
+      const rect = heroRef.current.getBoundingClientRect();
+      setShowSticky(rect.bottom < 0);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   // ─── Derived state ─────────────────────────────────────────────────────────
 
-  const selectedBoard =
-    leaderboardData?.[activePeriod] || EMPTY_BOARD;
+  const selectedBoard = leaderboardData?.[activePeriod] || EMPTY_BOARD;
+  const rawData = activeTab === 'global' ? selectedBoard.global || [] : selectedBoard.college || [];
 
-  const activeData =
-    activeTab === 'global'
-      ? selectedBoard.global || []
-      : selectedBoard.college || [];
+  const activeData = useMemo(() => {
+    if (!query.trim()) return rawData;
+    const q = query.trim().toLowerCase();
+    return rawData.filter(e => (e.name || '').toLowerCase().includes(q));
+  }, [rawData, query]);
 
-  const top3 = activeData.slice(0, 3);
+  const top3 = rawData.slice(0, 3);
 
-  const maxScore = activeData.length
-    ? Math.max(
-        ...activeData.map(
-          (entry) => Number(entry.avgScore) || 0
-        )
-      )
-    : 100;
+  const maxScore = rawData.length ? Math.max(...rawData.map(e => Number(e.avgScore) || 0)) : 100;
 
-  const totalCount =
-    activeTab === 'global'
-      ? Number(selectedBoard.globalTotal) ||
-        activeData.length
-      : Number(selectedBoard.collegeTotal) ||
-        activeData.length;
+  const totalCount = activeTab === 'global'
+    ? Number(selectedBoard.globalTotal) || rawData.length
+    : Number(selectedBoard.collegeTotal) || rawData.length;
 
-  const podiumOrder = [
-    top3[1],
-    top3[0],
-    top3[2],
-  ];
-
+  const podiumOrder = [top3[1], top3[0], top3[2]];
   const podiumPlace = [2, 1, 3];
-  const podiumDelay = [220, 0, 360];
+  const podiumDelay = [260, 40, 460];
+  const leaderIsPlatinum = isPlatinumBand(top3[0]?.rank ?? 1, totalCount);
 
-  const selectedUserPeriod =
-    currentUser?.[activePeriod] || null;
+  const selectedUserPeriod = currentUser?.[activePeriod] || null;
 
-  const userRank =
-    activeTab === 'global'
-      ? selectedUserPeriod?.globalRank ?? null
-      : selectedUserPeriod?.collegeRank ?? null;
+  const userRank = activeTab === 'global'
+    ? selectedUserPeriod?.globalRank ?? null
+    : selectedUserPeriod?.collegeRank ?? null;
 
-  const aheadOfUser =
-    activeTab === 'global'
-      ? selectedUserPeriod?.globalAheadOfUser ?? null
-      : selectedUserPeriod?.collegeAheadOfUser ?? null;
+  const aheadOfUser = activeTab === 'global'
+    ? selectedUserPeriod?.globalAheadOfUser ?? null
+    : selectedUserPeriod?.collegeAheadOfUser ?? null;
 
-  const currentUserScore =
-    selectedUserPeriod?.avgScore ?? null;
+  const currentUserScore = selectedUserPeriod?.avgScore ?? null;
+  const userPercentile = percentileOf(userRank, totalCount);
+  const userIsPlatinum = isPlatinumBand(userRank, totalCount);
 
-  const currentUserSessions =
-    selectedUserPeriod?.sessionCount ?? 0;
+  const gapToNext = aheadOfUser && currentUserScore != null
+    ? Math.round((Number(aheadOfUser.avgScore) - Number(currentUserScore)) * 10) / 10
+    : null;
 
-  const gapToNext =
-    aheadOfUser &&
-    currentUserScore !== null &&
-    currentUserScore !== undefined
-      ? Math.round(
-          (Number(aheadOfUser.avgScore) -
-            Number(currentUserScore)) *
-            10
-        ) / 10
-      : null;
+  const rankLabel = activeTab === 'global' ? 'global rank' : 'college rank';
+  const periodLabel = activePeriod === 'weekly' ? 'this week' : 'overall';
 
-  const rankLabel =
-    activeTab === 'global'
-      ? 'GLOBAL RANK'
-      : 'COLLEGE RANK';
+  const heroVerdict = !currentUser
+    ? "let's get you on the board."
+    : userRank == null
+      ? 'complete a session to get ranked.'
+      : userIsPlatinum
+        ? "you're in the platinum band — top 1%."
+        : userRank === 1
+          ? `you're #1 ${periodLabel} — defend it.`
+          : `you're #${userRank} ${activeTab === 'global' ? 'globally' : 'in your college'} ${periodLabel}.`;
 
-  const periodLabel =
-    activePeriod === 'weekly'
-      ? 'THIS WEEK'
-      : 'OVERALL';
+  const heroSub = !currentUser
+    ? 'Complete an interview and MockMate ranks you against every student practicing right now.'
+    : userRank == null
+      ? (activePeriod === 'weekly'
+          ? 'Complete an interview this week to appear on the board.'
+          : 'Complete an interview to appear on the overall leaderboard.')
+      : gapToNext && gapToNext > 0
+        ? `${gapToNext} points from #${userRank - 1}${aheadOfUser?.name ? ` (${aheadOfUser.name.split(' ')[0]})` : ''}.`
+        : `Top ${100 - (userPercentile ?? 0)}% of ${totalCount} tracked students.`;
 
-  const pageDescription =
-    activePeriod === 'weekly'
-      ? 'Weekly rankings by average interview score — resets every Monday.'
-      : 'Overall rankings based on your average score across all completed interviews.';
+  const sessionId = useMemo(() => Math.random().toString(36).slice(2, 8).toUpperCase(), []);
+  const clockNow = new Date();
 
   // ─── Loading ────────────────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          background: C.bg,
-          padding: '40px 24px',
-        }}
-      >
-        <style>
-          {`
-            @keyframes lbShimmer {
-              0% {
-                background-position: -200px 0;
-              }
-
-              100% {
-                background-position: 200px 0;
-              }
-            }
-
-            .lb-sk {
-              background:
-                linear-gradient(
-                  90deg,
-                  ${C.border} 25%,
-                  #EEF3FF 37%,
-                  ${C.border} 63%
-                );
-
-              background-size: 400px 100%;
-              animation: lbShimmer 1.4s ease infinite;
-            }
-          `}
-        </style>
-
-        <div
-          style={{
-            maxWidth: 780,
-            margin: '0 auto',
-          }}
-        >
-          <div
-            className="lb-sk"
-            style={{
-              width: 240,
-              height: 38,
-              borderRadius: 8,
-              marginBottom: 10,
-            }}
-          />
-
-          <div
-            className="lb-sk"
-            style={{
-              width: 360,
-              height: 14,
-              borderRadius: 6,
-              marginBottom: 32,
-            }}
-          />
-
-          {[...Array(6)].map((_, i) => (
-            <div
-              key={i}
-              className="lb-sk"
-              style={{
-                borderRadius: 14,
-                height: 72,
-                marginBottom: 10,
-                opacity: 1 - i * 0.12,
-              }}
-            />
+      <div style={S.page}>
+        <style>{`
+          @keyframes lbShimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+          .lb-sk { background: linear-gradient(90deg, ${C.line} 25%, #fff 37%, ${C.line} 63%); background-size: 400px 100%; animation: lbShimmer 1.4s ease infinite; }
+        `}</style>
+        <div style={S.container}>
+          <div className="lb-sk" style={{ width: 240, height: 34, borderRadius: 10, marginBottom: 20 }} />
+          <div className="lb-sk" style={{ borderRadius: 22, height: 200, marginBottom: 16 }} />
+          <div className="lb-sk" style={{ borderRadius: 18, height: 64, marginBottom: 16 }} />
+          <div className="lb-sk" style={{ borderRadius: 20, height: 320, marginBottom: 16 }} />
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="lb-sk" style={{ borderRadius: 14, height: 68, marginBottom: 10, opacity: 1 - i * 0.14 }} />
           ))}
         </div>
       </div>
@@ -918,1240 +512,341 @@ const Leaderboard = () => {
 
   return (
     <>
-      <style>
-        {`
-          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');
+      <GlobalStyles />
 
-          * {
-            box-sizing: border-box;
-          }
+      {/* ── Sticky condensed rank bar ── */}
+      {showSticky && currentUser && (
+        <div style={S.stickyBar} className="lb-sticky">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <span style={S.liveDot} />
+            <span style={{ ...S.mono, color: 'rgba(255,255,255,0.5)' }}>leaderboard</span>
+            <span style={{ color: 'rgba(255,255,255,0.25)' }}>·</span>
+            <span style={{ fontFamily: F.body, fontSize: 12.5, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {currentUser.name}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            {userRank ? (
+              <>
+                <span style={{ fontFamily: F.serif, fontSize: 20, fontWeight: 500, color: '#fff' }}>#{userRank}</span>
+                <span style={{ fontFamily: F.mono, fontSize: 10, color: C.pulse }}>{currentUserScore}/100</span>
+              </>
+            ) : (
+              <span style={{ fontFamily: F.mono, fontSize: 10.5, color: 'rgba(255,255,255,0.5)' }}>unranked</span>
+            )}
+          </div>
+        </div>
+      )}
 
-          @keyframes lbPodiumRise {
-            from {
-              opacity: 0;
-              transform: translateY(44px) scale(0.94);
-            }
+      <div style={S.page} className="mm-page">
+        <div style={S.container}>
 
-            to {
-              opacity: 1;
-              transform: translateY(0) scale(1);
-            }
-          }
-
-          @keyframes lbSlideIn {
-            from {
-              opacity: 0;
-              transform: translateX(-16px);
-            }
-
-            to {
-              opacity: 1;
-              transform: translateX(0);
-            }
-          }
-
-          @keyframes lbFadeUp {
-            from {
-              opacity: 0;
-              transform: translateY(8px);
-            }
-
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
-          }
-
-          @keyframes lbBannerGlow {
-            0%,
-            100% {
-              box-shadow:
-                0 8px 36px rgba(0, 87, 232, 0.30);
-            }
-
-            50% {
-              box-shadow:
-                0 8px 52px rgba(0, 173, 224, 0.38);
-            }
-          }
-
-          .lb-row {
-            transition:
-              background 0.16s ease,
-              transform 0.16s ease,
-              box-shadow 0.16s ease;
-          }
-
-          .lb-row:hover {
-            background: ${C.blue50} !important;
-            transform: translateX(4px);
-            box-shadow:
-              inset 3px 0 0 ${C.blue500};
-          }
-
-          .lb-row-you:hover {
-            transform: translateX(4px);
-            box-shadow:
-              inset 3px 0 0 ${C.cyan500} !important;
-          }
-
-          .lb-tab {
-            transition: all 0.18s ease;
-            cursor: pointer;
-          }
-
-          .lb-tab:hover:not(.lb-tab-active) {
-            background: ${C.blue50} !important;
-            color: ${C.blue600} !important;
-          }
-
-          .lb-cta-btn {
-            transition:
-              transform 0.15s,
-              box-shadow 0.15s;
-          }
-
-          .lb-cta-btn:hover {
-            transform: translateY(-1px);
-            box-shadow:
-              0 6px 20px rgba(0, 87, 232, 0.28) !important;
-          }
-
-          .lb-new-iv-btn {
-            position: relative;
-            overflow: hidden;
-          }
-
-          .lb-new-iv-btn::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background:
-              linear-gradient(
-                120deg,
-                transparent 30%,
-                rgba(255, 255, 255, 0.28) 50%,
-                transparent 70%
-              );
-            transform: translateX(-120%);
-            transition: transform 0.6s ease;
-          }
-
-          .lb-new-iv-btn:hover::after {
-            transform: translateX(120%);
-          }
-
-          .lb-new-iv-btn:hover {
-            transform: translateY(-1px);
-            box-shadow:
-              0 8px 24px rgba(0, 87, 232, 0.34) !important;
-          }
-
-          @media (max-width: 700px) {
-            .lb-hero {
-              flex-direction: column !important;
-              align-items: flex-start !important;
-            }
-
-            .lb-podium-wrap {
-              padding:
-                20px
-                12px
-                0 !important;
-            }
-
-            .lb-row {
-              flex-wrap: wrap !important;
-            }
-
-            .lb-college-col {
-              display: none !important;
-            }
-
-            .lb-efficiency-col {
-              display: none !important;
-            }
-          }
-
-          @media (max-width: 480px) {
-            .lb-container {
-              padding:
-                20px
-                14px
-                64px !important;
-            }
-
-            .lb-banner {
-              flex-direction: column !important;
-              align-items: flex-start !important;
-              gap: 14px !important;
-            }
-          }
-        `}
-      </style>
-
-      <div
-        style={{
-          minHeight: '100vh',
-          background: C.bg,
-          backgroundImage:
-            'radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.07) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(0,173,224,0.05) 0%, transparent 42%)',
-          padding: '36px 24px 80px',
-          fontFamily: F.body,
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 780,
-            margin: '0 auto',
-          }}
-          className="lb-container"
-        >
-          {/* ── Page header ── */}
-          <div
-            style={{
-              marginBottom: 28,
-              animation: mounted
-                ? 'lbFadeUp 0.45s ease'
-                : 'none',
-            }}
-            className="lb-hero"
-          >
-            <div style={{ marginBottom: 18 }}>
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: C.blue50,
-                  border: `1px solid ${C.borderMd}`,
-                  borderRadius: 99,
-                  padding: '4px 12px',
-                  marginBottom: 10,
-                }}
-              >
-                <span
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: C.green,
-                    display: 'inline-block',
-                    boxShadow:
-                      '0 0 0 2px rgba(5,150,105,0.25)',
-                  }}
-                />
-
-                <span
-                  style={{
-                    fontFamily: F.mono,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: C.blue600,
-                    letterSpacing: '0.4px',
-                  }}
-                >
-                  LIVE RANKINGS
-                </span>
-              </div>
-
-              <h1
-                style={{
-                  margin: '0 0 6px',
-                  fontFamily: F.display,
-                  fontSize: 'clamp(28px, 4vw, 38px)',
-                  fontWeight: 900,
-                  color: C.text,
-                  letterSpacing: '-1px',
-                  lineHeight: 1.1,
-                }}
-              >
-                Leaderboard
-              </h1>
-
-              <p
-                style={{
-                  margin: 0,
-                  fontFamily: F.body,
-                  fontSize: 14,
-                  color: C.sub,
-                }}
-              >
-                {pageDescription}
-              </p>
+          {/* ── STATUS STRIP ──────────────────────────────────────────── */}
+          <div style={S.strip} className="mm-strip">
+            <div style={S.stripL}>
+              <span style={S.liveDot} />
+              <span style={S.mono}>mockmate leaderboard</span>
+            </div>
+            <div style={S.stripR} className="mm-strip-r">
+              <span style={S.mono}>session {sessionId}</span>
+              <span style={{ color: C.lineMd }}>·</span>
+              <span style={S.mono}>
+                {clockNow.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toLowerCase()}
+              </span>
             </div>
           </div>
 
-          {/* ── Your rank banner ── */}
-          {currentUser && (
-            <div
-              style={{
-                background:
-                  `linear-gradient(135deg, ${C.blue900} 0%, #001A50 45%, ${C.blue700} 80%, #003366 100%)`,
-                borderRadius: 20,
-                padding: '22px 26px',
-                marginBottom: 20,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                gap: 20,
-                animation:
-                  'lbBannerGlow 4s ease-in-out infinite',
-                position: 'relative',
-                overflow: 'hidden',
-              }}
-              className="lb-banner"
-            >
-              {/* Dot-grid texture */}
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  backgroundImage:
-                    'radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px)',
-                  backgroundSize: '22px 22px',
-                  pointerEvents: 'none',
-                }}
-              />
+          {/* ── HERO ──────────────────────────────────────────────────── */}
+          <section ref={heroRef} style={S.hero} className="mm-hero">
+            <div style={S.heroGlowTop} />
+            <div style={S.heroGlowBottom} />
+            <div style={S.heroNoise} />
+            <div style={S.heroGrid} className="mm-hero-grid">
 
-              <div
-                style={{
-                  position: 'absolute',
-                  top: -30,
-                  right: 80,
-                  width: 160,
-                  height: 160,
-                  borderRadius: '50%',
-                  background:
-                    'radial-gradient(circle, rgba(0,200,240,0.12) 0%, transparent 70%)',
-                  pointerEvents: 'none',
-                }}
-              />
-
-              <div
-                style={{
-                  position: 'relative',
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
-                <div
-                  style={{
-                    fontFamily: F.mono,
-                    fontSize: 9.5,
-                    fontWeight: 700,
-                    color: 'rgba(255,255,255,0.48)',
-                    letterSpacing: '1.6px',
-                    marginBottom: 6,
-                  }}
-                >
-                  YOUR STANDING
+              <div style={S.irsBlock}>
+                <div style={S.irsLabel}>{rankLabel}</div>
+                <div style={S.irsNum} className="mm-irs-num">
+                  {userRank ?? '—'}
+                  {userRank && <span style={S.irsMax}>#</span>}
                 </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    marginBottom: 4,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 12,
-                      flexShrink: 0,
-                      background:
-                        `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontFamily: F.display,
-                      fontSize: 17,
-                      fontWeight: 900,
-                      color: '#fff',
-                    }}
-                  >
-                    {currentUser.name
-                      ?.charAt(0)
-                      .toUpperCase() || '?'}
-                  </div>
-
-                  <div
-                    style={{
-                      minWidth: 0,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontFamily: F.display,
-                        fontSize: 17,
-                        fontWeight: 800,
-                        color: '#fff',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {currentUser.name}
-                    </div>
-
-                    <div
-                      style={{
-                        fontFamily: F.body,
-                        fontSize: 12,
-                        color: 'rgba(255,255,255,0.55)',
-                        marginTop: 1,
-                      }}
-                    >
-                      {currentUser.college || '—'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Next rank gap */}
-                {gapToNext !== null &&
-                  gapToNext > 0 &&
-                  userRank > 1 && (
-                    <div
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        marginTop: 8,
-                        padding: '5px 10px',
-                        borderRadius: 99,
-                        background:
-                          'rgba(0,200,240,0.12)',
-                        border:
-                          '1px solid rgba(0,200,240,0.22)',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: F.mono,
-                          fontSize: 9.5,
-                          fontWeight: 700,
-                          color: C.cyan400,
-                        }}
-                      >
-                        +{gapToNext} pts to beat #
-                        {userRank - 1} (
-                        {aheadOfUser?.name?.split(' ')[0] ||
-                          'next rank'}
-                        )
-                      </span>
-                    </div>
-                  )}
-
-                {/* #1 */}
-                {userRank === 1 && (
-                  <div
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      marginTop: 8,
-                      padding: '5px 10px',
-                      borderRadius: 99,
-                      background:
-                        'rgba(245,158,11,0.15)',
-                      border:
-                        '1px solid rgba(245,158,11,0.3)',
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: F.mono,
-                        fontSize: 9.5,
-                        fontWeight: 700,
-                        color: C.gold,
-                      }}
-                    >
-                      🥇 You're #1{' '}
-                      {activePeriod === 'weekly'
-                        ? 'this week'
-                        : 'overall'}{' '}
-                      — defend it!
-                    </span>
-                  </div>
-                )}
-
-                <PercentileStrip
-                  rank={userRank}
-                  total={totalCount}
-                />
-              </div>
-
-              <div
-                style={{
-                  textAlign: 'right',
-                  position: 'relative',
-                  flexShrink: 0,
-                }}
-              >
-                {userRank ? (
+                {userRank && (
                   <>
-                    <div
-                      style={{
-                        fontFamily: F.display,
-                        fontSize: 44,
-                        fontWeight: 900,
-                        color: '#fff',
-                        lineHeight: 1,
-                        letterSpacing: '-2px',
-                        background:
-                          `linear-gradient(135deg, #fff 40%, ${C.cyan400} 100%)`,
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                      }}
-                    >
-                      #{userRank}
+                    <div style={{
+                      ...S.tierPill,
+                      background: userIsPlatinum ? 'rgba(140,150,240,0.16)' : 'rgba(255,255,255,0.08)',
+                      color: userIsPlatinum ? '#C7CDFB' : '#fff',
+                      border: `1px solid ${userIsPlatinum ? 'rgba(140,150,240,0.4)' : 'rgba(255,255,255,0.18)'}`,
+                    }}>
+                      {userIsPlatinum ? '♛ platinum band' : `top ${100 - (userPercentile ?? 0)}%`}
                     </div>
-
-                    <div
-                      style={{
-                        fontFamily: F.mono,
-                        fontSize: 10,
-                        color: 'rgba(255,255,255,0.45)',
-                        marginTop: 3,
-                        letterSpacing: '0.4px',
-                      }}
-                    >
-                      {rankLabel}
+                    <div style={S.irsBar}>
+                      <div style={{ ...S.irsBarFill, width: mounted ? `${userPercentile ?? 0}%` : '0%' }} />
                     </div>
-
-                    {currentUserScore !== null &&
-                      currentUserScore !== undefined && (
-                        <div
-                          style={{
-                            marginTop: 8,
-                            fontFamily: F.display,
-                            fontSize: 14,
-                            fontWeight: 800,
-                            color: 'rgba(255,255,255,0.88)',
-                          }}
-                        >
-                          {currentUserScore}
-                          <span
-                            style={{
-                              fontFamily: F.mono,
-                              fontSize: 10,
-                              color:
-                                'rgba(255,255,255,0.45)',
-                            }}
-                          >
-                            /100
-                          </span>
-                        </div>
-                      )}
-
-                    <div
-                      style={{
-                        marginTop: 4,
-                        fontFamily: F.mono,
-                        fontSize: 9.5,
-                        color: 'rgba(255,255,255,0.45)',
-                      }}
-                    >
-                      ⚡{' '}
-                      {efficiency(
-                        currentUserScore,
-                        currentUserSessions
-                      )}
-                      /session
-                    </div>
+                    <div style={S.irsGapText}>{totalCount} tracked {activeTab === 'global' ? 'students' : 'in your college'}</div>
                   </>
-                ) : (
-                  <div
-                    style={{
-                      fontFamily: F.body,
-                      fontSize: 13,
-                      color: 'rgba(255,255,255,0.65)',
-                      fontWeight: 500,
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    {activePeriod === 'weekly' ? (
-                      <>
-                        Complete an interview
-                        <br />
-                        this week to get ranked
-                      </>
-                    ) : (
-                      <>
-                        Complete an interview
-                        <br />
-                        to get ranked overall
-                      </>
-                    )}
+                )}
+              </div>
+
+              <div style={S.verdictBlock}>
+                <div style={S.heroKicker}>{periodLabel} · {activeTab}</div>
+                <h1 style={S.heroH1}>
+                  {currentUser?.name?.split(' ')[0] ? `${currentUser.name.split(' ')[0]}, ` : ''}{heroVerdict}
+                </h1>
+                <p style={S.heroSub}>{heroSub}</p>
+
+                <div style={S.heroActions}>
+                  <button style={S.btnPrimary} className="mm-btn-primary" onClick={() => navigate('/interview')}>
+                    Practice now
+                  </button>
+                  {userRank != null && (
+                    <button style={S.btnGhost} className="mm-btn-ghost" onClick={() => navigate('/analytics')}>
+                      Your analytics
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ── DEDICATED TOGGLE SECTION ─────────────────────────────────── */}
+          <section style={S.toggleCard} className="lb-toggle-card">
+            <div style={S.toggleHeadRow}>
+              <div style={S.eyebrow}>Board settings</div>
+              <div style={S.mono}>viewing {activeData.length !== rawData.length ? `${activeData.length} of ` : ''}{rawData.length} {rawData.length === 1 ? 'entry' : 'entries'}</div>
+            </div>
+
+            <div style={S.toggleGrid} className="lb-toggle-grid">
+              <ToggleGroup
+                label="Time period"
+                icon="◷"
+                options={[
+                  { id: 'weekly', label: 'This week', helper: 'Resets every Monday' },
+                  { id: 'overall', label: 'Overall', helper: 'All-time record' },
+                ]}
+                value={activePeriod}
+                onChange={setActivePeriod}
+                accent={C.signal}
+                accentTint={C.signalTint}
+              />
+              <ToggleGroup
+                label="Scope"
+                icon="◎"
+                options={[
+                  { id: 'global', label: 'Global', helper: `${selectedBoard.globalTotal || 0} students` },
+                  { id: 'college', label: currentUser?.college?.split(' ')[0] || 'College', helper: `${selectedBoard.collegeTotal || 0} students` },
+                ]}
+                value={activeTab}
+                onChange={setActiveTab}
+                accent={C.pulseDeep}
+                accentTint={C.pulseTint}
+              />
+            </div>
+          </section>
+
+          {/* ── PREMIUM PODIUM ─────────────────────────────────────────── */}
+          {top3.length >= 1 && (
+            <div style={S.podiumCard} className="lb-podium-wrap">
+              <div style={S.podiumGlowTop} />
+              <div style={S.podiumHeader}>
+                <div>
+                  <div style={S.eyebrow}>Top performers</div>
+                  <h2 style={S.cardH2}>{periodLabel === 'this week' ? 'This week\u2019s leaders' : 'All-time leaders'}</h2>
+                </div>
+                {leaderIsPlatinum && (
+                  <div style={{ ...S.tierBadgeSm, color: '#fff', background: `linear-gradient(135deg, ${C.platinum}, #7B84E8)`, borderColor: 'transparent', boxShadow: '0 4px 14px rgba(76,87,199,0.35)' }}>
+                    ♛ platinum leader
                   </div>
                 )}
               </div>
-            </div>
-          )}
-
-          {/* ── Period tabs ── */}
-          <div
-            style={{
-              background: C.card,
-              border: `1.5px solid ${C.border}`,
-              borderRadius: 14,
-              padding: 4,
-              display: 'flex',
-              gap: 4,
-              marginBottom: 10,
-            }}
-          >
-            {[
-              {
-                id: 'weekly',
-                label: '📅  This Week',
-              },
-              {
-                id: 'overall',
-                label: '🏆  Overall',
-              },
-            ].map((period) => (
-              <button
-                key={period.id}
-                onClick={() =>
-                  setActivePeriod(period.id)
-                }
-                className={`lb-tab${
-                  activePeriod === period.id
-                    ? ' lb-tab-active'
-                    : ''
-                }`}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  borderRadius: 10,
-                  border: 'none',
-                  fontFamily: F.body,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  background:
-                    activePeriod === period.id
-                      ? `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`
-                      : 'transparent',
-                  color:
-                    activePeriod === period.id
-                      ? '#fff'
-                      : C.sub,
-                  boxShadow:
-                    activePeriod === period.id
-                      ? '0 2px 14px rgba(0,87,232,0.28)'
-                      : 'none',
-                  transition: 'all 0.18s',
-                }}
-              >
-                {period.label}
-              </button>
-            ))}
-          </div>
-
-          {/* ── Scope tabs ── */}
-          <div
-            style={{
-              background: C.card,
-              border: `1.5px solid ${C.border}`,
-              borderRadius: 14,
-              padding: 4,
-              display: 'flex',
-              gap: 4,
-              marginBottom: 22,
-            }}
-          >
-            {['global', 'college'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`lb-tab${
-                  activeTab === tab
-                    ? ' lb-tab-active'
-                    : ''
-                }`}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  borderRadius: 10,
-                  border: 'none',
-                  fontFamily: F.body,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  background:
-                    activeTab === tab
-                      ? `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`
-                      : 'transparent',
-                  color:
-                    activeTab === tab
-                      ? '#fff'
-                      : C.sub,
-                  boxShadow:
-                    activeTab === tab
-                      ? '0 2px 14px rgba(0,87,232,0.28)'
-                      : 'none',
-                  transition: 'all 0.18s',
-                }}
-              >
-                {tab === 'global'
-                  ? '🌍  Global'
-                  : `🏫  ${
-                      currentUser?.college || 'College'
-                    }`}
-              </button>
-            ))}
-          </div>
-
-          {/* ── Podium ── */}
-          {top3.length >= 1 && (
-            <div
-              style={{
-                background: C.card,
-                border: `1px solid ${C.border}`,
-                borderRadius: 20,
-                padding: '26px 24px 0',
-                marginBottom: 16,
-                overflow: 'hidden',
-                boxShadow:
-                  '0 4px 24px rgba(26,110,255,0.08)',
-              }}
-              className="lb-podium-wrap"
-            >
-              <div
-                style={{
-                  fontFamily: F.mono,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: C.blue500,
-                  letterSpacing: '1.5px',
-                  textAlign: 'center',
-                  marginBottom: 22,
-                }}
-              >
-                🏆 TOP PERFORMERS {periodLabel}
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-end',
-                  gap: 8,
-                  height: 320,
-                }}
-              >
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 360, marginTop: 18, position: 'relative' }}>
+                <div style={S.podiumFloorGlow} />
                 {podiumOrder.map((entry, i) => (
                   <PodiumBlock
-                    key={`podium-${podiumPlace[i]}`}
+                    key={`podium-${podiumPlace[i]}-${activePeriod}-${activeTab}`}
                     entry={entry}
                     place={podiumPlace[i]}
                     delay={podiumDelay[i]}
+                    isPlatinum={leaderIsPlatinum}
+                    mounted={podiumMounted}
                   />
                 ))}
               </div>
             </div>
           )}
 
+          {/* ── Search + table header row ── */}
+          {rawData.length > 0 && (
+            <div style={S.searchRow}>
+              <div style={S.searchBox}>
+                <span style={{ fontSize: 13, color: C.muted }}>🔍</span>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Find a name on this board…"
+                  style={S.searchInput}
+                />
+                {query && (
+                  <button onClick={() => setQuery('')} style={S.searchClear} aria-label="Clear search">✕</button>
+                )}
+              </div>
+              <div style={S.mono}>{activeData.length} of {rawData.length} shown</div>
+            </div>
+          )}
+
           {/* ── Full table ── */}
-          {activeData.length === 0 ? (
-            <div
-              style={{
-                background: C.card,
-                border:
-                  `1.5px dashed ${C.borderMd}`,
-                borderRadius: 20,
-                padding: '64px 24px',
-                textAlign: 'center',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 46,
-                  marginBottom: 12,
-                }}
-              >
-                🏆
+          {rawData.length === 0 ? (
+            <div style={S.emptyCard}>
+              <div style={{ fontSize: 46, marginBottom: 12 }}>🏆</div>
+              <div style={S.emptyTitle}>
+                {activePeriod === 'weekly' ? 'No rankings this week' : 'No overall rankings yet'}
               </div>
-
-              <div
-                style={{
-                  fontFamily: F.display,
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color: C.text,
-                  marginBottom: 8,
-                }}
-              >
-                {activePeriod === 'weekly'
-                  ? 'No rankings this week'
-                  : 'No overall rankings yet'}
-              </div>
-
-              <div
-                style={{
-                  fontFamily: F.body,
-                  fontSize: 14,
-                  color: C.sub,
-                  marginBottom: 24,
-                }}
-              >
+              <div style={S.emptyDesc}>
                 {activePeriod === 'weekly'
                   ? 'Complete an interview this week to appear here.'
                   : 'Complete an interview to appear on the overall leaderboard.'}
               </div>
-
-              <button
-                onClick={() => navigate('/interview')}
-                className="lb-new-iv-btn"
-                style={{
-                  background:
-                    `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`,
-                  border: 'none',
-                  color: '#fff',
-                  fontFamily: F.body,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  padding: '11px 28px',
-                  borderRadius: 11,
-                  cursor: 'pointer',
-                  boxShadow:
-                    '0 4px 16px rgba(0,87,232,0.28)',
-                }}
-              >
-                Start Interview →
+              <button onClick={() => navigate('/interview')} style={S.btnBlue} className="mm-btn-blue lb-new-iv-btn">
+                Start interview →
               </button>
             </div>
+          ) : activeData.length === 0 ? (
+            <div style={S.emptyCard}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>🔎</div>
+              <div style={S.emptyTitle}>No matches for "{query}"</div>
+              <div style={S.emptyDesc}>Try a different name, or clear the search to see everyone.</div>
+              <button onClick={() => setQuery('')} style={S.btnGhostLight}>Clear search</button>
+            </div>
           ) : (
-            <div
-              style={{
-                background: C.card,
-                border: `1px solid ${C.border}`,
-                borderRadius: 20,
-                overflow: 'hidden',
-                boxShadow:
-                  '0 4px 24px rgba(26,110,255,0.07)',
-              }}
-            >
-              {/* Column header */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0,
-                  padding: '11px 20px',
-                  borderBottom:
-                    `1px solid ${C.border}`,
-                  background: C.cardAlt,
-                }}
-              >
-                <div
-                  style={{
-                    width: 46,
-                    fontFamily: F.mono,
-                    fontSize: 9.5,
-                    fontWeight: 700,
-                    color: C.muted,
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  RANK
-                </div>
-
+            <div style={S.tableCard}>
+              <div style={S.tableHeadRow}>
+                <div style={{ width: 46, ...S.colLabel }}>RANK</div>
                 <div style={{ width: 44 }} />
-
-                <div
-                  style={{
-                    flex: 1,
-                    fontFamily: F.mono,
-                    fontSize: 9.5,
-                    fontWeight: 700,
-                    color: C.muted,
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  NAME
-                </div>
-
-                <div
-                  style={{
-                    width: 110,
-                    fontFamily: F.mono,
-                    fontSize: 9.5,
-                    fontWeight: 700,
-                    color: C.muted,
-                    letterSpacing: '0.5px',
-                  }}
-                  className="lb-college-col"
-                >
-                  COLLEGE
-                </div>
-
-                <div
-                  style={{
-                    width: 68,
-                    textAlign: 'center',
-                    fontFamily: F.mono,
-                    fontSize: 9.5,
-                    fontWeight: 700,
-                    color: C.muted,
-                    letterSpacing: '0.5px',
-                  }}
-                  className="lb-efficiency-col"
-                >
-                  EFF.
-                </div>
-
-                <div
-                  style={{
-                    width: 90,
-                    textAlign: 'right',
-                    fontFamily: F.mono,
-                    fontSize: 9.5,
-                    fontWeight: 700,
-                    color: C.muted,
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  SCORE
-                </div>
+                <div style={{ flex: 1, ...S.colLabel }}>NAME</div>
+                <div style={{ width: 110, ...S.colLabel }} className="lb-college-col">COLLEGE</div>
+                <div style={{ width: 68, textAlign: 'center', ...S.colLabel }} className="lb-efficiency-col">EFF.</div>
+                <div style={{ width: 90, textAlign: 'right', ...S.colLabel }}>SCORE</div>
+                <div style={{ width: 18 }} />
               </div>
 
-              {/* Rows */}
               {activeData.map((entry, idx) => {
-                const numericRank =
-                  Number(entry.rank) || idx + 1;
+                const numericRank = Number(entry.rank) || idx + 1;
+                const numericScore = Number(entry.avgScore) || 0;
+                const sessionCount = Number(entry.sessionCount) || 0;
+                const sColor = scoreColor(numericScore);
+                const isYou = Boolean(entry.isCurrentUser);
+                const rowId = entry._id || `${activePeriod}-${activeTab}-${idx}`;
+                const isExpanded = expandedId === rowId;
+                const platinumRow = isPlatinumBand(numericRank, totalCount);
 
-                const numericScore =
-                  Number(entry.avgScore) || 0;
+                const delta = activePeriod === 'weekly'
+                  ? mockDelta(numericRank, idx + String(entry._id || '').charCodeAt(0) || 0)
+                  : 0;
+                const isNew = activePeriod === 'weekly' && sessionCount === 1 && numericRank > 3;
+                const eff = efficiency(numericScore, sessionCount);
 
-                const sessionCount =
-                  Number(entry.sessionCount) || 0;
+                const trendPoints = Array.isArray(entry.recentScores) && entry.recentScores.length
+                  ? entry.recentScores.slice(-6)
+                  : null;
 
-                const sColor =
-                  scoreColor(numericScore);
-
-                const isYou =
-                  Boolean(entry.isCurrentUser);
-
-                const delta =
-                  activePeriod === 'weekly'
-                    ? mockDelta(
-                        numericRank,
-                        idx +
-                          String(
-                            entry._id || ''
-                          ).charCodeAt(0) || 0
-                      )
-                    : 0;
-
-                const isNew =
-                  activePeriod === 'weekly' &&
-                  sessionCount === 1 &&
-                  numericRank > 3;
-
-                const eff = efficiency(
-                  numericScore,
-                  sessionCount
-                );
+                const tierColor = numericRank <= 3
+                  ? [C.gold, C.silver, C.bronze][numericRank - 1]
+                  : platinumRow ? C.platinum : C.signal;
 
                 return (
-                  <div
-                    key={
-                      entry._id ||
-                      `${activePeriod}-${activeTab}-${idx}`
-                    }
-                    className={`lb-row${
-                      isYou
-                        ? ' lb-row-you'
-                        : ''
-                    }`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0,
-                      padding: '13px 20px',
-                      borderBottom:
-                        idx < activeData.length - 1
-                          ? `1px solid ${C.border}`
-                          : 'none',
-                      background: isYou
-                        ? `linear-gradient(90deg, ${C.cyanTint} 0%, ${C.blue50} 100%)`
-                        : C.card,
-                      animation:
-                        `lbSlideIn 0.32s ease ${Math.min(
-                          idx * 45,
-                          600
-                        )}ms both`,
-                      cursor: 'default',
-                    }}
-                  >
-                    {/* Rank */}
+                  <div key={rowId}>
                     <div
+                      className={`lb-row${isYou ? ' lb-row-you' : ''}`}
+                      onClick={() => setExpandedId(isExpanded ? null : rowId)}
                       style={{
-                        width: 46,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        flexShrink: 0,
+                        display: 'flex', alignItems: 'center', gap: 0, padding: '14px 20px',
+                        borderBottom: (idx < activeData.length - 1 || isExpanded) ? `1px solid ${C.line}` : 'none',
+                        background: isYou ? `linear-gradient(90deg, ${C.pulseTint} 0%, ${C.signalTint} 100%)` : (platinumRow ? C.platinumTint : C.surface),
+                        animation: `lbSlideIn 0.34s ease ${Math.min(idx * 40, 560)}ms both`,
+                        cursor: 'pointer',
                       }}
                     >
-                      <span
-                        style={{
-                          fontFamily: F.mono,
-                          fontSize: 13,
-                          fontWeight: 800,
-                          color:
-                            numericRank <= 3
-                              ? [
-                                  C.gold,
-                                  C.silver,
-                                  C.bronze,
-                                ][numericRank - 1]
-                              : C.muted,
-                        }}
-                      >
-                        #{numericRank}
-                      </span>
-                    </div>
+                      <div style={{ width: 46, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <span style={{ fontFamily: F.mono, fontSize: 13, fontWeight: 800, color: numericRank <= 3 ? tierColor : C.muted }}>
+                          #{numericRank}
+                        </span>
+                      </div>
 
-                    {/* Avatar */}
-                    <div
-                      style={{
-                        width: 44,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 10,
-                          flexShrink: 0,
+                      <div style={{ width: 44, flexShrink: 0 }}>
+                        <div style={{
+                          width: 34, height: 34, borderRadius: 10, flexShrink: 0,
                           background: isYou
-                            ? `linear-gradient(135deg, ${C.blue600}, ${C.cyan500})`
-                            : numericRank <= 3
-                              ? `linear-gradient(135deg, ${
-                                  [
-                                    C.gold,
-                                    C.silver,
-                                    C.bronze,
-                                  ][numericRank - 1]
-                                }44, ${
-                                  [
-                                    C.gold,
-                                    C.silver,
-                                    C.bronze,
-                                  ][numericRank - 1]
-                                }99)`
-                              : C.blue50,
-                          border:
-                            `2px solid ${
-                              isYou
-                                ? C.cyan400
-                                : numericRank <= 3
-                                  ? `${
-                                      [
-                                        C.gold,
-                                        C.silver,
-                                        C.bronze,
-                                      ][
-                                        numericRank - 1
-                                      ]
-                                    }66`
-                                  : C.borderMd
-                            }`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontFamily: F.display,
-                          fontSize: 14,
-                          fontWeight: 800,
-                          color: isYou
-                            ? '#fff'
-                            : numericRank <= 3
-                              ? [
-                                  C.gold,
-                                  C.silver,
-                                  C.bronze,
-                                ][numericRank - 1]
-                              : C.blue600,
-                          boxShadow: isYou
-                            ? '0 2px 10px rgba(0,173,224,0.30)'
-                            : 'none',
-                        }}
-                      >
-                        {entry.name
-                          ?.charAt(0)
-                          .toUpperCase() || '?'}
+                            ? `linear-gradient(135deg, ${C.signal}, ${C.pulse})`
+                            : (numericRank <= 3 || platinumRow) ? `linear-gradient(135deg, ${tierColor}33, ${tierColor}99)` : C.signalTint,
+                          border: `2px solid ${isYou ? C.pulse : (numericRank <= 3 || platinumRow) ? `${tierColor}66` : C.lineMd}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontFamily: F.serif, fontSize: 14, fontWeight: 600,
+                          color: isYou ? '#fff' : (numericRank <= 3 || platinumRow) ? tierColor : C.signalDeep,
+                          boxShadow: isYou ? '0 2px 10px rgba(0,194,232,0.30)' : 'none',
+                        }}>
+                          {entry.name?.charAt(0).toUpperCase() || '?'}
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Name + badges */}
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 7,
-                          marginBottom: 2,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontFamily: F.body,
-                            fontSize: 13.5,
-                            fontWeight: 700,
-                            color: C.text,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {entry.name || 'Unknown'}
-                        </span>
-
-                        {isYou && (
-                          <span
-                            style={{
-                              fontFamily: F.mono,
-                              fontSize: 9,
-                              fontWeight: 800,
-                              color: C.cyan600,
-                              background: C.cyanTint,
-                              border:
-                                '1px solid #A0E8FA',
-                              padding: '1px 7px',
-                              borderRadius: 99,
-                              flexShrink: 0,
-                            }}
-                          >
-                            YOU
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 2 }}>
+                          <span style={{ fontFamily: F.body, fontSize: 13.5, fontWeight: 700, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {entry.name || 'Unknown'}
                           </span>
-                        )}
-
-                        <DeltaBadge
-                          delta={delta}
-                          isNew={isNew}
-                          showDelta={
-                            activePeriod ===
-                            'weekly'
-                          }
-                        />
+                          {isYou && (
+                            <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, color: C.pulseDeep, background: C.pulseTint, border: `1px solid ${C.pulse}55`, padding: '1px 7px', borderRadius: 99, flexShrink: 0 }}>
+                              YOU
+                            </span>
+                          )}
+                          {platinumRow && !isYou && (
+                            <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, color: C.platinum, background: C.platinumTint, border: `1px solid ${C.platinum}44`, padding: '1px 7px', borderRadius: 99, flexShrink: 0 }}>
+                              ♛
+                            </span>
+                          )}
+                          <DeltaBadge delta={delta} isNew={isNew} showDelta={activePeriod === 'weekly'} />
+                        </div>
+                        <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>
+                          {sessionCount} session{sessionCount !== 1 ? 's' : ''}{activePeriod === 'weekly' ? ' this week' : ' total'}
+                        </div>
                       </div>
 
-                      <div
-                        style={{
-                          fontFamily: F.mono,
-                          fontSize: 10,
-                          color: C.muted,
-                        }}
-                      >
-                        {sessionCount} session
-                        {sessionCount !== 1
-                          ? 's'
-                          : ''}
-                        {activePeriod ===
-                        'weekly'
-                          ? ' this week'
-                          : ' total'}
+                      <div style={{ width: 110, fontFamily: F.body, fontSize: 11, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }} className="lb-college-col">
+                        {entry.college || '—'}
                       </div>
-                    </div>
 
-                    {/* College */}
-                    <div
-                      style={{
-                        width: 110,
-                        fontFamily: F.body,
-                        fontSize: 11,
-                        color: C.muted,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        paddingRight: 8,
-                      }}
-                      className="lb-college-col"
-                    >
-                      {entry.college || '—'}
-                    </div>
-
-                    {/* Efficiency */}
-                    <div
-                      style={{
-                        width: 68,
-                        textAlign: 'center',
-                        flexShrink: 0,
-                      }}
-                      className="lb-efficiency-col"
-                    >
-                      <span
-                        style={{
-                          fontFamily: F.mono,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color:
-                            eff >= 70
-                              ? C.green
-                              : eff >= 50
-                                ? C.blue500
-                                : C.muted,
-                        }}
-                      >
-                        {eff}
-                      </span>
-                    </div>
-
-                    {/* Score */}
-                    <div
-                      style={{
-                        width: 90,
-                        textAlign: 'right',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontFamily: F.display,
-                          fontSize: 16,
-                          fontWeight: 800,
-                          color: sColor,
-                          marginBottom: 5,
-                        }}
-                      >
-                        {numericScore}
-
-                        <span
-                          style={{
-                            fontFamily: F.mono,
-                            fontSize: 9,
-                            fontWeight: 600,
-                            color: C.muted,
-                          }}
-                        >
-                          /100
+                      <div style={{ width: 68, textAlign: 'center', flexShrink: 0 }} className="lb-efficiency-col">
+                        <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, color: eff >= 70 ? C.green : eff >= 50 ? C.signal : C.muted }}>
+                          {eff}
                         </span>
                       </div>
 
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'flex-end',
-                        }}
-                      >
-                        <ScoreBar
-                          score={numericScore}
-                          max={maxScore}
-                        />
+                      <div style={{ width: 90, textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontFamily: F.serif, fontSize: 17, fontWeight: 500, color: sColor, marginBottom: 5 }}>
+                          {numericScore}
+                          <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 600, color: C.muted }}>/100</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <ScoreBar score={numericScore} max={maxScore} />
+                        </div>
+                      </div>
+
+                      <div style={{ width: 18, textAlign: 'right', flexShrink: 0, color: C.faint, fontSize: 10, transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s ease' }}>
+                        ›
                       </div>
                     </div>
+
+                    {isExpanded && (
+                      <div style={{
+                        padding: '16px 20px 18px 66px',
+                        background: C.surfaceSunk,
+                        borderBottom: idx < activeData.length - 1 ? `1px solid ${C.line}` : 'none',
+                        animation: 'lbFadeUp 0.22s ease',
+                      }}>
+                        <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.5px', color: C.muted, marginBottom: 10, textTransform: 'lowercase' }}>
+                          recent session trend
+                        </div>
+                        <MiniTrend points={trendPoints || []} />
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -2159,202 +854,291 @@ const Leaderboard = () => {
           )}
 
           {/* ── Stat summary strip ── */}
-          {activeData.length >= 1 && (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(3, 1fr)',
-                gap: 10,
-                marginTop: 14,
-              }}
-            >
-              {[
-                {
-                  label: 'TOP SCORE',
-                  val: `${maxScore}/100`,
-                  color: C.gold,
-                },
-
-                {
-                  label: 'FIELD SIZE',
-                  val: `${totalCount} ${
-                    totalCount === 1
-                      ? 'student'
-                      : 'students'
-                  }`,
-                  color: C.blue600,
-                },
-
-                {
-                  label: 'FIELD AVG',
-                  val: `${
-                    activeData.length
-                      ? Math.round(
-                          activeData.reduce(
-                            (sum, entry) =>
-                              sum +
-                              (Number(
-                                entry.avgScore
-                              ) || 0),
-                            0
-                          ) /
-                            activeData.length
-                        )
-                      : 0
-                  }/100`,
-                  color: C.cyan600,
-                },
-              ].map(
-                ({
-                  label,
-                  val,
-                  color,
-                }) => (
-                  <div
-                    key={label}
-                    style={{
-                      textAlign: 'center',
-                      padding: '12px 8px',
-                      background: C.card,
-                      border:
-                        `1px solid ${C.border}`,
-                      borderRadius: 14,
-                      boxShadow:
-                        '0 1px 8px rgba(26,110,255,0.06)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontFamily: F.mono,
-                        fontSize: 8.5,
-                        fontWeight: 700,
-                        color: C.muted,
-                        letterSpacing: '0.5px',
-                        marginBottom: 4,
-                      }}
-                    >
-                      {label}
-                    </div>
-
-                    <div
-                      style={{
-                        fontFamily: F.display,
-                        fontSize: 15,
-                        fontWeight: 800,
-                        color,
-                      }}
-                    >
-                      {val}
-                    </div>
-                  </div>
-                )
-              )}
-            </div>
+          {rawData.length >= 1 && (
+            <section style={S.statRail} className="mm-stat-rail">
+              <RailStat label="Top score" value={`${maxScore}/100`} color={C.gold} />
+              <RailStat label="Field size" value={`${totalCount} ${totalCount === 1 ? 'student' : 'students'}`} color={C.signal} />
+              <RailStat
+                label="Field avg"
+                value={`${rawData.length ? Math.round(rawData.reduce((sum, e) => sum + (Number(e.avgScore) || 0), 0) / rawData.length) : 0}/100`}
+                color={C.pulseDeep}
+              />
+              <RailStat label="Platinum band" value={`Top 5% · 95th+`} color={C.platinum} sub={`${Math.max(1, Math.round(totalCount * 0.05))} students`} />
+            </section>
           )}
 
           {/* ── CTA footer ── */}
-          <div
-            style={{
-              marginTop: 16,
-              padding: '22px 26px',
-              borderRadius: 18,
-              background:
-                `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 55%, ${C.cyan600} 100%)`,
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 20,
-              flexWrap: 'wrap',
-              boxShadow:
-                '0 12px 40px rgba(0,31,107,0.26)',
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                backgroundImage:
-                  'radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)',
-                backgroundSize: '22px 22px',
-                pointerEvents: 'none',
-              }}
-            />
-
-            <div
-              style={{
-                position: 'relative',
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: F.mono,
-                  fontSize: 9.5,
-                  fontWeight: 700,
-                  letterSpacing: '1.5px',
-                  color: 'rgba(255,255,255,0.5)',
-                  marginBottom: 5,
-                }}
-              >
-                CLIMB THE RANKS
-              </div>
-
-              <div
-                style={{
-                  fontFamily: F.display,
-                  fontSize: 17,
-                  fontWeight: 800,
-                  marginBottom: 4,
-                }}
-              >
+          <div style={S.ctaBanner}>
+            <div style={S.heroNoise} />
+            <div style={{ position: 'relative' }}>
+              <div style={S.heroKicker}>climb the ranks</div>
+              <div style={S.ctaTitle}>
                 {activePeriod === 'weekly'
                   ? 'Every interview moves you up this week.'
                   : 'Every interview contributes to your overall standing.'}
               </div>
-
-              <div
-                style={{
-                  fontFamily: F.body,
-                  fontSize: 12.5,
-                  color:
-                    'rgba(255,255,255,0.72)',
-                }}
-              >
+              <div style={S.ctaSub}>
                 {activePeriod === 'weekly'
                   ? 'Weekly rankings reset every Monday. Your overall record stays intact.'
                   : 'Overall rankings use all of your completed interviews and never reset.'}
               </div>
             </div>
-
-            <button
-              onClick={() => navigate('/interview')}
-              className="lb-cta-btn"
-              style={{
-                flexShrink: 0,
-                background: '#fff',
-                color: C.blue700,
-                padding: '11px 20px',
-                borderRadius: 10,
-                border: 'none',
-                fontFamily: F.body,
-                fontSize: 13,
-                fontWeight: 800,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                boxShadow:
-                  '0 2px 10px rgba(0,0,0,0.14)',
-              }}
-            >
-              Practice Now →
+            <button onClick={() => navigate('/interview')} style={S.btnBannerCta} className="mm-banner-cta">
+              Practice now →
             </button>
           </div>
+
+          <footer style={S.footerRow}>
+            <span style={S.mono}>mockmate leaderboard v3 · aligned to readiness terminal v6</span>
+            <span style={S.mono}>ranks recompute live · weekly resets monday</span>
+          </footer>
         </div>
       </div>
     </>
   );
+};
+
+// ─── Dedicated toggle group ───────────────────────────────────────────────────
+
+const ToggleGroup = ({ label, icon, options, value, onChange, accent, accentTint }) => {
+  const activeIdx = options.findIndex(o => o.id === value);
+  return (
+    <div style={S.toggleGroupWrap}>
+      <div style={S.toggleGroupLabel}>
+        <span style={{ fontSize: 12, color: accent }}>{icon}</span>
+        <span>{label}</span>
+      </div>
+      <div style={S.toggleGroupTrack}>
+        <div
+          style={{
+            ...S.toggleGroupThumb,
+            width: `calc(${100 / options.length}% - 4px)`,
+            transform: `translateX(${activeIdx * 100}%)`,
+            background: `linear-gradient(135deg, ${accent}, ${accent}CC)`,
+          }}
+        />
+        {options.map(opt => {
+          const isActive = opt.id === value;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => onChange(opt.id)}
+              className="lb-toggle-opt"
+              style={{
+                ...S.toggleGroupBtn,
+                color: isActive ? '#fff' : C.sub,
+              }}
+            >
+              <span style={S.toggleOptLabel}>{opt.label}</span>
+              <span style={{ ...S.toggleOptHelper, color: isActive ? 'rgba(255,255,255,0.75)' : C.muted }}>{opt.helper}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ─── Rail stat ───────────────────────────────────────────────────────────────
+
+const RailStat = ({ label, value, sub, color }) => (
+  <div style={S.railCell} className="mm-rail-cell">
+    <div style={S.railLabel}>{label}</div>
+    <div style={S.railValRow}>
+      <span style={{ ...S.railVal, color, fontSize: 22 }}>{value}</span>
+    </div>
+    {sub && <div style={S.railSub}>{sub}</div>}
+  </div>
+);
+
+// ─── Global styles ─────────────────────────────────────────────────────────────
+
+const GlobalStyles = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; }
+    ::selection { background: rgba(0,87,232,0.16); color: ${C.ink}; }
+
+    @keyframes lbPodiumRise { 0% { opacity: 0; transform: translateY(56px) scale(0.9); } 60% { opacity: 1; } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes lbSlideIn    { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes lbFadeUp     { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes livePulse    { 0%,100% { opacity:1; } 50% { opacity:0.28; } }
+    @keyframes heroSweep    { 0% { transform:translateX(-30%); } 100% { transform:translateX(130%); } }
+    @keyframes scaleIn      { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:scale(1); } }
+    @keyframes lbAvatarFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+    @keyframes lbPlinthSweep { 0% { left: -40%; } 100% { left: 130%; } }
+    @keyframes lbGlowPulse  { 0%,100% { opacity: 0.5; } 50% { opacity: 0.9; } }
+
+    .mm-page ::-webkit-scrollbar { width: 5px; height: 5px; }
+    .mm-page ::-webkit-scrollbar-track { background: transparent; }
+    .mm-page ::-webkit-scrollbar-thumb { background: ${C.lineMd}; border-radius: 4px; }
+    .mm-page ::-webkit-scrollbar-thumb:hover { background: ${C.lineStr}; }
+
+    .lb-row { transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease; }
+    .lb-row:hover { background: ${C.signalTint} !important; transform: translateX(4px); box-shadow: inset 3px 0 0 ${C.signal}; }
+    .lb-row-you:hover { box-shadow: inset 3px 0 0 ${C.pulse} !important; }
+
+    .lb-avatar-float { animation: lbAvatarFloat 3.2s ease-in-out infinite; }
+    .lb-plinth-sweep { animation: lbPlinthSweep 3.4s ease-in-out infinite 1.1s; }
+    .lb-podium-lead { position: relative; }
+
+    .lb-toggle-opt { transition: color 0.2s ease; cursor: pointer; }
+
+    .mm-rail-cell { transition: background 0.18s ease !important; }
+    .mm-rail-cell:hover { background: ${C.surfaceSunk} !important; }
+
+    .mm-btn-primary { transition: transform 0.15s cubic-bezier(.16,1,.3,1), box-shadow 0.15s ease !important; }
+    .mm-btn-primary:hover { transform: translateY(-2px) !important; box-shadow: 0 10px 28px rgba(0,173,224,0.45) !important; }
+
+    .mm-btn-ghost { transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease !important; }
+    .mm-btn-ghost:hover { background: rgba(255,255,255,0.14) !important; transform: translateY(-1px) !important; }
+
+    .mm-btn-blue { transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important; }
+    .mm-btn-blue:hover { box-shadow: 0 8px 22px rgba(0,87,232,0.35) !important; transform: translateY(-2px) !important; }
+
+    .mm-banner-cta { transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important; }
+    .mm-banner-cta:hover { box-shadow: 0 10px 24px rgba(0,87,232,0.32) !important; transform: translateY(-2px) !important; }
+
+    .mm-strip { transition: box-shadow 0.2s ease !important; }
+    .mm-strip:hover { box-shadow: ${C.shadowMd} !important; }
+
+    .mm-irs-num { animation: scaleIn 0.7s cubic-bezier(.16,1,.3,1) both 0.1s; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .mm-page * { animation: none !important; transition-duration: 0.01ms !important; }
+    }
+
+    @media (max-width: 1020px) {
+      .mm-hero-grid { grid-template-columns: 1fr !important; gap: 32px !important; }
+      .mm-stat-rail { grid-template-columns: repeat(2, 1fr) !important; }
+      .lb-toggle-grid { grid-template-columns: 1fr !important; }
+    }
+    @media (max-width: 700px) {
+      .lb-college-col, .lb-efficiency-col { display: none !important; }
+    }
+    @media (max-width: 760px) {
+      .mm-strip-r { display: none !important; }
+    }
+    @media (max-width: 480px) {
+      .mm-page { padding: 14px 12px 60px !important; }
+      .mm-stat-rail { grid-template-columns: 1fr !important; }
+    }
+  `}</style>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STYLES
+// ═══════════════════════════════════════════════════════════════════════════
+const S = {
+  page: {
+    minHeight: 'calc(100vh - 64px)',
+    background: C.paper,
+    backgroundImage: `radial-gradient(ellipse at 6% -4%, rgba(0,87,232,0.05) 0%, transparent 46%), radial-gradient(ellipse at 96% 4%, rgba(0,194,232,0.04) 0%, transparent 40%)`,
+    padding: '24px 28px 80px',
+    fontFamily: F.body,
+  },
+  container: { maxWidth: 1260, margin: '0 auto' },
+
+  strip: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 18px', marginBottom: 20, borderRadius: 11, background: C.surface, border: `1px solid ${C.line}`, boxShadow: C.shadow },
+  stripL: { display: 'flex', alignItems: 'center', gap: 9 },
+  stripR: { display: 'flex', alignItems: 'center', gap: 10 },
+  liveDot: { width: 6, height: 6, borderRadius: '50%', background: C.green, animation: 'livePulse 2.4s ease-in-out infinite', flexShrink: 0 },
+  mono: { fontFamily: F.mono, fontSize: 10.5, letterSpacing: '0.3px', color: C.muted },
+
+  stickyBar: {
+    position: 'fixed', top: 0, left: 0, right: 0, zIndex: 500,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '11px 24px', background: 'linear-gradient(135deg, #060E20 0%, #0C2242 100%)',
+    boxShadow: '0 6px 20px rgba(4,12,34,0.28)', animation: 'lbFadeUp 0.22s ease',
+  },
+
+  // ── HERO — brightened to match Coach's CommandHeader ──────────────────────
+  hero: {
+    position: 'relative', overflow: 'hidden',
+    padding: '44px 36px', marginBottom: 18, borderRadius: 22,
+    background: `linear-gradient(135deg, ${C.heroDark0} 0%, ${C.heroBlue900} 40%, #001A3A 70%, ${C.heroDark0} 100%)`,
+    border: '1px solid rgba(0,200,240,0.18)',
+    boxShadow: '0 24px 72px rgba(0,20,80,0.55)',
+  },
+  heroNoise: { position: 'absolute', top: 0, left: 0, width: '30%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.025), transparent)', animation: 'heroSweep 11s linear infinite' },
+  heroGlowTop: { position: 'absolute', top: -60, right: -60, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,200,240,0.10) 0%, transparent 70%)', pointerEvents: 'none' },
+  heroGlowBottom: { position: 'absolute', bottom: -40, left: 80, width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(26,110,255,0.09) 0%, transparent 70%)', pointerEvents: 'none' },
+  heroGrid: { position: 'relative', display: 'grid', gridTemplateColumns: '280px 1fr', gap: 44, alignItems: 'center' },
+
+  irsBlock: {},
+  irsLabel: { fontFamily: F.mono, fontSize: 10, fontWeight: 500, letterSpacing: '1px', color: 'rgba(255,255,255,0.42)', marginBottom: 12, textTransform: 'lowercase' },
+  irsNum: { fontFamily: F.serif, fontSize: 86, fontWeight: 500, lineHeight: 0.95, color: '#fff', letterSpacing: '-3px' },
+  irsMax: { fontSize: 24, fontWeight: 400, color: 'rgba(255,255,255,0.36)', letterSpacing: 0, fontFamily: F.body },
+  tierPill: { display: 'inline-flex', alignItems: 'center', marginTop: 16, padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700, letterSpacing: '0.1px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' },
+  irsBar: { position: 'relative', height: 4, marginTop: 18, borderRadius: 999, background: 'rgba(255,255,255,0.1)', overflow: 'visible' },
+  irsBarFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.blueBright}, ${C.cyanBright})`, transition: 'width 1.3s cubic-bezier(.16,1,.3,1)', boxShadow: `0 0 12px ${C.cyanBright}80` },
+  irsGapText: { marginTop: 10, fontFamily: F.mono, fontSize: 10.5, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.2px' },
+
+  verdictBlock: {},
+  heroKicker: { fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '1.8px', color: C.cyanBright, textTransform: 'uppercase' },
+  heroH1: { margin: '14px 0 0', fontFamily: F.serif, fontSize: 32, fontWeight: 500, color: '#fff', lineHeight: 1.28, letterSpacing: '-0.4px', maxWidth: 620 },
+  heroSub: { margin: '15px 0 0', fontSize: 13.5, lineHeight: 1.75, color: 'rgba(255,255,255,0.62)', maxWidth: 560, fontWeight: 400 },
+  heroActions: { display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 26 },
+
+  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 11, background: `linear-gradient(135deg, ${C.blueBright}, ${C.cyanBright})`, color: '#fff', padding: '13px 22px', fontSize: 13.5, fontWeight: 800, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 4px 18px rgba(0,173,224,0.35)`, letterSpacing: '-0.1px' },
+  btnGhost: { border: '1px solid rgba(255,255,255,0.16)', borderRadius: 11, background: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(8px)', color: '#fff', padding: '13px 20px', fontSize: 13, fontWeight: 500, fontFamily: F.body, cursor: 'pointer' },
+  btnGhostLight: { border: `1px solid ${C.lineMd}`, borderRadius: 11, background: C.surface, color: C.signalDeep, padding: '11px 20px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', marginTop: 6 },
+  btnBlue: { border: 'none', borderRadius: 11, background: `linear-gradient(135deg, ${C.signalDeep}, ${C.signal})`, color: '#fff', padding: '12px 24px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 4px 14px rgba(0,87,232,0.28)`, textAlign: 'center', letterSpacing: '-0.1px', marginTop: 8 },
+  btnBannerCta: { flexShrink: 0, border: 'none', borderRadius: 12, background: '#fff', color: C.signalDeep, padding: '14px 24px', fontSize: 13.5, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.18)', position: 'relative' },
+
+  // Dedicated toggle section — its own card, echoes stat-rail grammar
+  toggleCard: { background: C.surface, border: `1px solid ${C.line}`, borderRadius: 18, padding: '20px 22px', boxShadow: C.shadow, marginBottom: 18 },
+  toggleHeadRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 },
+  toggleGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 },
+  toggleGroupWrap: {},
+  toggleGroupLabel: { display: 'flex', alignItems: 'center', gap: 7, fontFamily: F.mono, fontSize: 10.5, fontWeight: 600, color: C.sub, letterSpacing: '0.3px', marginBottom: 9, textTransform: 'lowercase' },
+  toggleGroupTrack: { position: 'relative', display: 'flex', gap: 4, padding: 4, borderRadius: 14, background: C.surfaceSunk, border: `1px solid ${C.line}` },
+  toggleGroupThumb: { position: 'absolute', top: 4, bottom: 4, left: 4, borderRadius: 10, transition: 'transform 0.28s cubic-bezier(.16,1,.3,1)', boxShadow: '0 4px 14px rgba(0,0,0,0.14)' },
+  toggleGroupBtn: { position: 'relative', zIndex: 1, flex: 1, border: 'none', background: 'transparent', padding: '10px 12px', borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontFamily: F.body },
+  toggleOptLabel: { fontSize: 12.5, fontWeight: 700 },
+  toggleOptHelper: { fontSize: 9, fontFamily: F.mono },
+
+  // Podium card — more elevated / centerpiece treatment
+  podiumCard: { position: 'relative', background: C.surface, border: `1px solid ${C.line}`, borderRadius: 24, padding: '28px 26px 0', boxShadow: '0 8px 32px rgba(15,45,120,0.10), 0 2px 8px rgba(10,22,40,0.05)', marginBottom: 16, overflow: 'hidden' },
+  podiumGlowTop: { position: 'absolute', top: -100, left: '50%', transform: 'translateX(-50%)', width: 420, height: 200, borderRadius: '50%', background: 'radial-gradient(ellipse, rgba(173,127,16,0.10), transparent 70%)', pointerEvents: 'none' },
+  podiumFloorGlow: { position: 'absolute', bottom: 0, left: '10%', right: '10%', height: 40, background: 'radial-gradient(ellipse, rgba(173,127,16,0.14), transparent 75%)', pointerEvents: 'none' },
+  podiumHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, position: 'relative' },
+  eyebrow: { fontFamily: F.mono, fontSize: 10.5, fontWeight: 500, letterSpacing: '0.8px', color: C.signal, marginBottom: 7, textTransform: 'lowercase' },
+  cardH2: { margin: 0, fontFamily: F.body, fontSize: 17, fontWeight: 700, color: C.ink, letterSpacing: '-0.2px' },
+  tierBadgeSm: { fontFamily: F.mono, fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 8, border: '1px solid', flexShrink: 0 },
+
+  searchRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' },
+  searchBox: { display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', borderRadius: 11, background: C.surface, border: `1px solid ${C.line}`, boxShadow: C.shadow, flex: '1 1 260px', maxWidth: 340 },
+  searchInput: { border: 'none', outline: 'none', background: 'transparent', fontFamily: F.body, fontSize: 13, color: C.ink, flex: 1, minWidth: 0 },
+  searchClear: { border: 'none', background: 'transparent', color: C.muted, cursor: 'pointer', fontSize: 11, padding: 2 },
+
+  emptyCard: { background: C.surface, border: `1.5px dashed ${C.lineMd}`, borderRadius: 20, padding: '64px 24px', textAlign: 'center' },
+  emptyTitle: { fontFamily: F.body, fontSize: 18, fontWeight: 800, color: C.ink, marginBottom: 8 },
+  emptyDesc: { fontFamily: F.body, fontSize: 14, color: C.sub, marginBottom: 6 },
+
+  tableCard: { background: C.surface, border: `1px solid ${C.line}`, borderRadius: 20, overflow: 'hidden', boxShadow: C.shadow, marginBottom: 16 },
+  tableHeadRow: { display: 'flex', alignItems: 'center', padding: '11px 20px', borderBottom: `1px solid ${C.line}`, background: C.surfaceSunk },
+  colLabel: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: C.muted, letterSpacing: '0.5px' },
+
+  statRail: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 18, borderRadius: 18, background: C.surface, border: `1px solid ${C.line}`, boxShadow: C.shadow, overflow: 'hidden' },
+  railCell: { padding: '18px 20px', borderRight: `1px solid ${C.line}` },
+  railLabel: { fontSize: 10.5, fontWeight: 500, color: C.muted, letterSpacing: '0.1px', textTransform: 'uppercase' },
+  railValRow: { display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 8 },
+  railVal: { fontFamily: F.serif, fontWeight: 500, lineHeight: 1, letterSpacing: '-0.3px' },
+  railSub: { marginTop: 6, fontSize: 10.5, color: C.muted },
+
+  ctaBanner: {
+    position: 'relative', overflow: 'hidden',
+    marginTop: 4, padding: '26px 30px', borderRadius: 20,
+    background: `linear-gradient(150deg, #060E20 0%, #0A1832 42%, #0C2340 100%)`,
+    boxShadow: C.shadowLg,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap',
+  },
+  ctaTitle: { fontFamily: F.serif, fontSize: 19, fontWeight: 500, color: '#fff', margin: '10px 0 6px', lineHeight: 1.3 },
+  ctaSub: { fontFamily: F.body, fontSize: 12.5, color: 'rgba(255,255,255,0.62)', maxWidth: 440, lineHeight: 1.6 },
+
+  footerRow: { display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, padding: '20px 4px 0', opacity: 0.42 },
 };
 
 export default Leaderboard;

@@ -1792,7 +1792,7 @@ const S = {
   irsGapText: { marginTop: 10, fontFamily: F.mono, fontSize: 10.5, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.2px' },
 
   verdictBlock: {},
-  heroKicker: { fontFamily: F.mono, fontSize: 10.5, fontWeight: 500, letterSpacing: '1.2px', color: C.pulse, textTransform: 'lowercase' },
+  heroKicker: { fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '1.8px', color: C.cyanBright, textTransform: 'uppercase' },
   heroH1: { margin: '14px 0 0', fontFamily: F.serif, fontSize: 32, fontWeight: 500, color: '#fff', lineHeight: 1.28, letterSpacing: '-0.4px', maxWidth: 620 },
   heroSub: { margin: '15px 0 0', fontSize: 13.5, lineHeight: 1.75, color: 'rgba(255,255,255,0.62)', maxWidth: 560, fontWeight: 400 },
   heroActions: { display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 26 },

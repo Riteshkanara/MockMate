@@ -1479,9 +1479,7 @@ const Coach = () => {
   // ── CRITICAL: Scroll to top immediately on mount, before any child
   //    effects can fire (including CoachChat's greeting which previously
   //    called scrollIntoView and pulled the viewport to the bottom)
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "instant" });
-  }, []);
+ 
 
   useEffect(() => {
     if (hasFetched.current) return;
@@ -1519,12 +1517,27 @@ const Coach = () => {
     };
   }, [analyticsData]);
 
-  if (loading) return (
-    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: F.body }}>
-      <PencilLoader />
-      <p style={{ color: C.sub, marginTop: 16, fontSize: 13 }}>Loading your placement command center…</p>
-    </div>
-  );
+ if (loading) return (
+  <div style={{
+    height: 'calc(100vh - 100px)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: C.bg,
+    gap: 20,
+  }}>
+    <PencilLoader />
+    <p style={{
+      color: C.sub,
+      fontSize: 13,
+      fontFamily: "'Inter', sans-serif",
+      margin: 0,
+    }}>
+      Loading your placement command center…
+    </p>
+  </div>
+);
 
   if (error) return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>

@@ -1,342 +1,136 @@
 import React from 'react';
-import styled from 'styled-components';
 
 const BookLoader = () => {
   return (
-    <StyledWrapper>
-      <div className="book">
-        <div className="book__pg-shadow" />
-        <div className="book__pg" />
-        <div className="book__pg book__pg--2" />
-        <div className="book__pg book__pg--3" />
-        <div className="book__pg book__pg--4" />
-        <div className="book__pg book__pg--5" />
+    <>
+      <style>{`
+        .mm-loader {
+          --background: linear-gradient(135deg, #23C4F8, #275EFE);
+          --shadow: rgba(39, 94, 254, 0.28);
+          --text: #6C7486;
+          --page: rgba(255, 255, 255, 0.36);
+          --page-fold: rgba(255, 255, 255, 0.52);
+          --duration: 3s;
+          width: 200px;
+          height: 140px;
+          position: relative;
+        }
+        .mm-loader:before, .mm-loader:after {
+          --r: -6deg;
+          content: "";
+          position: absolute;
+          bottom: 8px;
+          width: 120px;
+          top: 80%;
+          box-shadow: 0 16px 12px var(--shadow);
+          transform: rotate(var(--r));
+        }
+        .mm-loader:before { left: 4px; }
+        .mm-loader:after { --r: 6deg; right: 4px; }
+        .mm-loader-inner {
+          width: 100%;
+          height: 100%;
+          border-radius: 13px;
+          position: relative;
+          z-index: 1;
+          perspective: 600px;
+          box-shadow: 0 4px 6px var(--shadow);
+          background-image: var(--background);
+        }
+        .mm-loader-inner ul {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+          position: relative;
+        }
+        .mm-loader-inner ul li {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          transform-origin: 100% 50%;
+          color: var(--page);
+          opacity: 0;
+          transform: rotateY(180deg);
+          animation: var(--duration) ease infinite;
+        }
+        .mm-loader-inner ul li svg {
+          width: 90px;
+          height: 120px;
+          display: block;
+        }
+        .mm-loader-inner ul li:first-child {
+          transform: rotateY(0deg);
+          opacity: 1;
+        }
+        .mm-loader-inner ul li:last-child {
+          opacity: 1;
+        }
+        .mm-loader-inner ul li:nth-child(2) {
+          color: var(--page-fold);
+          animation-name: mm-page-2;
+        }
+        .mm-loader-inner ul li:nth-child(3) {
+          color: var(--page-fold);
+          animation-name: mm-page-3;
+        }
+        .mm-loader-inner ul li:nth-child(4) {
+          color: var(--page-fold);
+          animation-name: mm-page-4;
+        }
+        .mm-loader-inner ul li:nth-child(5) {
+          color: var(--page-fold);
+          animation-name: mm-page-5;
+        }
+        .mm-loader-text {
+          display: block;
+          text-align: center;
+          margin-top: 28px;
+          color: var(--text);
+          font-family: 'Inter', sans-serif;
+          font-size: 13px;
+        }
+        @keyframes mm-page-2 {
+          0%   { transform: rotateY(180deg); opacity: 0; }
+          20%  { opacity: 1; }
+          35%, 100% { opacity: 0; }
+          50%, 100% { transform: rotateY(0deg); }
+        }
+        @keyframes mm-page-3 {
+          15%  { transform: rotateY(180deg); opacity: 0; }
+          35%  { opacity: 1; }
+          50%, 100% { opacity: 0; }
+          65%, 100% { transform: rotateY(0deg); }
+        }
+        @keyframes mm-page-4 {
+          30%  { transform: rotateY(180deg); opacity: 0; }
+          50%  { opacity: 1; }
+          65%, 100% { opacity: 0; }
+          80%, 100% { transform: rotateY(0deg); }
+        }
+        @keyframes mm-page-5 {
+          45%  { transform: rotateY(180deg); opacity: 0; }
+          65%  { opacity: 1; }
+          80%, 100% { opacity: 0; }
+          95%, 100% { transform: rotateY(0deg); }
+        }
+      `}</style>
+
+      <div className="mm-loader">
+        <div className="mm-loader-inner">
+          <ul>
+            {[...Array(6)].map((_, i) => (
+              <li key={i}>
+                <svg fill="currentColor" viewBox="0 0 90 120">
+                  <path d="M90,0 L90,120 L11,120 C4.92486775,120 0,115.075132 0,109 L0,11 C0,4.92486775 4.92486775,0 11,0 L90,0 Z M71.5,81 L18.5,81 C17.1192881,81 16,82.1192881 16,83.5 C16,84.8254834 17.0315359,85.9100387 18.3356243,85.9946823 L18.5,86 L71.5,86 C72.8807119,86 74,84.8807119 74,83.5 C74,82.1745166 72.9684641,81.0899613 71.6643757,81.0053177 L71.5,81 Z M71.5,57 L18.5,57 C17.1192881,57 16,58.1192881 16,59.5 C16,60.8254834 17.0315359,61.9100387 18.3356243,61.9946823 L18.5,62 L71.5,62 C72.8807119,62 74,60.8807119 74,59.5 C74,58.1192881 72.8807119,57 71.5,57 Z M71.5,33 L18.5,33 C17.1192881,33 16,34.1192881 16,35.5 C16,36.8254834 17.0315359,37.9100387 18.3356243,37.9946823 L18.5,38 L71.5,38 C72.8807119,38 74,36.8807119 74,35.5 C74,34.1192881 72.8807119,33 71.5,33 Z" />
+                </svg>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <span className="mm-loader-text">Building your readiness profile…</span>
       </div>
-    </StyledWrapper>
+    </>
   );
-}
-
-const StyledWrapper = styled.div`
-  .book,
-  .book__pg-shadow,
-  .book__pg {
-    animation: cover 5s ease-in-out infinite;
-  }
-  .book {
-    background-color: hsla(218, 90%, 65%, 0.853);
-    border-radius: 0.25em;
-    box-shadow:
-      0 0.25em 0.5em hsla(0, 0%, 0%, 0.3),
-      0 0 0 0.25em hsl(218, 100%, 57%) inset;
-    padding: 0.25em;
-    perspective: 37.5em;
-    position: relative;
-    width: 8em;
-    height: 6em;
-    transform: translate3d(0, 0, 0);
-    transform-style: preserve-3d;
-  }
-  .book__pg-shadow,
-  .book__pg {
-    position: absolute;
-    left: 0.25em;
-    width: calc(50% - 0.25em);
-  }
-  .book__pg-shadow {
-    animation-name: shadow;
-    background-image: linear-gradient(
-      -45deg,
-      hsla(0, 0%, 0%, 0) 50%,
-      hsla(0, 0%, 0%, 0.3) 50%
-    );
-    filter: blur(0.25em);
-    top: calc(100% - 0.25em);
-    height: 3.75em;
-    transform: scaleY(0);
-    transform-origin: 100% 0%;
-  }
-  .book__pg {
-    animation-name: pg1;
-    background-color: hsl(223, 10%, 100%);
-    background-image: linear-gradient(
-      90deg,
-      hsla(223, 10%, 90%, 0) 87.5%,
-      hsl(223, 10%, 90%)
-    );
-    height: calc(100% - 0.5em);
-    transform-origin: 100% 50%;
-  }
-  .book__pg--2,
-  .book__pg--3,
-  .book__pg--4 {
-    background-image: repeating-linear-gradient(
-        hsl(223, 10%, 10%) 0 0.125em,
-        hsla(223, 10%, 10%, 0) 0.125em 0.5em
-      ),
-      linear-gradient(90deg, hsla(223, 10%, 90%, 0) 87.5%, hsl(223, 10%, 90%));
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size:
-      2.5em 4.125em,
-      100% 100%;
-  }
-  .book__pg--2 {
-    animation-name: pg2;
-  }
-  .book__pg--3 {
-    animation-name: pg3;
-  }
-  .book__pg--4 {
-    animation-name: pg4;
-  }
-  .book__pg--5 {
-    animation-name: pg5;
-  }
-
-  /* Dark theme */
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: hsl(223, 10%, 30%);
-      --fg: hsl(223, 10%, 90%);
-    }
-  }
-
-  /* Animations */
-  @keyframes cover {
-    from,
-    5%,
-    45%,
-    55%,
-    95%,
-    to {
-      animation-timing-function: ease-out;
-      background-color: hsl(207, 18%, 88%);
-    }
-    10%,
-    40%,
-    60%,
-    90% {
-      animation-timing-function: ease-in;
-      background-color: hsl(271, 90%, 45%);
-    }
-  }
-  @keyframes shadow {
-    from,
-    10.01%,
-    20.01%,
-    30.01%,
-    40.01% {
-      animation-timing-function: ease-in;
-      transform: translate3d(0, 0, 1px) scaleY(0) rotateY(0);
-    }
-    5%,
-    15%,
-    25%,
-    35%,
-    45%,
-    55%,
-    65%,
-    75%,
-    85%,
-    95% {
-      animation-timing-function: ease-out;
-      transform: translate3d(0, 0, 1px) scaleY(0.2) rotateY(90deg);
-    }
-    10%,
-    20%,
-    30%,
-    40%,
-    50%,
-    to {
-      animation-timing-function: ease-out;
-      transform: translate3d(0, 0, 1px) scaleY(0) rotateY(180deg);
-    }
-    50.01%,
-    60.01%,
-    70.01%,
-    80.01%,
-    90.01% {
-      animation-timing-function: ease-in;
-      transform: translate3d(0, 0, 1px) scaleY(0) rotateY(180deg);
-    }
-    60%,
-    70%,
-    80%,
-    90%,
-    to {
-      animation-timing-function: ease-out;
-      transform: translate3d(0, 0, 1px) scaleY(0) rotateY(0);
-    }
-  }
-  @keyframes pg1 {
-    from,
-    to {
-      animation-timing-function: ease-in-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(0.4deg);
-    }
-    10%,
-    15% {
-      animation-timing-function: ease-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(180deg);
-    }
-    20%,
-    80% {
-      animation-timing-function: ease-in;
-      background-color: hsl(223, 10%, 45%);
-      transform: translate3d(0, 0, 1px) rotateY(180deg);
-    }
-    85%,
-    90% {
-      animation-timing-function: ease-in-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(180deg);
-    }
-  }
-  @keyframes pg2 {
-    from,
-    to {
-      animation-timing-function: ease-in;
-      background-color: hsl(223, 10%, 45%);
-      transform: translate3d(0, 0, 1px) rotateY(0.3deg);
-    }
-    5%,
-    10% {
-      animation-timing-function: ease-in-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(0.3deg);
-    }
-    20%,
-    25% {
-      animation-timing-function: ease-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(179.9deg);
-    }
-    30%,
-    70% {
-      animation-timing-function: ease-in;
-      background-color: hsl(223, 10%, 45%);
-      transform: translate3d(0, 0, 1px) rotateY(179.9deg);
-    }
-    75%,
-    80% {
-      animation-timing-function: ease-in-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(179.9deg);
-    }
-    90%,
-    95% {
-      animation-timing-function: ease-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(0.3deg);
-    }
-  }
-  @keyframes pg3 {
-    from,
-    10%,
-    90%,
-    to {
-      animation-timing-function: ease-in;
-      background-color: hsl(223, 10%, 45%);
-      transform: translate3d(0, 0, 1px) rotateY(0.2deg);
-    }
-    15%,
-    20% {
-      animation-timing-function: ease-in-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(0.2deg);
-    }
-    30%,
-    35% {
-      animation-timing-function: ease-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(179.8deg);
-    }
-    40%,
-    60% {
-      animation-timing-function: ease-in;
-      background-color: hsl(223, 10%, 45%);
-      transform: translate3d(0, 0, 1px) rotateY(179.8deg);
-    }
-    65%,
-    70% {
-      animation-timing-function: ease-in-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(179.8deg);
-    }
-    80%,
-    85% {
-      animation-timing-function: ease-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(0.2deg);
-    }
-  }
-  @keyframes pg4 {
-    from,
-    20%,
-    80%,
-    to {
-      animation-timing-function: ease-in;
-      background-color: hsl(223, 10%, 45%);
-      transform: translate3d(0, 0, 1px) rotateY(0.1deg);
-    }
-    25%,
-    30% {
-      animation-timing-function: ease-in-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(0.1deg);
-    }
-    40%,
-    45% {
-      animation-timing-function: ease-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(179.7deg);
-    }
-    50% {
-      animation-timing-function: ease-in;
-      background-color: hsl(223, 10%, 45%);
-      transform: translate3d(0, 0, 1px) rotateY(179.7deg);
-    }
-    55%,
-    60% {
-      animation-timing-function: ease-in-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(179.7deg);
-    }
-    70%,
-    75% {
-      animation-timing-function: ease-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(0.1deg);
-    }
-  }
-  @keyframes pg5 {
-    from,
-    30%,
-    70%,
-    to {
-      animation-timing-function: ease-in;
-      background-color: hsl(223, 10%, 45%);
-      transform: translate3d(0, 0, 1px) rotateY(0);
-    }
-    35%,
-    40% {
-      animation-timing-function: ease-in-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(0deg);
-    }
-    50% {
-      animation-timing-function: ease-in-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(179.6deg);
-    }
-    60%,
-    65% {
-      animation-timing-function: ease-out;
-      background-color: hsl(223, 10%, 100%);
-      transform: translate3d(0, 0, 1px) rotateY(0);
-    }
-  }`;
+};
 
 export default BookLoader;

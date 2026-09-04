@@ -15,6 +15,7 @@ body,
 
 body {
   overflow-x: hidden;
+  padding-top: 84px;
 }
 
 .page-container {

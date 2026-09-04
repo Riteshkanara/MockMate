@@ -234,8 +234,6 @@ const FeedbackCard = ({
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');
-
         .fb-card {
           width: 100%;
           min-width: 0;

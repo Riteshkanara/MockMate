@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getPublicProfile } from '../Services/profileServices';
+import { C, F } from '../styles/tokens';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC PROFILE — /p/:slug
@@ -8,32 +9,8 @@ import { getPublicProfile } from '../Services/profileServices';
 // Matches the blueprint-blue system used across MockMate.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const C = {
-  bg: '#F0F4FF',
-  card: '#FFFFFF',
-  cardAlt: '#F8FAFF',
-  text: '#0A1628',
-  sub: '#3D5280',
-  muted: '#7A8BAF',
-  border: '#DDE5F7',
-  borderMd: '#B8CAF0',
-  blue50: '#EBF2FF',
-  blue500: '#1A6EFF',
-  blue600: '#0057E8',
-  blue700: '#0044C4',
-  blue900: '#001F6B',
-  cyan400: '#00C8F0',
-  cyan500: '#00ADE0',
-  green: '#059669',
-  amber: '#D97706',
-  orange: '#EA580C',
-};
 
-const F = {
-  display: "'Plus Jakarta Sans', 'Lexend', sans-serif",
-  body: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
-};
+
 
 const scoreColor = (s) => (s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.orange);
 
@@ -184,7 +161,6 @@ const Shell = ({ children }) => (
   <div style={S.page}>
     {children}
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
       * { box-sizing: border-box; }
       @keyframes spin { to { transform: rotate(360deg); } }
       @media (max-width: 640px) {

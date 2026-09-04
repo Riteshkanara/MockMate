@@ -5,6 +5,7 @@ import useAuth from '../hooks/useAuth';
 import { getAICoach, getAIFreeform, getPerformanceAnalytics, startInterview, fixBadges } from '../Services/interviewService';
 import { getShareLink } from '../Services/profileServices';
 import PageLoader from '../components/PageLoader';
+import Button from '../components/Button';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE — READINESS TERMINAL v6
@@ -422,9 +423,9 @@ Hard limit: 350 words total. Every word must earn its place.`;
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             {done && (
-              <button onClick={generateAnalysis} disabled={loading} style={{ border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', padding: '8px 13px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: F.body }}>
+              <Button surface="dark" variant="ghost" size="sm" onClick={generateAnalysis} disabled={loading}>
                 Re-analyse
-              </button>
+              </Button>
             )}
             <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
@@ -614,9 +615,9 @@ Reply with ONLY the one sentence. No preamble, no label.`;
             })}
           </div>
         )}
-        <button style={{ ...S.btnBlue, width: '100%', justifyContent: 'center', display: 'flex' }} className="mm-btn-blue" onClick={() => onDrill(topic)} disabled={starting}>
+        <Button variant="gradient" className="w-full justify-center flex" onClick={() => onDrill(topic)} disabled={starting}>
           Drill {topic} now →
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -873,22 +874,22 @@ const Dashboard = () => {
                 </p>
               )}
               <div style={S.heroActions}>
-                <button style={S.btnPrimary} className="mm-btn-primary" onClick={() => startQuick()} disabled={starting}>
+                <Button surface="dark" variant="primary" onClick={() => startQuick()} disabled={starting}>
                   {starting ? 'Launching…' : hasData ? 'New mock interview' : 'Run first interview'}
-                </button>
+                </Button>
                 {hasData && (
-                  <button style={S.btnGhost} className="mm-btn-ghost" onClick={() => navigate('/analytics')}>
+                  <Button surface="dark" variant="ghost" onClick={() => navigate('/analytics')}>
                     Full analytics
-                  </button>
+                  </Button>
                 )}
                 {hasData && (
-                  <button
-                    style={{ ...S.btnGhost, background: 'rgba(0,194,232,0.1)', borderColor: 'rgba(0,194,232,0.3)', color: '#8FE9FF' }}
-                    className="mm-btn-ghost"
+                  <Button
+                    surface="dark" variant="ghost"
+                    className="!bg-[rgba(0,194,232,0.1)] !border-[rgba(0,194,232,0.3)] !text-[#8FE9FF]"
                     onClick={() => setCoachOpen(true)}
                   >
                     AI Coach
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
@@ -930,7 +931,7 @@ const Dashboard = () => {
                     Gaps here are where readiness points are actually lost.
                   </p>
                 </div>
-                <button style={S.linkBtn} className="mm-link-btn" onClick={() => navigate('/analytics')}>Full radar →</button>
+                <Button surface="light" variant="link" onClick={() => navigate('/analytics')}>Full radar →</Button>
               </div>
               <div style={S.dimList}>
                 {dimensionProfile.map(d => {
@@ -996,9 +997,9 @@ const Dashboard = () => {
                     <div style={S.archetypeFix}>{archetype.fix}</div>
                   </div>
 
-                  <button style={{ ...S.btnBlue, marginTop: 'auto' }} className="mm-btn-blue" onClick={() => startQuick(fixTarget.topic)} disabled={starting}>
+                  <Button variant="gradient" className="mt-auto" onClick={() => startQuick(fixTarget.topic)} disabled={starting}>
                     Drill {fixTarget.topic} now
-                  </button>
+                  </Button>
                 </>
               ) : (
                 <p style={S.cardSub}>Complete a few more sessions to unlock targeted recommendations.</p>
@@ -1053,7 +1054,7 @@ const Dashboard = () => {
                 </div>
                 <div style={S.bannerCaption}>{irs}/{nextTier.minScore} IRS needed</div>
               </div>
-              <button style={S.btnBannerCta} className="mm-banner-cta" onClick={() => startQuick()} disabled={starting}>Keep climbing →</button>
+              <Button variant="gradient" onClick={() => startQuick()} disabled={starting}>Keep climbing →</Button>
             </section>
           )}
 
@@ -1128,7 +1129,7 @@ const PredictorCard = ({ prediction, lastScore, averageScore, onStart, starting 
           </p>
         </div>
       </div>
-      <button style={{ ...S.btnBlue, marginTop: 16 }} className="mm-btn-blue" onClick={onStart} disabled={starting}>Beat the forecast →</button>
+      <Button variant="gradient" className="mt-4" onClick={onStart} disabled={starting}>Beat the forecast →</Button>
     </div>
   );
 };
@@ -1167,19 +1168,14 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted, onFixBadges 
               </div>
             </div>
           )}
-          <button
+          <Button
+            surface="light" variant="secondary" size="sm"
             onClick={handleFix}
             disabled={fixing}
-            className="mm-recheck-btn"
             title="Recompute badges against all your completed sessions — use this if a badge looks wrong"
-            style={{
-              border: `1px solid ${C.line}`, borderRadius: 9, background: C.surface,
-              padding: '7px 13px', color: C.sub, cursor: fixing ? 'default' : 'pointer',
-              fontSize: 11, fontWeight: 600, opacity: fixing ? 0.6 : 1,
-            }}
           >
             {fixing ? 'Rechecking…' : 'Recheck badges'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1276,9 +1272,9 @@ const AICoachTeaserCard = ({ onOpen, weakestDim }) => (
           Biggest unlock: <strong style={{ color: '#fff', fontWeight: 600 }}>{weakestDim.label}</strong> at {weakestDim.score}/100 — your coach will tell you exactly how to fix this.
         </div>
       )}
-      <button style={S.coachTeaserBtn} className="mm-coach-btn" onClick={onOpen}>
+      <Button variant="gradient" onClick={onOpen}>
         Open AI Coach →
-      </button>
+      </Button>
     </div>
   </div>
 );
@@ -1620,10 +1616,10 @@ const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions
             {' '}· {archetype.label}
           </p>
           <div>
-            <button style={S.btnShare} className="mm-share-btn" onClick={handleShare}>{copied ? 'Copied to clipboard' : 'Share your score'}</button>
-            <button style={S.btnShareLink} className="mm-share-link-btn" onClick={handleCopyProfileLink} disabled={linkLoading}>
+            <Button variant="gradient" size="sm" onClick={handleShare}>{copied ? 'Copied to clipboard' : 'Share your score'}</Button>
+            <Button surface="dark" variant="secondary" size="sm" className="ml-2.5" onClick={handleCopyProfileLink} disabled={linkLoading}>
               {linkLoading ? 'Generating link…' : linkError ? 'Couldn\u2019t copy — try again' : linkCopied ? 'Link copied' : 'Copy public profile link'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

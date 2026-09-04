@@ -1,60 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getInterviewHistory } from '../Services/interviewService';
+import { C, F } from '../styles/tokens';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // History — Blueprint Blue edition
 // Every visible score on this page is normalized to 0–100.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const C = {
-  bg: '#F0F4FF',
-  card: '#FFFFFF',
-  cardAlt: '#F8FAFF',
 
-  text: '#0A1628',
-  sub: '#3D5280',
-  muted: '#7A8BAF',
-  faint: '#A8B8D4',
-
-  border: '#DDE5F7',
-  borderMd: '#B8CAF0',
-  borderStr: '#7FA3E8',
-
-  blue50: '#EBF2FF',
-  blue100: '#C7DAFF',
-  blue200: '#9DBFFF',
-  blue400: '#4D8FFF',
-  blue500: '#1A6EFF',
-  blue600: '#0057E8',
-  blue700: '#0044C4',
-  blue900: '#001F6B',
-
-  cyan400: '#00C8F0',
-  cyan500: '#00ADE0',
-  cyan600: '#0093C4',
-  cyanTint: '#E6F9FF',
-
-  green: '#059669',
-  greenTint: '#ECFDF5',
-
-  amber: '#D97706',
-  amberTint: '#FFFBEB',
-  orange: '#EA580C',
-  orangeTint: '#FFF7ED',
-
-  red: '#DC2626',
-  redTint: '#FEF2F2',
-};
-
-const F = {
-  display:
-    "'Plus Jakarta Sans', 'Lexend', sans-serif",
-  body:
-    "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono:
-    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCORE NORMALIZATION
@@ -962,8 +916,6 @@ const History = () => {
   return (
     <div style={S.page}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');
-
         * {
           box-sizing: border-box;
         }

@@ -13,6 +13,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import BookLoader from "../components/BookLoader";
 import { getAIFreeform, getAnalytics, getLastSessionBreakdown, getBlindSpots, getSessionWarmup } from "../Services/interviewService";
+import { C as CT, F } from '../styles/tokens';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE ANALYTICS — READINESS INTELLIGENCE v5
@@ -20,74 +21,26 @@ import { getAIFreeform, getAnalytics, getLastSessionBreakdown, getBlindSpots, ge
 // from Dashboard's blueprint-blue. Same IRS formula, distinct visual identity.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Analytics extends the shared palette with war-room violet aliases and
+// per-dimension colors unique to this page
 const C = {
-  bg:       "#F0F4FF",
-  bgDeep:   "#E8EEFF",
-  card:     "#FFFFFF",
-  cardAlt:  "#F8FAFF",
-
-  text:     "#0A1628",
-  sub:      "#3D5280",
-  muted:    "#7A8BAF",
-  faint:    "#A8B8D4",
-
-  border:   "#DDE5F7",
-  borderMd: "#B8CAF0",
-  borderStr:"#7FA3E8",
-
-  blue50:   "#EBF2FF",
-  blue100:  "#C7DAFF",
-  blue200:  "#9DBFFF",
-  blue300:  "#6FA5FF",
-  blue400:  "#4D8FFF",
-  blue500:  "#1A6EFF",
-  blue600:  "#0057E8",
-  blue700:  "#0044C4",
-  blue900:  "#001F6B",
-
+  ...CT,
   // War-room violet accent — differentiates Analytics from Dashboard's cyan
-  violet:     "#1A6EFF",
-  violetLight:"#00C8F0",
-  violetTint: "#EBF2FF",
-  violetMid:  "#0057E8",
-  violetDeep: "#0044C4",
-
-  cyan400:  "#00C8F0",
-  cyan500:  "#00ADE0",
-  cyan600:  "#0093C4",
-  cyanTint: "#E6F9FF",
-
-  green:    "#059669",
-  greenTint:"#ECFDF5",
-  greenGlow:"rgba(5,150,105,0.18)",
-
-  amber:    "#D97706",
-  amberTint:"#FFFBEB",
-  orange:   "#EA580C",
-  orangeTint:"#FFF7ED",
-
-  red:      "#DC2626",
-  redTint:  "#FEF2F2",
-
+  violet:      CT.blue500,
+  violetLight: CT.cyan400,
+  violetTint:  CT.blue50,
+  violetMid:   CT.blue600,
+  violetDeep:  CT.blue700,
+  greenGlow:   "rgba(5,150,105,0.18)",
   // Per-dimension vivid colors — each dimension gets its own identity
   dimColors: {
-    technical:      "#1A6EFF",
-    problemSolving: "#1A6EFF",
-    communication:  "#059669",
-    behavioral:     "#D97706",
-    design:         "#0093C4",
-    fundamentals:   "#DC2626",
+    technical:      CT.blue500,
+    problemSolving: CT.blue500,
+    communication:  CT.green,
+    behavioral:     CT.amber,
+    design:         CT.cyan600,
+    fundamentals:   CT.red,
   },
-
-  shadow:   "0 1px 12px rgba(26,110,255,0.07)",
-  shadowMd: "0 6px 28px rgba(26,110,255,0.12)",
-  shadowLg: "0 16px 56px rgba(0,31,107,0.18)",
-};
-
-const F = {
-  display: "'Plus Jakarta Sans', 'Lexend', sans-serif",
-  body:    "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
 };
 
 const DIMENSION_META = [
@@ -2129,8 +2082,6 @@ if (loading) return (
   return (
     <div style={S.page}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
         @keyframes spin        { to { transform: rotate(360deg); } }
         @keyframes fadeUp      { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
         @keyframes livePulse   { 0%,100% { opacity:1; } 50% { opacity:0.28; } }

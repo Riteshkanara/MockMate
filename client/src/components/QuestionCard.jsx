@@ -1,11 +1,10 @@
-
 const QuestionCard = ({ question, topic, difficulty }) => {
 
   // YOUR LOGIC: difficulty color
   const getDifficultyColor = () => {
-    if (difficulty === 'easy') return 'bg-green-100 text-green-700';
-    if (difficulty === 'medium') return 'bg-yellow-100 text-yellow-700';
-    return 'bg-red-100 text-red-700';
+    if (difficulty === 'easy') return 'bg-success-tint text-success';
+    if (difficulty === 'medium') return 'bg-warning-tint text-warning';
+    return 'bg-danger-tint text-danger';
   };
 
   return (
@@ -32,25 +31,25 @@ const QuestionCard = ({ question, topic, difficulty }) => {
     font-size: 20px !important;
   }
 }`}</style>
-    <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+    <div className="question-card bg-surface rounded-md shadow-md p-6 mb-6">
 
       {/* Top row: topic + difficulty badges */}
       <div className="flex gap-3 mb-4">
 
         {/* Topic badge */}
-        <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-sm font-medium">
+        <span className="bg-brand-50 text-brand-600 px-3 py-1 rounded-full text-sm font-medium font-body">
           {topic}
         </span>
 
         {/* Difficulty badge */}
-        <span className={`px-3 py-1 rounded-full text-sm font-medium ${getDifficultyColor()}`}>
+        <span className={`px-3 py-1 rounded-full text-sm font-medium font-body ${getDifficultyColor()}`}>
           {difficulty}
         </span>
 
       </div>
 
       {/* Question text */}
-      <p className="text-gray-800 text-lg font-medium leading-relaxed">
+      <p className="text-text text-lg font-medium leading-relaxed font-display">
         {question}
       </p>
 

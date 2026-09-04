@@ -14,6 +14,7 @@ import {
 import useAuth from '../hooks/useAuth';
 import { useInterview } from '../hooks/useInterview';
 import InterviewLoader from '../components/InterviewLoader';
+import { C as CT, F } from '../styles/tokens';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE — INTERVIEW v5
@@ -25,59 +26,13 @@ import InterviewLoader from '../components/InterviewLoader';
 // cross-question transitions, and a full responsiveness/motion pass.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Shared tokens cover every color used here via their legacy aliases.
+// violet/violetTint are the only values not in the shared palette — they're
+// used exclusively for the MCQ mode accent and "Mixed" difficulty chip.
 const C = {
-  bg: '#F0F4FF',
-  bgDeep: '#E8EEFF',
-
-  card: '#FFFFFF',
-  cardAlt: '#F8FAFF',
-
-  text: '#0A1628',
-  sub: '#3D5280',
-  muted: '#7A8BAF',
-  faint: '#A8B8D4',
-
-  border: '#DDE5F7',
-  borderMd: '#B8CAF0',
-  borderStr: '#7FA3E8',
-
-  blue50: '#EBF2FF',
-  blue100: '#C7DAFF',
-  blue200: '#9DBFFF',
-  blue400: '#4D8FFF',
-  blue500: '#1A6EFF',
-  blue600: '#0057E8',
-  blue700: '#0044C4',
-  blue900: '#001F6B',
-
-  cyan400: '#00C8F0',
-  cyan500: '#00ADE0',
-  cyan600: '#0093C4',
-  cyanTint: '#E6F9FF',
-
-  violet: '#6D5BEE',
+  ...CT,
+  violet:     '#6D5BEE',
   violetTint: '#F0EEFF',
-
-  green: '#059669',
-  greenTint: '#ECFDF5',
-  greenGlow: 'rgba(5,150,105,0.18)',
-
-  amber: '#D97706',
-  amberTint: '#FFFBEB',
-  orange: '#EA580C',
-
-  red: '#DC2626',
-  redTint: '#FEF2F2',
-
-  shadow: '0 1px 12px rgba(26,110,255,0.07)',
-  shadowMd: '0 6px 28px rgba(26,110,255,0.12)',
-  shadowLg: '0 16px 56px rgba(0,31,107,0.18)',
-};
-
-const F = {
-  display: "'Plus Jakarta Sans', 'Lexend', sans-serif",
-  body: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
 };
 
 // ─── Mode metadata ────────────────────────────────────────────────────────
@@ -2096,8 +2051,6 @@ const McqExplanation = ({ question, feedback, correct, objColor, userAnswerIndex
 
 const GlobalStyles = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
     @keyframes ivSpin {
       to {
         transform: rotate(360deg);
@@ -3007,12 +2960,14 @@ const S = {
     flexShrink: 0,
   },
 
+  // ── CHANGED: F.display → F.mono, fontSize 14 → 13
+  // The 01/05 counter is a numeric display — mono is the right face here.
   questionNumber: {
     display: 'flex',
     alignItems: 'baseline',
     gap: 3,
-    fontFamily: F.display,
-    fontSize: 14,
+    fontFamily: F.mono,
+    fontSize: 13,
   },
 
   progressTrack: {
@@ -3045,15 +3000,17 @@ const S = {
     borderRadius: '50%',
   },
 
+  // ── CHANGED: F.display → F.mono, fontWeight 800 → 700
+  // Timer countdown is a numeric instrument — mono face is correct here.
   ringLabel: {
     position: 'absolute',
     inset: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontFamily: F.display,
+    fontFamily: F.mono,
     fontSize: 10,
-    fontWeight: 800,
+    fontWeight: 700,
   },
 
   roomGrid: {
@@ -3118,15 +3075,16 @@ const S = {
     fontFamily: F.mono,
   },
 
+  // ── CHANGED: F.display → F.body, clamp(21px,2.3vw,28px) → clamp(17px,1.8vw,22px),
+  // fontWeight 800 → 600, letterSpacing '-0.4px' removed (Inter doesn't need it).
+  // Question body copy: readable weight, not a billboard.
   questionText: {
     margin: 0,
     color: C.text,
-    fontFamily: F.display,
-    fontSize:
-      'clamp(21px, 2.3vw, 28px)',
-    lineHeight: 1.3,
-    fontWeight: 800,
-    letterSpacing: '-0.4px',
+    fontFamily: F.body,
+    fontSize: 'clamp(17px, 1.8vw, 22px)',
+    lineHeight: 1.4,
+    fontWeight: 600,
   },
 
   questionHelp: {

@@ -1,0 +1,153 @@
+/**
+ * MockMate Design Tokens — single source of truth
+ * ─────────────────────────────────────────────────────────────────────────
+ * Import ONCE, in src/index.css, above your Tailwind import:
+ *
+ *   @import "./styles/tokens.css";
+ *   @import "tailwindcss";
+ *
+ * Tailwind v4 reads every --color-*, --font-*, --shadow-*, --radius-* and
+ * --ease-*/--duration-* variable below and turns it into a real utility
+ * class automatically. That means:
+ *
+ *   --color-brand-500  →  bg-brand-500, text-brand-500, border-brand-500, ring-brand-500
+ *   --font-display      →  font-display
+ *   --shadow-md          →  shadow-md   (overrides Tailwind's default)
+ *   --radius-xl          →  rounded-xl  (overrides Tailwind's default)
+ *
+ * Stop writing style={{ color: '#1A6EFF' }}. Write className="text-brand-500".
+ * No page ever redeclares a color, a font import, or a shadow again — if a
+ * value needs to change, it changes here, once, and every page updates.
+ */
+
+@theme {
+  /* ── Fonts ────────────────────────────────────────────────────────────
+     One display face, one body face, one mono face. Every page uses the
+     same three — that consistency is what reads as "premium"; a fourth
+     or fifth typeface sneaking into one page is what reads as "student
+     project." Swap the family names here if you land on a different
+     typographic direction — nowhere else. */
+  --font-display: 'Plus Jakarta Sans', 'Lexend', sans-serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+
+  /* ── Base surfaces ────────────────────────────────────────────────── */
+  --color-bg:          #F0F4FF;
+  --color-bg-deep:      #E8EEFF;
+  --color-surface:      #FFFFFF;
+  --color-surface-alt:  #F8FAFF;
+  --color-surface-glass: rgba(255,255,255,0.82);
+
+  /* ── Text ─────────────────────────────────────────────────────────── */
+  --color-text:        #0A1628;
+  --color-text-sub:     #3D5280;
+  --color-text-muted:   #7A8BAF;
+  --color-text-faint:   #A8B8D4;
+
+  /* ── Borders ──────────────────────────────────────────────────────── */
+  --color-border:        #DDE5F7;
+  --color-border-md:      #B8CAF0;
+  --color-border-strong:  #7FA3E8;
+
+  /* ── Brand (blue) — primary actions, links, active states ───────────
+     50 → 900, light to dark, so `hover:bg-brand-600` etc. behave the way
+     every Tailwind color already behaves for you. */
+  --color-brand-50:  #EBF2FF;
+  --color-brand-100: #C7DAFF;
+  --color-brand-200: #9DBFFF;
+  --color-brand-300: #6FA5FF;
+  --color-brand-400: #4D8FFF;
+  --color-brand-500: #1A6EFF;
+  --color-brand-600: #0057E8;
+  --color-brand-700: #0044C4;
+  --color-brand-900: #001F6B;
+
+  /* ── Accent (cyan) — secondary highlight, use sparingly ──────────── */
+  --color-accent-tint:  #E6F9FF;
+  --color-accent-300:   #5FE0FF;
+  --color-accent-400:   #00C8F0;
+  --color-accent-500:   #00ADE0;
+  --color-accent-600:   #0093C4;
+
+  /* ── Semantic status ──────────────────────────────────────────────── */
+  --color-success:      #059669;
+  --color-success-tint:  #ECFDF5;
+  --color-success-glow:  rgba(5,150,105,0.18);
+
+  --color-warning:      #D97706;
+  --color-warning-tint:  #FFFBEB;
+
+  --color-caution:      #EA580C;
+  --color-caution-tint:  #FFF7ED;
+
+  --color-danger:       #DC2626;
+  --color-danger-tint:   #FEF2F2;
+
+  /* ── Badge tiers — kept visually distinct from score colors above,
+     so a rank badge never gets misread as a pass/fail score ─────────── */
+  --color-bronze:       #B0703B;
+  --color-bronze-tint:   #FBF1E7;
+  --color-silver:       #7C8AA3;
+  --color-silver-tint:   #F2F4F8;
+  --color-gold:         #C89416;
+  --color-gold-tint:     #FDF7E6;
+  --color-platinum:     #5D6CE0;
+  --color-platinum-tint: #EEF0FE;
+
+  /* ── Elevation — three steps only. If a fourth shadow feels needed,
+     that's usually a sign two elements should share a level instead. ── */
+  --shadow-sm: 0 1px 12px rgba(26,110,255,0.07);
+  --shadow-md: 0 6px 28px rgba(26,110,255,0.12);
+  --shadow-lg: 0 16px 56px rgba(0,31,107,0.18);
+
+  /* ── Radius — one scale, used consistently by role:
+     sm = inputs/chips · md = buttons/small cards · lg = cards ·
+     xl = modals/hero panels · full = pills/avatars ─────────────────── */
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  --radius-xl:  24px;
+
+  /* ── Motion — one duration + one easing per "weight" of interaction.
+     Reuse these instead of inventing a new curve per component. ─────── */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast:   120ms;
+  --duration-base:   200ms;
+  --duration-slow:   360ms;
+}
+
+/* ── Global resets & font loading — declared ONCE, here ────────────────
+   Every page currently re-imports these Google Fonts in its own <style>
+   tag (13+ duplicate requests). Delete every one of those and rely on
+   this single import instead. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); }
+h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
+code, pre, .font-mono-data { font-family: var(--font-mono); }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb { background: var(--color-border-md); border-radius: 99px; }
+
+/* Visible keyboard focus everywhere — don't remove this to "clean up" a
+   component; it's a deployment-blocker accessibility requirement. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+/* Respect reduced-motion preference site-wide */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes mm-live-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.8); } }
+@keyframes mm-fade-up    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

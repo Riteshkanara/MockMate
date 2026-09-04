@@ -9,6 +9,7 @@ import {
   getBlindSpots,
 } from "../Services/interviewService";
 import PencilLoader from "../components/PencilLoader";
+import { C as CT, F } from '../styles/tokens';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE AI COACH — Placement Command Center
@@ -25,52 +26,13 @@ import PencilLoader from "../components/PencilLoader";
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
+// Coach uses the shared palette plus dark-panel values unique to this page
 const C = {
-  bg:        "#F0F4FF",
-  bgDeep:    "#E8EEFF",
-  card:      "#FFFFFF",
-  cardAlt:   "#F8FAFF",
-  text:      "#0A1628",
-  sub:       "#3D5280",
-  muted:     "#7A8BAF",
-  faint:     "#A8B8D4",
-  border:    "#DDE5F7",
-  borderMd:  "#B8CAF0",
-  borderStr: "#7FA3E8",
-  blue50:    "#EBF2FF",
-  blue100:   "#C7DAFF",
-  blue200:   "#9DBFFF",
-  blue300:   "#6FA5FF",
-  blue400:   "#4D8FFF",
-  blue500:   "#1A6EFF",
-  blue600:   "#0057E8",
-  blue700:   "#0044C4",
-  blue900:   "#001F6B",
-  cyan400:   "#00C8F0",
-  cyan500:   "#00ADE0",
-  cyan600:   "#0093C4",
-  cyanTint:  "#E6F9FF",
-  green:     "#059669",
-  greenTint: "#ECFDF5",
-  amber:     "#D97706",
-  amberTint: "#FFFBEB",
-  orange:    "#EA580C",
-  orangeTint:"#FFF7ED",
-  red:       "#DC2626",
-  redTint:   "#FEF2F2",
-  shadow:    "0 1px 12px rgba(26,110,255,0.07)",
-  shadowMd:  "0 6px 28px rgba(26,110,255,0.12)",
-  shadowLg:  "0 16px 56px rgba(0,31,107,0.18)",
-  dark0:     "#080F1E",
-  dark1:     "#0A1628",
-  dark2:     "#0D1F3C",
-  dark3:     "#001A4A",
-};
-
-const F = {
-  display: "'Plus Jakarta Sans', 'Lexend', sans-serif",
-  body:    "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+  ...CT,
+  dark0: "#080F1E",
+  dark1: "#0A1628",
+  dark2: "#0D1F3C",
+  dark3: "#001A4A",
 };
 
 // ─── Company profiles ────────────────────────────────────────────────────────
@@ -1575,8 +1537,6 @@ const Coach = () => {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, backgroundImage: `radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.08) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(0,173,224,0.05) 0%, transparent 42%)`, padding: "36px 28px 80px", fontFamily: F.body }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
-
         @keyframes coachSpin   { to { transform: rotate(360deg); } }
         @keyframes coachFadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes coachPulse  { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }

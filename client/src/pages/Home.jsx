@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import API_BASE from '../config/api.js';
+import Button from '../components/Button';
 
 const GOOGLE_AUTH_URL = `${API_BASE}/auth/google`;
 
@@ -349,13 +350,9 @@ const Home = () => {
               </p>
 
               <div style={S.heroActions}>
-                <button style={S.btnHeroPrimary}
-                  onClick={goToInterview}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#f0f0f0'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 32px rgba(0,0,0,0.22)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.18)'; }}
-                >
+                <Button surface="dark" size="lg" onClick={goToInterview}>
                   Start your first interview →
-                </button>
+                </Button>
                 <a href="#irs" style={S.btnHeroGhost}>
                   How IRS works ↓
                 </a>
@@ -497,12 +494,9 @@ const Home = () => {
                 <h2 style={{ ...S.sectionH2, marginBottom: 8 }}>Every interview dissected<br />across six weighted axes.</h2>
                 <p style={S.sectionSub}>You can't fake overall readiness by drilling one topic. Each dimension has a real weight in the IRS formula.</p>
               </div>
-              <button style={S.btnSecondary} onClick={goToInterview}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = C.blue500; e.currentTarget.style.color = C.blue500; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = C.borderMd; e.currentTarget.style.color = C.sub; }}
-              >
+              <Button variant="secondary" onClick={goToInterview}>
                 See your real dimensions →
-              </button>
+              </Button>
             </div>
             <div style={S.dimsGrid} className="mm-dims-grid">
               {DIMENSIONS.map((dim, i) => {
@@ -599,12 +593,9 @@ const Home = () => {
                 <p style={S.eyebrow}>Interview archetypes</p>
                 <h2 style={{ ...S.sectionH2, marginBottom: 10 }}>Your interview personality is data, not vibes.</h2>
                 <p style={S.sectionSub}>MockMate uses standard deviation and trend slope on your real score history to assign an archetype — then gives you a fix specific to that pattern.</p>
-                <button style={{ ...S.btnSecondary, marginTop: 20 }} onClick={goToInterview}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = C.blue500; e.currentTarget.style.color = C.blue500; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = C.borderMd; e.currentTarget.style.color = C.sub; }}
-                >
+                <Button variant="secondary" className="mt-5" onClick={goToInterview}>
                   Discover your archetype →
-                </button>
+                </Button>
               </div>
               <div style={{ flex: '1 1 400px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {[
@@ -697,13 +688,9 @@ const Home = () => {
                 <p style={{ fontFamily: F.body, fontSize: 15, color: 'rgba(255,255,255,0.65)', margin: '0 0 32px', lineHeight: 1.65 }}>
                   Don't let it be the first time you've answered under pressure.
                 </p>
-                <button style={{ border: 'none', borderRadius: 12, background: '#fff', color: C.blue700, fontFamily: F.display, fontSize: 15, fontWeight: 800, padding: '14px 38px', cursor: 'pointer', boxShadow: '0 6px 24px rgba(0,0,0,0.18)', transition: 'all 0.15s' }}
-                  onClick={goToInterview}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 32px rgba(0,0,0,0.22)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,0,0,0.18)'; }}
-                >
+                <Button surface="dark" size="lg" onClick={goToInterview}>
                   Practice now — it's free
-                </button>
+                </Button>
               </div>
             </div>
           </div>

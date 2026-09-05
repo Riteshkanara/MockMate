@@ -1101,6 +1101,62 @@ const getFallbackEvaluation = ({ userAnswer,}) => {
 };
 
 // ---------------------------------------------------------
+// Fallback coach advice
+// ---------------------------------------------------------
+
+const getFallbackCoachAdvice = ({
+  totalSessions = 0,
+  averageScore = 0,
+  bestScore = 0,
+  streak = 0,
+  weakest = [],
+  strongest = 'N/A',
+  currentTierLabel = null,
+  nextTierLabel = null,
+  nextTierReadinessPct = null,
+  primaryBlockerLabel = null,
+  sessionsToUnlockNextTier = null,
+} = {}) => {
+  const weakestText = weakest.length
+    ? weakest.join(', ')
+    : 'not enough data yet to identify weak topics';
+
+  const tierText = currentTierLabel
+    ? `You're currently tracking toward the ${currentTierLabel} tier`
+    : 'Your tier placement needs a few more sessions to be reliable';
+
+  const nextTierText =
+    nextTierLabel && nextTierReadinessPct !== null
+      ? ` and are ${nextTierReadinessPct}% of the way to ${nextTierLabel}.`
+      : '.';
+
+  const blockerText = primaryBlockerLabel
+    ? `Right now, ${primaryBlockerLabel} is your biggest blocker to leveling up.`
+    : 'Keep practicing consistently to surface your biggest growth area.';
+
+  const unlockText =
+    sessionsToUnlockNextTier !== null
+      ? `At your current pace, roughly ${sessionsToUnlockNextTier} more focused sessions could unlock the next tier.`
+      : 'A few more sessions of consistent practice will let MockMate start projecting a reliable timeline for your next tier.';
+
+  return {
+    verdict: `AI coaching is temporarily unavailable, so here's a snapshot based on your saved stats. Across ${totalSessions} session(s), you're averaging ${averageScore}/100 with a best of ${bestScore}/100. ${tierText}${nextTierText}`,
+
+    criticalGaps: `Your weaker areas so far: ${weakestText}. ${blockerText}`,
+
+    strengths: `Your strongest topic has been ${strongest}. A ${streak}-day streak shows you're building consistency, which matters as much as raw scores.`,
+
+    battlePlan: `Keep sessions short but frequent, and prioritize your weak topics (${weakestText}) before broadening out. ${unlockText}`,
+
+    mindset:
+      'Placement prep is a marathon, not a sprint — steady, honest practice beats cramming. This detailed analysis will refresh automatically once AI coaching is back online.',
+
+    aiAvailable: false,
+    fallback: true,
+  };
+};
+
+// ---------------------------------------------------------
 // Generate questions
 // ---------------------------------------------------------
 
@@ -1750,6 +1806,9 @@ const evaluateAnswer = async ({
   };
 };
 
+// ---------------------------------------------------------
+// Coach advice
+// ---------------------------------------------------------
 
 const generateCoachAdvice = async ({
   profile = {},
@@ -1760,8 +1819,8 @@ const generateCoachAdvice = async ({
   weakest = [],
   strongest = 'N/A',
   topicPerformance = [],
- 
-  // NEW — authoritative readiness data, same numbers the dashboard shows
+
+  // Authoritative readiness data, same numbers the dashboard shows
   irs = null,
   currentTierLabel = null,
   nextTierLabel = null,
@@ -1781,12 +1840,12 @@ ${primaryBlockerLabel ? `- Primary blocking dimension: ${primaryBlockerLabel} ($
 ${sessionsToUnlockNextTier !== null ? `- At current pace, estimated sessions to unlock next tier: ${sessionsToUnlockNextTier}` : '- Not enough per-dimension history yet to project a reliable sessions-to-unlock estimate — say so honestly rather than inventing a number.'}
 `
     : '';
- 
+
   const prompt = `
 You are MockMate's AI placement coach for
 an Indian engineering student preparing for
 campus placements.
- 
+
 Student profile:
 - College: ${profile.college || 'Not provided'}
 - Branch: ${profile.branch || 'Not provided'}
@@ -1800,10 +1859,10 @@ Student profile:
 ${readinessBlock}
 Topic performance:
 ${JSON.stringify(topicPerformance)}
- 
+
 Give a concise but highly personalised
 placement-preparation analysis.
- 
+
 CRITICAL RULES:
 - Your verdict and battle plan MUST be consistent with the verified readiness
   data above — do not state a different tier, percentage, or blocker than
@@ -1814,9 +1873,9 @@ CRITICAL RULES:
   do not invent one — instead say what kind of practice would let MockMate
   start projecting an ETA (e.g. "a few more sessions focused on X").
 - Do not invent achievements, scores, or numbers not given above.
- 
+
 Return ONLY JSON with:
- 
+
 {
   "verdict": "...",
   "criticalGaps": "...",
@@ -1824,38 +1883,66 @@ Return ONLY JSON with:
   "battlePlan": "...",
   "mindset": "..."
 }
- 
+
 Be specific. Reference the student's actual performance and the verified
 readiness numbers above.
 `;
- 
-  const result = await generateWithRetry({
-    contents: prompt,
- 
-    config: {
-      responseMimeType: 'application/json',
- 
-      responseJsonSchema: {
-        type: 'object',
- 
-        properties: {
-          verdict: { type: 'string' },
-          criticalGaps: { type: 'string' },
-          strengths: { type: 'string' },
-          battlePlan: { type: 'string' },
-          mindset: { type: 'string' },
-        },
- 
-        required: ['verdict', 'criticalGaps', 'strengths', 'battlePlan', 'mindset'],
-      },
-    },
-  });
- 
-  return parseJsonResponse(result.text);
-};
- 
 
- 
+  try {
+    const result = await generateWithRetry({
+      contents: prompt,
+
+      config: {
+        responseMimeType: 'application/json',
+
+        responseJsonSchema: {
+          type: 'object',
+
+          properties: {
+            verdict: { type: 'string' },
+            criticalGaps: { type: 'string' },
+            strengths: { type: 'string' },
+            battlePlan: { type: 'string' },
+            mindset: { type: 'string' },
+          },
+
+          required: ['verdict', 'criticalGaps', 'strengths', 'battlePlan', 'mindset'],
+        },
+      },
+    });
+
+    const parsed = parseJsonResponse(result.text);
+
+    return {
+      ...parsed,
+      aiAvailable: true,
+      fallback: false,
+    };
+  } catch (error) {
+    console.error(
+      'Gemini generateCoachAdvice error:',
+      getErrorMessage(error)
+    );
+
+    // Same resilience pattern as the rest of this file: never let a
+    // temporarily-down or rate-limited Gemini API turn into a broken
+    // coach board. Fall back to a stats-only summary instead of throwing.
+    return getFallbackCoachAdvice({
+      totalSessions,
+      averageScore,
+      bestScore,
+      streak,
+      weakest,
+      strongest,
+      currentTierLabel,
+      nextTierLabel,
+      nextTierReadinessPct,
+      primaryBlockerLabel,
+      sessionsToUnlockNextTier,
+    });
+  }
+};
+
 // ---------------------------------------------------------
 // Freeform Gemini generation
 // Used for authenticated AI UI features that need plain text
@@ -1913,6 +2000,7 @@ module.exports = {
   evaluateAnswer,
   getFallbackQuestions,
   getFallbackEvaluation,
+  getFallbackCoachAdvice,
   generateCoachAdvice,
   generateFreeform,
 };

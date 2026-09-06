@@ -626,13 +626,14 @@ Rules: No markdown, no asterisks. Mention specific dimension names. Sound like a
           {plan.map((section, i) => {
             const cfg = DAY_CONFIG[section.heading] || { icon: "📌", badge: "FOCUS", badgeBg: `${C.blue500}18`, badgeColor: C.blue500 };
             return (
-              <div key={i} style={{
+              <div key={i} className="coach-lift-card" style={{
                 padding: "18px 20px",
                 borderRadius: 16,
                 background: C.cardAlt,
                 border: `1px solid ${C.border}`,
                 borderLeft: `4px solid ${section.accent}`,
                 display: "flex", flexDirection: "column", gap: 12,
+                transition: "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease",
               }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -747,6 +748,11 @@ const ProgressTimeline = memo(({ scoreTrend }) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION 5 — COMPANY READINESS
 // ═══════════════════════════════════════════════════════════════════════════
+const VERDICT_BEATS = [
+  { icon: "🧭", label: "THE VERDICT" },
+  { icon: "🔧", label: "FIX THIS FIRST" },
+];
+
 const CompanyReadiness = memo(({ analyticsData }) => {
   const [selected, setSelected] = useState(null);
   const [result, setResult]     = useState(null);
@@ -908,16 +914,39 @@ No headers. No markdown. Direct mentor voice. Under 100 words.`;
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {result.verdict && (
-                <div style={{ padding: "20px 20px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderLeft: `3px solid ${C.cyan400}` }}>
-                  <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.cyan400, letterSpacing: "1px", marginBottom: 12 }}>⚡ COACH'S VERDICT</div>
-                  {result.verdict.split(/\n\n|\n(?=[A-Z])/).filter(Boolean).map((para, pi) => (
-                    <div key={pi}>
-                      {pi > 0 && <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "12px 0" }} />}
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: pi === 0 ? 600 : 400, lineHeight: 1.8, color: pi === 0 ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.70)", fontFamily: F.body, letterSpacing: "-0.1px" }}>
-                        <HighlightedText text={para} dark={true} />
-                      </p>
-                    </div>
-                  ))}
+                <div style={{ padding: "20px 20px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderLeft: `3px solid ${C.cyan400}`, animation: "coachFadeUp 0.4s cubic-bezier(.16,1,.3,1) both" }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.cyan400, letterSpacing: "1px", marginBottom: 14, fontWeight: 800 }}>⚡ COACH'S VERDICT</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {(() => {
+                      const paras = result.verdict.split(/\n\n|\n(?=[A-Z])/).filter(Boolean);
+                      const useBeats = VERDICT_BEATS.length >= paras.length;
+                      return paras.map((para, pi) => {
+                        const beat = useBeats ? VERDICT_BEATS[pi] : null;
+                        return (
+                          <div key={pi}>
+                            {pi > 0 && <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "0 0 14px" }} />}
+                            <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                              {beat && (
+                                <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, background: "rgba(0,200,240,0.12)", border: "1px solid rgba(0,200,240,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, marginTop: 1 }}>
+                                  {beat.icon}
+                                </div>
+                              )}
+                              <div style={{ flex: 1 }}>
+                                {beat && (
+                                  <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 800, letterSpacing: "1.1px", color: "rgba(0,200,240,0.75)", marginBottom: 5, textTransform: "uppercase" }}>
+                                    {beat.label}
+                                  </div>
+                                )}
+                                <p style={{ margin: 0, fontSize: 14, fontWeight: pi === 0 ? 600 : 450, lineHeight: 1.8, color: pi === 0 ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.72)", fontFamily: F.body, letterSpacing: "-0.1px" }}>
+                                  <HighlightedText text={para} dark={true} />
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
                 </div>
               )}
 
@@ -1158,7 +1187,8 @@ Respond as coach directly to this student. Use their actual data if relevant. Be
         {quickPrompts.map((prompt, i) => (
           <button key={i} onClick={() => sendMessage(prompt)} disabled={loading || cooldown}
             aria-label={`Quick prompt: ${prompt}`}
-            style={{ border: "1px solid rgba(255,255,255,0.12)", borderRadius: 999, background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.65)", padding: "6px 13px", fontSize: 11.5, fontWeight: 600, cursor: (loading || cooldown) ? "not-allowed" : "pointer", fontFamily: F.body, transition: "all 0.15s" }}>
+            className="coach-pill"
+            style={{ border: "1px solid rgba(255,255,255,0.12)", borderRadius: 999, background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.65)", padding: "6px 13px", fontSize: 11.5, fontWeight: 600, cursor: (loading || cooldown) ? "not-allowed" : "pointer", fontFamily: F.body, transition: "all 0.2s ease" }}>
             {prompt}
           </button>
         ))}
@@ -1328,7 +1358,7 @@ No markdown. No asterisks. Coach talking after a session. Under 200 words.`;
             {debrief.sections.map((s, i) => {
               const cfg = SECTION_CONFIG[s.heading] || { icon: "•", desc: "" };
               return (
-                <div key={i} style={{ padding: "20px 20px", borderRadius: 16, background: C.cardAlt, border: `1px solid ${C.border}`, borderLeft: `4px solid ${s.accent}`, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div key={i} className="coach-lift-card" style={{ padding: "20px 20px", borderRadius: 16, background: C.cardAlt, border: `1px solid ${C.border}`, borderLeft: `4px solid ${s.accent}`, display: "flex", flexDirection: "column", gap: 12, transition: "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
@@ -1337,7 +1367,7 @@ No markdown. No asterisks. Coach talking after a session. Under 200 words.`;
                           {s.heading}
                         </span>
                       </div>
-                      <div style={{ fontFamily: F.body, fontSize: 10.5, color: C.muted, marginLeft: 25 }}>{cfg.desc}</div>
+                      <div style={{ fontFamily: F.body, fontSize: 10.5, fontWeight: 500, color: C.muted, marginLeft: 25, letterSpacing: "0.1px" }}>{cfg.desc}</div>
                     </div>
                   </div>
                   <div style={{ height: 1, background: `linear-gradient(90deg, ${s.accent}35, transparent)` }} />
@@ -1554,6 +1584,19 @@ const Coach = () => {
           outline-offset: 2px;
         }
         .coach-page button:hover:not(:disabled) { opacity: 0.92; }
+        .coach-page button:active:not(:disabled) { transform: scale(0.98); }
+
+        .coach-pill:hover:not(:disabled) {
+          background: rgba(255,255,255,0.1) !important;
+          border-color: rgba(0,200,240,0.35) !important;
+          color: rgba(255,255,255,0.9) !important;
+          opacity: 1 !important;
+        }
+
+        .coach-lift-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 28px rgba(0,20,80,0.18);
+        }
 
         @media (max-width: 960px) { .coach-two-col { grid-template-columns: 1fr !important; } }
         @media (max-width: 680px) { .coach-page { padding: 18px 14px 60px !important; } }

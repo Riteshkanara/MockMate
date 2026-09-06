@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import API_BASE from '../config/api.js';
@@ -49,7 +49,7 @@ const F = {
   mono:    "'JetBrains Mono', 'SF Mono', monospace",
 };
 
-// ─── Package tiers — from Analytics TIERS, calibrated to Indian placement ────
+// ─── Package tiers ────────────────────────────────────────────────────────────
 const TIERS = [
   { label: '₹3–6 LPA',   minScore: 0,  color: C.muted,   bg: C.blue50,    border: C.borderMd, desc: 'Service companies, off-campus starts',   advice: 'Focus on DSA basics and communication fundamentals.' },
   { label: '₹6–12 LPA',  minScore: 38, color: C.amber,   bg: C.amberTint, border: '#FDE68A',  desc: 'Mid-tier product, IT MNCs, campus drives', advice: 'Strengthen problem solving and topic breadth.' },
@@ -57,7 +57,7 @@ const TIERS = [
   { label: '₹20 LPA+',   minScore: 80, color: C.cyan500, bg: C.cyanTint,  border: '#7DE8FF',  desc: 'FAANG, unicorn startups, remote-first',   advice: 'Achieve elite cross-dimension performance.' },
 ];
 
-// ─── Six dimensions — from Analytics DIMENSIONS (weighted, real formula) ─────
+// ─── Six dimensions ───────────────────────────────────────────────────────────
 const DIMENSIONS = [
   { key: 'technical',      label: 'Technical Depth',  icon: '⚙',  weight: 28, demo: 74, tip: 'Core CS fundamentals — the first thing screeners test.' },
   { key: 'problemSolving', label: 'Problem Solving',   icon: '🔍', weight: 22, demo: 68, tip: 'How you break unknowns — decisive in live coding rounds.' },
@@ -86,7 +86,7 @@ const FEATURES = [
   { icon: '🏫', title: 'College Leaderboard',             desc: 'See exactly where you rank against peers from your college. The board resets each week.',                                                 tag: 'Competitive'     },
 ];
 
-// ─── IRS formula components (from Dashboard + Analytics computeIRS) ───────────
+// ─── IRS formula components ───────────────────────────────────────────────────
 const IRS_COMPONENTS = [
   { label: 'Dimension-weighted avg',  pct: 40, color: C.blue500, demo: 74, note: '6 dimensions, each with a real weight' },
   { label: 'EWMA trend (α = 0.35)',   pct: 25, color: C.cyan500, demo: 68, note: 'Recent sessions count more than old ones' },
@@ -94,11 +94,106 @@ const IRS_COMPONENTS = [
   { label: 'Consistency (1 − CV)',    pct: 20, color: C.green,   demo: 82, note: 'Steady 70 beats wild 50 / 90 swings' },
 ];
 
-// ─── Rotating demo sessions (hero card) ──────────────────────────────────────
+// ─── Rotating demo sessions ───────────────────────────────────────────────────
 const SESSIONS = [
   { question: 'Explain the difference between SQL and NoSQL databases.',   score: 78, feedback: ['Good grasp of CAP theorem', 'Add real-world examples', 'Missed eventual consistency'], mode: 'Technical', time: '2m 34s', irs: 62 },
   { question: 'How would you optimize a slow REST API endpoint?',          score: 91, feedback: ['Excellent caching strategy', 'Correct indexing logic', 'Clean N+1 solution'],          mode: 'Technical', time: '3m 12s', irs: 74 },
   { question: 'Tell me about a project you\'re most proud of.',            score: 85, feedback: ['Strong STAR structure', 'Good technical depth', 'Quantify your impact more'],          mode: 'HR Round',  time: '4m 01s', irs: 71 },
+];
+
+// ─── AI Evaluation pipeline steps ────────────────────────────────────────────
+const EVAL_PIPELINE = [
+  {
+    step: '01',
+    title: 'Question Generation',
+    icon: '⚡',
+    color: C.blue500,
+    bg: C.blue50,
+    border: C.borderMd,
+    detail: 'Questions are generated from your resume, target role, and selected mode. A Technical round for a MERN fresher gets different questions than one for a data engineering hire.',
+    tags: ['Resume-aware', 'Mode-specific', 'Difficulty-adaptive'],
+  },
+  {
+    step: '02',
+    title: 'Answer Capture',
+    icon: '🎙️',
+    color: C.cyan500,
+    bg: C.cyanTint,
+    border: '#7DE8FF',
+    detail: 'Type or speak your answer. Voice input is transcribed in real time. The full answer — including hesitations and self-corrections — is passed to the evaluator.',
+    tags: ['Voice + Text', 'Real-time transcript', 'No edits after submit'],
+  },
+  {
+    step: '03',
+    title: 'Multi-Axis Evaluation',
+    icon: '🧠',
+    color: C.amber,
+    bg: C.amberTint,
+    border: '#FDE68A',
+    detail: 'The AI evaluates your answer independently across all 6 dimensions — not one score then sub-divided. Each axis gets its own reasoning pass before a score is assigned.',
+    tags: ['6 independent passes', 'Weighted scoring', 'No ceiling-smoothing'],
+  },
+  {
+    step: '04',
+    title: 'Follow-up Generation',
+    icon: '🔁',
+    color: C.green,
+    bg: C.greenTint,
+    border: '#BBF7D0',
+    detail: 'Based on gaps detected in your answer, the AI generates 1–2 targeted follow-up questions. Miss a concept → it drills that concept, not a random next question.',
+    tags: ['Gap-targeted', 'Pressure simulation', 'Mirrors real interviews'],
+  },
+  {
+    step: '05',
+    title: 'Structured Feedback',
+    icon: '📋',
+    color: C.blue500,
+    bg: C.blue50,
+    border: C.borderMd,
+    detail: 'Each session ends with a feedback card: what was strong, what was weak, what a senior engineer would have expected you to say, and the exact IRS delta from this session.',
+    tags: ['What you missed', 'Model answer hint', 'IRS delta shown'],
+  },
+  {
+    step: '06',
+    title: 'Cross-session Pattern Analysis',
+    icon: '📈',
+    color: C.cyan500,
+    bg: C.cyanTint,
+    border: '#7DE8FF',
+    detail: 'After 3+ sessions, MockMate builds a weakness map. If you consistently lose points on system design trade-offs, your next session automatically weights that area higher.',
+    tags: ['Weakness map', 'Auto-reweight', 'Tracks across all modes'],
+  },
+];
+
+// ─── Feedback anatomy ─────────────────────────────────────────────────────────
+const FEEDBACK_ANATOMY = [
+  { label: 'What you got right',        icon: '✓', color: C.green,   bg: C.greenTint, border: '#BBF7D0', desc: 'Specific acknowledgement of correct concepts, not generic praise. "You correctly identified that B-tree indexes are faster for range queries" — not "Good answer!"' },
+  { label: 'What was missing',          icon: '⚠', color: C.amber,   bg: C.amberTint, border: '#FDE68A', desc: 'Exact gaps — the concept, term, or reasoning step that was absent. Ranked by how much it would have cost you in a real interview at the salary tier you\'re targeting.' },
+  { label: 'What a senior would say',   icon: '→', color: C.blue500, bg: C.blue50,    border: C.borderMd, desc: 'A model answer segment showing the level of depth expected. Not a full answer — just the part you missed, phrased the way a product engineer with 3+ years would phrase it.' },
+  { label: 'Dimension breakdown',       icon: '⚙', color: C.cyan500, bg: C.cyanTint,  border: '#7DE8FF', desc: 'A mini-scorecard across all 6 axes for this answer. Lets you see if you\'re consistently weak on communication even when your technical content is right.' },
+  { label: 'IRS impact',                icon: '↗', color: C.blue500, bg: C.blue50,    border: C.borderMd, desc: 'Exactly how this session shifted your IRS — which component moved, by how much, and whether you crossed a tier boundary. Makes each session feel consequential.' },
+];
+
+// ─── Question intelligence table ──────────────────────────────────────────────
+const QUESTION_LOGIC = [
+  { factor: 'Your resume stack',   effect: 'Questions reference your actual tech — React, Node, MongoDB — not generic Java enterprise questions.',          icon: '📄' },
+  { factor: 'Target role / JD',    effect: 'Paste a JD and every question maps to that job\'s skills, not a one-size-fits-all set.',                         icon: '🎯' },
+  { factor: 'Interview mode',      effect: 'Technical mode probes CS depth. HR mode probes behavior. System design mode starts broad and drills down.',       icon: '⚙️' },
+  { factor: 'Difficulty ramp',     effect: 'First question is calibrated to your IRS. Gets harder if you answer well, easier if you struggle — like a real interviewer adjusting in real time.', icon: '📊' },
+  { factor: 'Weak-spot injection', effect: 'After 3 sessions, questions in your weak dimensions appear 40% more often than normal rotation.',                 icon: '🔍' },
+  { factor: 'Follow-up logic',     effect: 'Follow-ups are generated from your specific answer gaps, not a pre-set follow-up bank.',                           icon: '🔁' },
+];
+
+// ─── Badges ───────────────────────────────────────────────────────────────────
+const BADGES = [
+  { icon: '🎯', label: 'First Interview',   sub: 'Complete session 1',   bg: C.blue50,    border: C.borderMd,  color: C.blue600,  earned: true  },
+  { icon: '🔥', label: '7-Day Streak',      sub: 'Consistent 7 days',    bg: '#FFF7ED',   border: '#FDBA74',   color: C.orange,   earned: true  },
+  { icon: '🏆', label: 'Score 90+',         sub: 'IRS ≥ 80 once',        bg: C.amberTint, border: '#FDE68A',   color: C.amber,    earned: false },
+  { icon: '🧠', label: '50 Sessions',       sub: 'Volume = fluency',     bg: C.cyanTint,  border: '#7DE8FF',   color: C.cyan500,  earned: false },
+  { icon: '🔗', label: '14-Day Streak',     sub: 'Discipline shows',     bg: C.greenTint, border: '#BBF7D0',   color: C.green,    earned: false },
+  { icon: '⚡', label: 'Speed Runner',       sub: 'Under 90s, 90+ score', bg: C.blue50,    border: C.borderMd,  color: C.blue500,  earned: false },
+  { icon: '🎓', label: 'Top of College',    sub: 'Leaderboard rank #1',  bg: C.amberTint, border: '#FDE68A',   color: C.amber,    earned: false },
+  { icon: '👑', label: 'Placement Ready',   sub: '30-day streak',        bg: C.cyanTint,  border: '#7DE8FF',   color: C.cyan500,  earned: false },
 ];
 
 // ─── Pricing plans ────────────────────────────────────────────────────────────
@@ -106,6 +201,16 @@ const PRICING = [
   { name: 'Free',    price: '₹0',     period: 'forever',    highlight: false, cta: 'Start Free',  action: 'auth',    features: ['5 sessions / month', 'Basic AI feedback', 'IRS score tracking', 'College leaderboard'] },
   { name: 'Pro',     price: '₹199',   period: '/month',     highlight: true,  cta: 'Go Pro',      action: 'auth',    features: ['Unlimited sessions', 'Voice answers', 'Resume-personalised prep', 'Weak pattern detector', 'AI follow-up questions', 'Priority support'] },
   { name: 'College', price: '₹2,999', period: '/semester',  highlight: false, cta: 'Contact Us',  action: 'contact', features: ['Everything in Pro', 'Admin analytics panel', 'Batch performance reports', 'Custom question sets', 'Placement cell dashboard'] },
+];
+
+// ─── Comparison: MockMate vs practising alone ─────────────────────────────────
+const COMPARE_ROWS = [
+  { aspect: 'Feedback quality',        alone: 'None — you guess what you missed',           mockmate: 'Per-axis breakdown with exact gaps named' },
+  { aspect: 'Question relevance',      alone: 'Generic YouTube / book questions',            mockmate: 'Generated from your resume + target JD' },
+  { aspect: 'Follow-up pressure',      alone: 'No follow-ups — you finish when you stop',   mockmate: 'AI follows up on every gap, just like a real interviewer' },
+  { aspect: 'Progress visibility',     alone: 'You feel like you\'re improving — maybe',    mockmate: 'IRS number moves, tier badge updates, weakness map rebuilds' },
+  { aspect: 'Consistency enforcement', alone: 'Easy to skip — no consequence',               mockmate: 'Streak breaks, badge resets, leaderboard rank drops' },
+  { aspect: 'Peer benchmarking',       alone: 'No idea where you stand vs classmates',       mockmate: 'College leaderboard, weekly reset, real ranks' },
 ];
 
 // ─── Animated IRS Demo Ring ───────────────────────────────────────────────────
@@ -144,7 +249,6 @@ const DemoIRSRing = ({ score = 74, size = 190, strokeWidth = 14 }) => {
             <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
         </defs>
-        {/* Tick marks */}
         {Array.from({ length: 48 }, (_, i) => {
           const ang  = (i / 48) * 2 * Math.PI - Math.PI / 2;
           const isMaj = i % 6 === 0;
@@ -159,12 +263,10 @@ const DemoIRSRing = ({ score = 74, size = 190, strokeWidth = 14 }) => {
             />
           );
         })}
-        {/* Track */}
         <circle cx={size/2} cy={size/2} r={r}
           fill="none" stroke={C.border} strokeWidth={strokeWidth}
           transform={`rotate(-90 ${size/2} ${size/2})`}
         />
-        {/* Progress */}
         <circle cx={size/2} cy={size/2} r={r}
           fill="none" stroke="url(#irsGradHome)" strokeWidth={strokeWidth}
           strokeLinecap="round"
@@ -172,7 +274,6 @@ const DemoIRSRing = ({ score = 74, size = 190, strokeWidth = 14 }) => {
           transform={`rotate(-90 ${size/2} ${size/2})`}
           filter="url(#irsGlowHome)"
         />
-        {/* End dot */}
         {displayed > 2 && (() => {
           const ang = (displayed / 100) * 2 * Math.PI - Math.PI / 2;
           return <circle
@@ -219,7 +320,6 @@ const DemoSessionCard = ({ onStart }) => {
       width: '100%', maxWidth: 390,
       boxShadow: '0 12px 48px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)',
     }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <div style={{ width: 33, height: 33, borderRadius: 9, background: 'rgba(26,110,255,0.22)', border: '1px solid rgba(26,110,255,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🤖</div>
@@ -238,15 +338,12 @@ const DemoSessionCard = ({ onStart }) => {
         </div>
       </div>
 
-      {/* Question */}
       <div style={{ background: 'rgba(26,110,255,0.12)', border: '1px solid rgba(26,110,255,0.26)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, opacity: fade ? 1 : 0, transition: 'opacity 0.3s ease' }}>
         <div style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 700, color: C.cyan400, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>Question</div>
         <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 600, color: '#fff', lineHeight: 1.5 }}>{s.question}</div>
       </div>
 
-      {/* Score + Feedback */}
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 16, opacity: fade ? 1 : 0, transition: 'opacity 0.3s ease 0.05s' }}>
-        {/* Mini score ring */}
         <div style={{ position: 'relative', width: 68, height: 68, flexShrink: 0 }}>
           <svg width={68} height={68} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
             <circle cx={34} cy={34} r={27} fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth={7} />
@@ -262,7 +359,6 @@ const DemoSessionCard = ({ onStart }) => {
             <div style={{ fontFamily: F.mono, fontSize: 7, color: 'rgba(255,255,255,0.40)', marginTop: 1 }}>/100</div>
           </div>
         </div>
-        {/* Feedback bullets */}
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 8 }}>AI Feedback</div>
           {s.feedback.map((f, i) => (
@@ -274,7 +370,6 @@ const DemoSessionCard = ({ onStart }) => {
         </div>
       </div>
 
-      {/* Footer */}
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: fade ? 1 : 0, transition: 'opacity 0.3s ease 0.1s' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,173,224,0.15)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '4px 11px' }}>
           <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.cyan400 }}>IRS {s.irs}/100</span>
@@ -286,6 +381,150 @@ const DemoSessionCard = ({ onStart }) => {
             <div key={i} style={{ width: i === idx ? 18 : 5, height: 5, borderRadius: 99, background: i === idx ? C.cyan400 : 'rgba(255,255,255,0.20)', transition: 'all 0.35s ease' }} />
           ))}
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Live Feedback Card Demo ──────────────────────────────────────────────────
+const FeedbackCardDemo = () => {
+  const [activeTab, setActiveTab] = useState('feedback');
+  const tabs = [
+    { id: 'feedback', label: 'Feedback' },
+    { id: 'dims',     label: 'Dimensions' },
+    { id: 'irs',      label: 'IRS Impact' },
+  ];
+
+  return (
+    <div style={{
+      background: C.card,
+      border: `1.5px solid ${C.borderMd}`,
+      borderRadius: 18,
+      overflow: 'hidden',
+      boxShadow: C.shadowMd,
+      maxWidth: 440,
+      width: '100%',
+    }}>
+      {/* Question header */}
+      <div style={{ background: C.bgDeep, borderBottom: `1px solid ${C.border}`, padding: '14px 18px' }}>
+        <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginBottom: 6 }}>QUESTION · Technical · 2m 47s</div>
+        <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 700, color: C.text, lineHeight: 1.45 }}>
+          Explain how indexing works in MongoDB and when you would avoid it.
+        </div>
+      </div>
+
+      {/* Score bar */}
+      <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ position: 'relative', width: 52, height: 52, flexShrink: 0 }}>
+          <svg width={52} height={52} style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx={26} cy={26} r={20} fill="none" stroke={C.border} strokeWidth={5} />
+            <circle cx={26} cy={26} r={20} fill="none" stroke={C.blue500} strokeWidth={5}
+              strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 20}
+              strokeDashoffset={2 * Math.PI * 20 * (1 - 0.73)}
+            />
+          </svg>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: F.display, fontSize: 15, fontWeight: 900, color: C.blue500 }}>73</div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: F.display, fontSize: 12.5, fontWeight: 700, color: C.text, marginBottom: 3 }}>Solid answer with one critical gap</div>
+          <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>Technical ↑3 · Problem Solving ↓1 · +0.8 IRS pts</div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+            flex: 1, padding: '10px 0',
+            background: activeTab === t.id ? C.blue50 : 'transparent',
+            border: 'none',
+            borderBottom: activeTab === t.id ? `2px solid ${C.blue500}` : '2px solid transparent',
+            fontFamily: F.display, fontSize: 12, fontWeight: 700,
+            color: activeTab === t.id ? C.blue500 : C.muted,
+            cursor: 'pointer', transition: 'all 0.15s',
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div style={{ padding: '16px 18px', minHeight: 180 }}>
+        {activeTab === 'feedback' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ padding: '10px 13px', borderRadius: 10, background: C.greenTint, border: `1px solid #BBF7D0` }}>
+              <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.green, marginBottom: 5 }}>✓ WHAT YOU GOT RIGHT</div>
+              <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.text, lineHeight: 1.5 }}>Correctly identified B-tree structure and compound index behavior. Good real-world example with the user collection.</div>
+            </div>
+            <div style={{ padding: '10px 13px', borderRadius: 10, background: C.amberTint, border: `1px solid #FDE68A` }}>
+              <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.amber, marginBottom: 5 }}>⚠ WHAT WAS MISSING</div>
+              <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.text, lineHeight: 1.5 }}>Missed the write-performance penalty on high-write collections and the selectivity threshold heuristic. Both are standard interview depth markers.</div>
+            </div>
+            <div style={{ padding: '10px 13px', borderRadius: 10, background: C.blue50, border: `1px solid ${C.borderMd}` }}>
+              <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.blue500, marginBottom: 5 }}>→ WHAT A SENIOR WOULD ADD</div>
+              <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.text, lineHeight: 1.5 }}>"Avoid indexing when your queries hit more than 30% of docs — a collection scan is faster, and the index write overhead compounds under load."</div>
+            </div>
+          </div>
+        )}
+        {activeTab === 'dims' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[
+              { label: 'Technical Depth',  score: 78, w: 28, delta: '+3' },
+              { label: 'Problem Solving',  score: 65, w: 22, delta: '-2' },
+              { label: 'Communication',    score: 80, w: 18, delta: '+1' },
+              { label: 'CS Fundamentals',  score: 72, w: 10, delta: '+2' },
+            ].map((d, i) => {
+              const col = d.score >= 80 ? C.green : d.score >= 65 ? C.blue500 : C.amber;
+              return (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                      <span style={{ fontFamily: F.display, fontSize: 12, fontWeight: 700, color: C.text }}>{d.label}</span>
+                      <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>{d.w}% of IRS</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontFamily: F.mono, fontSize: 10, color: d.delta.startsWith('+') ? C.green : C.red }}>{d.delta}</span>
+                      <span style={{ fontFamily: F.display, fontSize: 14, fontWeight: 900, color: col }}>{d.score}</span>
+                    </div>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 99, background: C.border, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${d.score}%`, borderRadius: 99, background: col }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {activeTab === 'irs' && (
+          <div>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+              <div style={{ flex: 1, padding: '12px', borderRadius: 10, background: C.bgDeep, border: `1px solid ${C.border}`, textAlign: 'center' }}>
+                <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginBottom: 4 }}>BEFORE</div>
+                <div style={{ fontFamily: F.display, fontSize: 28, fontWeight: 900, color: C.text }}>68</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', fontFamily: F.display, fontSize: 20, color: C.blue500, fontWeight: 700 }}>→</div>
+              <div style={{ flex: 1, padding: '12px', borderRadius: 10, background: C.blue50, border: `1.5px solid ${C.borderMd}`, textAlign: 'center' }}>
+                <div style={{ fontFamily: F.mono, fontSize: 9, color: C.blue500, marginBottom: 4 }}>AFTER</div>
+                <div style={{ fontFamily: F.display, fontSize: 28, fontWeight: 900, color: C.blue500 }}>68.8</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                { label: 'Dim-weighted avg', change: '+1.2', note: 'Technical up, Problem Solving slightly down' },
+                { label: 'EWMA trend',        change: '+0.4', note: 'Recent sessions trending upward' },
+                { label: 'Topic breadth',     change: '+0.0', note: 'MongoDB already in your topic map' },
+                { label: 'Consistency',       change: '+0.4', note: 'Less variance than your last 3 sessions' },
+              ].map((row, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 8, background: C.cardAlt, border: `1px solid ${C.border}` }}>
+                  <div>
+                    <div style={{ fontFamily: F.display, fontSize: 11.5, fontWeight: 700, color: C.text }}>{row.label}</div>
+                    <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>{row.note}</div>
+                  </div>
+                  <span style={{ fontFamily: F.display, fontSize: 13, fontWeight: 900, color: C.green }}>{row.change}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -327,11 +566,9 @@ const Home = () => {
         {/* ── HERO ─────────────────────────────────────────────────────────── */}
         <section style={S.hero}>
           <div style={S.heroScan} />
-          {/* Subtle dot grid overlay */}
           <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
 
           <div style={S.heroInner} className="mm-hero-inner">
-            {/* Left column */}
             <div style={S.heroLeft}>
               <div style={S.heroBadge}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green, display: 'inline-block', animation: 'mmLivePulse 1.6s ease-in-out infinite', boxShadow: '0 0 8px rgba(5,150,105,0.6)' }} />
@@ -353,12 +590,11 @@ const Home = () => {
                 <Button surface="dark" size="lg" onClick={goToInterview}>
                   Start your first interview →
                 </Button>
-                <a href="#irs" style={S.btnHeroGhost}>
-                  How IRS works ↓
+                <a href="#how-it-works" style={S.btnHeroGhost}>
+                  See how it works ↓
                 </a>
               </div>
 
-              {/* Stats row */}
               <div style={S.heroStats}>
                 {[['₹199/mo', 'Pro plan'], ['6 dimensions', 'tracked per session'], ['4 tiers', 'salary readiness mapped']].map(([n, l]) => (
                   <div key={l}>
@@ -369,7 +605,6 @@ const Home = () => {
               </div>
             </div>
 
-            {/* Right: demo session card */}
             <div style={S.heroRight}>
               <DemoSessionCard />
             </div>
@@ -395,12 +630,154 @@ const Home = () => {
           </div>
         </section>
 
+        {/* ── HOW THE AI WORKS — PIPELINE ───────────────────────────────────── */}
+        <section id="how-it-works" style={{ padding: '96px 32px', background: C.card }}>
+          <div style={S.sectionInner}>
+            <p style={S.eyebrow}>Under the hood</p>
+            <h2 style={S.sectionH2}>What actually happens<br />inside every session.</h2>
+            <p style={{ ...S.sectionSub, marginBottom: 48 }}>
+              Not a quiz tool with a score at the end. A six-stage evaluation pipeline that mirrors how a real interviewer thinks — question selection, live pressure, gap detection, and structured remediation.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }} className="mm-pipeline-grid">
+              {EVAL_PIPELINE.map((step, i) => (
+                <div key={i} style={{
+                  padding: '22px 20px',
+                  borderRadius: 16,
+                  background: step.bg,
+                  border: `1.5px solid ${step.border}`,
+                  boxShadow: C.shadow,
+                  transition: 'all 0.2s',
+                  cursor: 'default',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; }}
+                >
+                  {/* Step number watermark */}
+                  <div style={{ position: 'absolute', top: 10, right: 14, fontFamily: F.display, fontSize: 48, fontWeight: 900, color: step.color, opacity: 0.07, lineHeight: 1, pointerEvents: 'none' }}>{step.step}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.6)', border: `1px solid ${step.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17 }}>{step.icon}</div>
+                    <div>
+                      <div style={{ fontFamily: F.mono, fontSize: 8.5, color: step.color, fontWeight: 700, letterSpacing: '0.5px', marginBottom: 2 }}>STEP {step.step}</div>
+                      <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: C.text }}>{step.title}</div>
+                    </div>
+                  </div>
+                  <p style={{ fontFamily: F.body, fontSize: 13, color: C.sub, lineHeight: 1.65, margin: '0 0 14px' }}>{step.detail}</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {step.tags.map(tag => (
+                      <span key={tag} style={{ fontFamily: F.mono, fontSize: 9, color: step.color, background: 'rgba(255,255,255,0.55)', border: `1px solid ${step.border}`, borderRadius: 99, padding: '3px 8px' }}>{tag}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── AI FEEDBACK ANATOMY ───────────────────────────────────────────── */}
+        <section style={{ padding: '96px 32px', background: C.bg }}>
+          <div style={S.sectionInner}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 72, alignItems: 'center' }} className="mm-irs-grid">
+
+              {/* Left: live interactive demo card */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                <p style={{ ...S.eyebrow, alignSelf: 'flex-start' }}>Live feedback preview</p>
+                <FeedbackCardDemo />
+                <div style={{ alignSelf: 'stretch', padding: '12px 16px', borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 16 }}>💡</span>
+                  <span style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.5 }}>Click the tabs — Feedback, Dimensions, IRS Impact — to see what each session surfaces.</span>
+                </div>
+              </div>
+
+              {/* Right: anatomy breakdown */}
+              <div>
+                <h2 style={{ ...S.sectionH2, marginBottom: 10 }}>Feedback that tells you<br />what to fix, not how you did.</h2>
+                <p style={{ ...S.sectionSub, marginBottom: 28 }}>
+                  Generic scores don't change behaviour. Every MockMate session ends with a feedback card built from five distinct components — each one answering a question a generic AI tool never asks.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {FEEDBACK_ANATOMY.map((item, i) => (
+                    <div key={i} style={{
+                      padding: '14px 16px', borderRadius: 13,
+                      background: item.bg, border: `1.5px solid ${item.border}`,
+                      display: 'flex', gap: 13, alignItems: 'flex-start',
+                    }}>
+                      <div style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(255,255,255,0.6)', border: `1px solid ${item.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: F.mono, fontSize: 14, fontWeight: 700, color: item.color, flexShrink: 0 }}>{item.icon}</div>
+                      <div>
+                        <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: item.color, marginBottom: 5 }}>{item.label}</div>
+                        <div style={{ fontFamily: F.body, fontSize: 12, color: C.sub, lineHeight: 1.6 }}>{item.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── QUESTION INTELLIGENCE ─────────────────────────────────────────── */}
+        <section style={{ padding: '96px 32px', background: C.card }}>
+          <div style={S.sectionInner}>
+            <p style={S.eyebrow}>Question generation</p>
+            <h2 style={S.sectionH2}>Questions built for you.<br />Not built for everyone.</h2>
+            <p style={{ ...S.sectionSub, marginBottom: 48 }}>
+              Every question is generated at session start from six factors about you — not pulled from a bank of 500 generic questions that every other prep platform recycles.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }} className="mm-irs-grid">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {QUESTION_LOGIC.map((row, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 14, padding: '16px 16px', borderRadius: 13, background: C.cardAlt, border: `1px solid ${C.border}`, alignItems: 'flex-start', transition: 'all 0.2s' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = C.borderStr; e.currentTarget.style.boxShadow = C.shadowMd; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = 'none'; }}
+                  >
+                    <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{row.icon}</span>
+                    <div>
+                      <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 5 }}>{row.factor}</div>
+                      <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.6 }}>{row.effect}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Visual: simulated question generation context */}
+              <div style={{ background: `linear-gradient(140deg, ${C.blue900} 0%, ${C.blue700} 60%, ${C.cyan600} 100%)`, borderRadius: 20, padding: '28px 24px', boxShadow: C.shadowLg, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ fontFamily: F.mono, fontSize: 10, color: 'rgba(255,255,255,0.45)', letterSpacing: '1px' }}>SESSION CONTEXT PASSED TO AI</div>
+                {[
+                  { label: 'Resume stack',   value: 'React, Node, MongoDB, Express' },
+                  { label: 'Target role',    value: 'Full-stack Dev · Ahmedabad' },
+                  { label: 'Mode',           value: 'Technical — 20 mins' },
+                  { label: 'IRS',            value: '68 → difficulty: medium-hard' },
+                  { label: 'Weak dims',      value: 'System Design (55), Problem Solving (68)' },
+                ].map((row, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ fontFamily: F.mono, fontSize: 10, color: 'rgba(255,255,255,0.35)', width: 100, flexShrink: 0, paddingTop: 2 }}>{row.label}</div>
+                    <div style={{ fontFamily: F.display, fontSize: 12.5, fontWeight: 700, color: 'rgba(255,255,255,0.85)', lineHeight: 1.4 }}>{row.value}</div>
+                  </div>
+                ))}
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
+                <div>
+                  <div style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan400, marginBottom: 8 }}>→ GENERATED QUESTION</div>
+                  <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 700, color: '#fff', lineHeight: 1.5 }}>
+                    "You're building a real-time notification system for a social app with 100k users. Walk me through your architecture choices — specifically how you'd handle WebSocket connections at that scale."
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {['Targets System Design weakness', 'Anchored to Node.js stack', 'Difficulty: hard'].map(t => (
+                    <span key={t} style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan400, background: 'rgba(0,200,240,0.12)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '3px 9px' }}>{t}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* ── IRS EXPLAINER ─────────────────────────────────────────────────── */}
         <section id="irs" style={S.irsSection}>
           <div style={S.sectionInner}>
             <div style={S.irsGrid} className="mm-irs-grid">
-
-              {/* Left: ring + tier badge */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
                 <div>
                   <p style={{ ...S.eyebrow, textAlign: 'center' }}>Interview Readiness Score</p>
@@ -410,7 +787,6 @@ const Home = () => {
                   </p>
                 </div>
                 <DemoIRSRing score={74} size={190} strokeWidth={14} />
-                {/* Tier badge */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '14px 20px', background: C.blue50, border: `1.5px solid ${C.borderMd}`, borderRadius: 14, width: '100%', maxWidth: 280 }}>
                   <div style={{ fontFamily: F.display, fontSize: 17, fontWeight: 900, color: C.blue500 }}>₹12–20 LPA</div>
                   <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>eligible at IRS ≥ 60</div>
@@ -421,7 +797,6 @@ const Home = () => {
                 </div>
               </div>
 
-              {/* Right: 4 components */}
               <div>
                 <p style={S.eyebrow}>How IRS is computed</p>
                 <h2 style={{ ...S.sectionH2, fontSize: 24, marginBottom: 10 }}>4 real statistical components</h2>
@@ -530,8 +905,40 @@ const Home = () => {
           </div>
         </section>
 
+        {/* ── COMPARISON: MOCKMATE VS ALONE ─────────────────────────────────── */}
+        <section style={{ padding: '96px 32px', background: C.bg }}>
+          <div style={S.sectionInner}>
+            <p style={S.eyebrow}>Why not just practice alone?</p>
+            <h2 style={S.sectionH2}>The gap between feeling ready<br />and being ready.</h2>
+            <p style={{ ...S.sectionSub, marginBottom: 40 }}>
+              Most students who fail placement rounds feel like they prepared. The problem isn't effort — it's feedback loops. Without real feedback, you just repeat the same gaps at increasing confidence.
+            </p>
+
+            <div style={{ borderRadius: 18, overflow: 'hidden', border: `1.5px solid ${C.borderMd}`, boxShadow: C.shadowMd }}>
+              {/* Table header */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', background: C.blue900 }}>
+                <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.5)' }}>Area</div>
+                <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.5)', borderLeft: '1px solid rgba(255,255,255,0.08)' }}>Practising alone</div>
+                <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 800, color: C.cyan400, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>With MockMate</div>
+              </div>
+              {/* Table rows */}
+              {COMPARE_ROWS.map((row, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', background: i % 2 === 0 ? C.card : C.cardAlt, borderTop: `1px solid ${C.border}` }}>
+                  <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 700, color: C.text }}>{row.aspect}</div>
+                  <div style={{ padding: '14px 20px', fontFamily: F.body, fontSize: 13, color: C.muted, lineHeight: 1.55, borderLeft: `1px solid ${C.border}` }}>
+                    <span style={{ color: C.red, marginRight: 5 }}>✗</span>{row.alone}
+                  </div>
+                  <div style={{ padding: '14px 20px', fontFamily: F.body, fontSize: 13, color: C.text, lineHeight: 1.55, borderLeft: `1px solid ${C.border}` }}>
+                    <span style={{ color: C.green, marginRight: 5 }}>✓</span>{row.mockmate}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ── FEATURES ──────────────────────────────────────────────────────── */}
-        <section style={{ ...S.dimsSection, background: C.bg }}>
+        <section style={{ ...S.dimsSection, background: C.card }}>
           <div style={S.sectionInner}>
             <p style={S.eyebrow}>What makes it different</p>
             <h2 style={S.sectionH2}>Built for the gap between<br />knowing and performing.</h2>
@@ -551,7 +958,83 @@ const Home = () => {
           </div>
         </section>
 
-        {/* ── STREAK CALLOUT ────────────────────────────────────────────────── */}
+        {/* ── WEAK PATTERN DETECTOR DEEP DIVE ───────────────────────────────── */}
+        <section style={{ padding: '96px 32px', background: C.bgDeep }}>
+          <div style={S.sectionInner}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 72, alignItems: 'center' }} className="mm-irs-grid">
+              <div>
+                <p style={S.eyebrow}>Weak pattern detector</p>
+                <h2 style={{ ...S.sectionH2, marginBottom: 12 }}>It doesn't just score.<br />It remembers where you fail.</h2>
+                <p style={{ ...S.sectionSub, marginBottom: 24 }}>
+                  After three or more sessions, MockMate builds a cross-session weakness map. It tracks not just which questions you get wrong — but which reasoning patterns consistently break down, across different questions and different modes.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {[
+                    { icon: '🔁', title: 'Pattern detection', desc: 'If you lose points on scalability reasoning in 4 of 6 sessions — regardless of topic — that\'s a pattern, and your next session will probe it explicitly.' },
+                    { icon: '⚖', title: 'Auto question reweighting', desc: 'Questions in your weak dimensions appear 40% more often after week 1. You can\'t avoid the weak spot by picking different modes.' },
+                    { icon: '📉', title: 'Weakness map on dashboard', desc: 'Your dashboard shows a live heatmap of dimension trends across all sessions. You see the slope, not just the current number.' },
+                  ].map((item, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 13, padding: '14px 16px', borderRadius: 13, background: C.card, border: `1px solid ${C.border}`, alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
+                      <div>
+                        <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 4 }}>{item.title}</div>
+                        <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.6 }}>{item.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Simulated weakness heatmap */}
+              <div style={{ background: C.card, border: `1.5px solid ${C.borderMd}`, borderRadius: 18, overflow: 'hidden', boxShadow: C.shadowMd }}>
+                <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: C.text }}>Weakness Map</div>
+                    <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 2 }}>8 sessions · last 14 days</div>
+                  </div>
+                  <div style={{ fontFamily: F.mono, fontSize: 9, color: C.amber, background: C.amberTint, border: '1px solid #FDE68A', borderRadius: 99, padding: '3px 9px' }}>2 weak zones</div>
+                </div>
+                <div style={{ padding: '20px' }}>
+                  {[
+                    { label: 'Technical Depth',  scores: [71, 73, 75, 74, 78, 76, 79, 81], trend: 'up' },
+                    { label: 'Problem Solving',  scores: [60, 58, 64, 61, 59, 63, 60, 62], trend: 'flat', weak: true },
+                    { label: 'Communication',    scores: [80, 82, 79, 84, 83, 85, 87, 86], trend: 'up' },
+                    { label: 'System Design',    scores: [48, 51, 49, 53, 50, 54, 52, 55], trend: 'up', weak: true },
+                    { label: 'CS Fundamentals',  scores: [76, 75, 78, 80, 79, 82, 81, 83], trend: 'up' },
+                    { label: 'Behavioral',       scores: [70, 72, 71, 73, 74, 75, 76, 75], trend: 'up' },
+                  ].map((dim, i) => {
+                    const last = dim.scores[dim.scores.length - 1];
+                    const col = dim.weak ? C.amber : last >= 80 ? C.green : C.blue500;
+                    const min = Math.min(...dim.scores);
+                    const max = Math.max(...dim.scores);
+                    const range = max - min || 1;
+                    return (
+                      <div key={i} style={{ marginBottom: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                          <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                            {dim.weak && <span style={{ fontFamily: F.mono, fontSize: 8, color: C.amber, background: C.amberTint, border: '1px solid #FDE68A', borderRadius: 99, padding: '1px 6px' }}>WEAK</span>}
+                            <span style={{ fontFamily: F.display, fontSize: 12, fontWeight: 700, color: C.text }}>{dim.label}</span>
+                          </div>
+                          <span style={{ fontFamily: F.display, fontSize: 14, fontWeight: 900, color: col }}>{last}</span>
+                        </div>
+                        {/* Mini sparkline */}
+                        <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 24 }}>
+                          {dim.scores.map((s, j) => {
+                            const h = Math.max(4, ((s - min) / range) * 20 + 4);
+                            const isLast = j === dim.scores.length - 1;
+                            return <div key={j} style={{ flex: 1, height: h, borderRadius: 2, background: isLast ? col : dim.weak ? '#FDE68A' : C.blue100, transition: 'height 0.4s' }} />;
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── STREAK + BADGES ───────────────────────────────────────────────── */}
         <section style={S.streakSection}>
           <div style={S.sectionInner}>
             <div style={S.streakBox} className="mm-streak-box">
@@ -560,24 +1043,44 @@ const Home = () => {
                 <h2 style={{ fontFamily: F.display, fontSize: 'clamp(22px, 3vw, 34px)', fontWeight: 900, color: C.text, margin: '0 0 14px', letterSpacing: '-0.8px', lineHeight: 1.18 }}>
                   Miss a day.<br />Break the chain.
                 </h2>
-                <p style={{ fontFamily: F.body, fontSize: 14, color: C.sub, lineHeight: 1.68, margin: 0, maxWidth: 380 }}>
+                <p style={{ fontFamily: F.body, fontSize: 14, color: C.sub, lineHeight: 1.68, margin: '0 0 20px', maxWidth: 380 }}>
                   The streak system replicates what daily placement prep actually demands. Each badge is earned through real behaviour — not gifted after a one-off session.
                 </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[
+                    { label: '8 badges total', sub: 'Across volume, streaks, and performance' },
+                    { label: 'Badge resets are real', sub: 'Score 90+ badge requires maintaining it — not hitting it once' },
+                    { label: 'Placement Ready = 30 days', sub: 'The only badge that matters to placement cells' },
+                  ].map((item, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <span style={{ color: C.blue500, fontFamily: F.mono, fontSize: 14, marginTop: 1 }}>›</span>
+                      <div>
+                        <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: C.text }}>{item.label}</div>
+                        <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, marginTop: 2 }}>{item.sub}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div style={S.badgeGrid} className="mm-badge-grid">
-                {[
-                  { icon: '🎯', label: 'First Interview', sub: 'Day 1', bg: C.blue50,    border: C.borderMd, color: C.blue600 },
-                  { icon: '🔥', label: '7-Day Streak',   sub: 'Consistent now',   bg: '#FFF7ED',   border: '#FDBA74', color: C.orange },
-                  { icon: '🏆', label: 'Score 90+',       sub: 'IRS ≥ 80',  bg: C.amberTint, border: '#FDE68A', color: C.amber  },
-                  { icon: '👑', label: 'Placement Ready', sub: '30-day streak',    bg: C.cyanTint,  border: '#7DE8FF', color: C.cyan500},
-                ].map((b, i) => (
-                  <div key={i} style={{ ...S.badgeCard, background: b.bg, border: `1.5px solid ${b.border}` }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; }}
+
+              {/* Full 8-badge grid */}
+              <div style={{ flex: '1 1 400px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }} className="mm-badge-grid-lg">
+                {BADGES.map((b, i) => (
+                  <div key={i} style={{
+                    ...S.badgeCard,
+                    background: b.bg,
+                    border: `1.5px solid ${b.border}`,
+                    opacity: b.earned ? 1 : 0.55,
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = C.shadowMd; e.currentTarget.style.opacity = '1'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; e.currentTarget.style.opacity = b.earned ? '1' : '0.55'; }}
                   >
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>{b.icon}</div>
-                    <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: b.color, marginBottom: 3 }}>{b.label}</div>
-                    <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>{b.sub}</div>
+                    {b.earned && <div style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: C.green, boxShadow: '0 0 5px rgba(5,150,105,0.5)' }} />}
+                    <div style={{ fontSize: 24, marginBottom: 7 }}>{b.icon}</div>
+                    <div style={{ fontFamily: F.display, fontSize: 11.5, fontWeight: 800, color: b.color, marginBottom: 3 }}>{b.label}</div>
+                    <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted }}>{b.sub}</div>
                   </div>
                 ))}
               </div>
@@ -585,24 +1088,118 @@ const Home = () => {
           </div>
         </section>
 
+        {/* ── LEADERBOARD SECTION ───────────────────────────────────────────── */}
+        <section style={{ padding: '96px 32px', background: C.card }}>
+          <div style={S.sectionInner}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 72, alignItems: 'center' }} className="mm-irs-grid">
+
+              {/* Simulated leaderboard */}
+              <div style={{ background: C.card, border: `1.5px solid ${C.borderMd}`, borderRadius: 18, overflow: 'hidden', boxShadow: C.shadowMd }}>
+                <div style={{ background: C.blue900, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 800, color: '#fff' }}>CHARUSAT · CSE</div>
+                    <div style={{ fontFamily: F.mono, fontSize: 9, color: 'rgba(255,255,255,0.40)', marginTop: 2 }}>Week 32 · Resets in 4 days</div>
+                  </div>
+                  <div style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan400, background: 'rgba(0,200,240,0.15)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '3px 9px' }}>147 students</div>
+                </div>
+                {[
+                  { rank: 1,  name: 'Priya S.',    irs: 84, streak: 18, tier: '₹20 LPA+',  you: false },
+                  { rank: 2,  name: 'Arjun M.',    irs: 81, streak: 22, tier: '₹20 LPA+',  you: false },
+                  { rank: 3,  name: 'Riddhi P.',   irs: 79, streak: 14, tier: '₹12–20 LPA', you: false },
+                  { rank: 11, name: 'You',          irs: 68, streak: 7,  tier: '₹12–20 LPA', you: true  },
+                  { rank: 12, name: 'Nehal K.',    irs: 67, streak: 5,  tier: '₹6–12 LPA',  you: false },
+                ].map((row, i) => (
+                  <div key={i}>
+                    {i === 3 && <div style={{ padding: '7px 20px', background: C.bgDeep, borderTop: `1px solid ${C.border}`, fontFamily: F.mono, fontSize: 9, color: C.muted, textAlign: 'center', letterSpacing: '0.5px' }}>· · · · ·</div>}
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: '36px 1fr auto',
+                      alignItems: 'center', gap: 12,
+                      padding: '12px 20px',
+                      borderTop: `1px solid ${C.border}`,
+                      background: row.you ? `${C.blue500}10` : 'transparent',
+                      transition: 'background 0.15s',
+                    }}>
+                      <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 900, color: row.rank <= 3 ? C.amber : C.muted, textAlign: 'center' }}>
+                        {row.rank <= 3 ? ['🥇','🥈','🥉'][row.rank - 1] : `#${row.rank}`}
+                      </div>
+                      <div>
+                        <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: row.you ? 800 : 600, color: row.you ? C.blue500 : C.text }}>{row.name} {row.you && '← you'}</div>
+                        <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 2 }}>🔥 {row.streak} day streak</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 900, color: C.text }}>{row.irs}</div>
+                        <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted }}>{row.tier}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div style={{ padding: '12px 20px', borderTop: `1px solid ${C.border}`, background: C.blue50 }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.blue500, textAlign: 'center' }}>8 spots to top 3 · +0.4 IRS/day at current rate → 20 days</div>
+                </div>
+              </div>
+
+              <div>
+                <p style={S.eyebrow}>College leaderboard</p>
+                <h2 style={{ ...S.sectionH2, marginBottom: 12 }}>Know exactly where<br />you rank in your college.</h2>
+                <p style={{ ...S.sectionSub, marginBottom: 24 }}>
+                  The leaderboard resets every week, so rank is earned continuously — not from a one-time high score. Your position updates live after each session.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {[
+                    { icon: '🔄', title: 'Weekly reset', desc: 'Every Monday. Last week\'s rank is gone. Fresh start, same stakes.' },
+                    { icon: '🏫', title: 'College-scoped', desc: 'You only compete against students from your own college — not an aggregated national pool that makes your rank meaningless.' },
+                    { icon: '📊', title: 'IRS as the metric', desc: 'Rank is by IRS, not session count. The student who showed up most doesn\'t win — the most prepared one does.' },
+                  ].map((item, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 13, padding: '14px 16px', borderRadius: 13, background: C.cardAlt, border: `1px solid ${C.border}`, alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
+                      <div>
+                        <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 4 }}>{item.title}</div>
+                        <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.6 }}>{item.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* ── ARCHETYPE TEASER ──────────────────────────────────────────────── */}
-        <section style={{ padding: '72px 32px', background: C.card }}>
+        <section style={{ padding: '72px 32px', background: C.bg }}>
           <div style={S.sectionInner}>
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }} className="mm-irs-grid">
               <div style={{ flex: '1 1 340px' }}>
                 <p style={S.eyebrow}>Interview archetypes</p>
                 <h2 style={{ ...S.sectionH2, marginBottom: 10 }}>Your interview personality is data, not vibes.</h2>
                 <p style={S.sectionSub}>MockMate uses standard deviation and trend slope on your real score history to assign an archetype — then gives you a fix specific to that pattern.</p>
-                <Button variant="secondary" className="mt-5" onClick={goToInterview}>
-                  Discover your archetype →
-                </Button>
+                <div style={{ marginTop: 20, padding: '14px 16px', borderRadius: 12, background: C.card, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginBottom: 8 }}>HOW ARCHETYPES ARE ASSIGNED</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {[
+                      { label: 'Trend slope > 0.5/session', result: '→ Consistent Climber' },
+                      { label: 'Std deviation > 12 pts',    result: '→ Inconsistent Genius' },
+                      { label: 'Speed < 90s, score > 85',   result: '→ Speed Runner' },
+                      { label: 'Score > 80, speed > 4 min', result: '→ Deep Thinker' },
+                    ].map((a, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>{a.label}</span>
+                        <span style={{ fontFamily: F.display, fontSize: 11, fontWeight: 700, color: C.blue500 }}>{a.result}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ marginTop: 16 }}>
+                  <Button variant="secondary" onClick={goToInterview}>
+                    Discover your archetype →
+                  </Button>
+                </div>
               </div>
               <div style={{ flex: '1 1 400px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {[
-                  { icon: '📈', label: 'Consistent Climber', desc: 'Steady improvement — the archetype that wins campus placements.', color: C.green, bg: C.greenTint, border: '#BBF7D0' },
-                  { icon: '🎲', label: 'Inconsistent Genius', desc: 'High variance. Brilliant in flow — needs to build a floor quality.', color: C.amber, bg: C.amberTint, border: '#FDE68A' },
-                  { icon: '🧠', label: 'Deep Thinker',        desc: 'Thorough and accurate — needs to improve time under live pressure.', color: C.blue500, bg: C.blue50, border: C.borderMd },
-                  { icon: '⚡', label: 'Speed Runner',         desc: 'Fast answers, sometimes sacrifices depth. Think aloud.', color: C.cyan500, bg: C.cyanTint, border: '#7DE8FF' },
+                  { icon: '📈', label: 'Consistent Climber', desc: 'Steady improvement — the archetype that wins campus placements.', color: C.green, bg: C.greenTint, border: '#BBF7D0', fix: 'Keep the streak. The formula rewards you.' },
+                  { icon: '🎲', label: 'Inconsistent Genius', desc: 'High variance. Brilliant in flow — needs to build a floor quality.', color: C.amber, bg: C.amberTint, border: '#FDE68A', fix: 'Start every answer with a 20-second structure pass.' },
+                  { icon: '🧠', label: 'Deep Thinker',        desc: 'Thorough and accurate — needs to improve time under live pressure.', color: C.blue500, bg: C.blue50, border: C.borderMd, fix: 'Set a 2-minute clock per sub-question in practice.' },
+                  { icon: '⚡', label: 'Speed Runner',         desc: 'Fast answers, sometimes sacrifices depth. Think aloud.', color: C.cyan500, bg: C.cyanTint, border: '#7DE8FF', fix: 'Add one "and the reason this matters is..." per answer.' },
                 ].map((a, i) => (
                   <div key={i} style={{ padding: '16px 15px', borderRadius: 14, background: a.bg, border: `1.5px solid ${a.border}`, boxShadow: C.shadow, transition: 'all 0.2s' }}
                     onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
@@ -610,7 +1207,8 @@ const Home = () => {
                   >
                     <div style={{ fontSize: 22, marginBottom: 8 }}>{a.icon}</div>
                     <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: a.color, marginBottom: 6 }}>{a.label}</div>
-                    <div style={{ fontFamily: F.body, fontSize: 11.5, color: C.sub, lineHeight: 1.5 }}>{a.desc}</div>
+                    <div style={{ fontFamily: F.body, fontSize: 11.5, color: C.sub, lineHeight: 1.5, marginBottom: 10 }}>{a.desc}</div>
+                    <div style={{ padding: '7px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.55)', fontFamily: F.mono, fontSize: 9.5, color: a.color }}>Fix: {a.fix}</div>
                   </div>
                 ))}
               </div>
@@ -619,7 +1217,7 @@ const Home = () => {
         </section>
 
         {/* ── PRICING ───────────────────────────────────────────────────────── */}
-        <section style={{ padding: '80px 32px', background: C.bg }}>
+        <section style={{ padding: '80px 32px', background: C.card }}>
           <div style={S.sectionInner}>
             <p style={S.eyebrow}>Pricing</p>
             <h2 style={S.sectionH2}>Start free. Go pro when you're serious.</h2>
@@ -688,7 +1286,7 @@ const Home = () => {
                 <p style={{ fontFamily: F.body, fontSize: 15, color: 'rgba(255,255,255,0.65)', margin: '0 0 32px', lineHeight: 1.65 }}>
                   Don't let it be the first time you've answered under pressure.
                 </p>
-                <Button surface="dark" size="lg" onClick={goToInterview}>
+                <Button surface="dark" size="lg" onClick={goToInterview} style ={{ fontSize: 15, fontWeight: 700, padding: '14px 22px', borderRadius: 10 }}>
                   Practice now — it's free
                 </Button>
               </div>
@@ -724,7 +1322,6 @@ const Home = () => {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const S = {
-  // Status strip
   strip: { position: 'sticky', top: 0, zIndex: 100, background: C.card, borderBottom: `1px solid ${C.border}`, boxShadow: C.shadow },
   stripInner: { maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 28px' },
   stripLeft: { display: 'flex', alignItems: 'center', gap: 8 },
@@ -732,7 +1329,6 @@ const S = {
   liveDot: { width: 7, height: 7, borderRadius: '50%', background: C.green, display: 'inline-block', animation: 'mmLivePulse 2s ease-in-out infinite', boxShadow: '0 0 8px rgba(5,150,105,0.5)' },
   monoText: { fontFamily: F.mono, fontSize: 10, letterSpacing: '0.4px', color: C.muted },
 
-  // Hero
   hero: { position: 'relative', overflow: 'hidden', background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 44%, ${C.blue600} 72%, ${C.cyan600} 100%)`, padding: '84px 32px 80px' },
   heroScan: { position: 'absolute', top: 0, left: 0, width: '18%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent)', animation: 'mmHeroScan 10s linear infinite', pointerEvents: 'none' },
   heroInner: { maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 64, flexWrap: 'wrap', position: 'relative' },
@@ -743,50 +1339,38 @@ const S = {
   heroSub: { fontFamily: F.body, fontSize: 16, lineHeight: 1.72, color: 'rgba(255,255,255,0.70)', margin: '0 0 34px', maxWidth: 480 },
   heroActions: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 42 },
   heroStats: { display: 'flex', gap: 36, paddingTop: 34, borderTop: '1px solid rgba(255,255,255,0.12)', flexWrap: 'wrap' },
-  btnHeroPrimary: { background: '#fff', border: 'none', color: C.blue700, fontFamily: F.display, fontSize: 14, fontWeight: 800, padding: '13px 26px', borderRadius: 10, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.18)', transition: 'all 0.18s' },
   btnHeroGhost: { background: 'rgba(255,255,255,0.09)', border: '1px solid rgba(255,255,255,0.20)', color: 'rgba(255,255,255,0.84)', fontFamily: F.display, fontSize: 14, fontWeight: 600, padding: '13px 22px', borderRadius: 10, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', backdropFilter: 'blur(10px)', transition: 'all 0.18s' },
 
-  // Modes
   modesSection: { padding: '42px 32px', background: C.bgDeep, borderTop: `1px solid ${C.borderMd}`, borderBottom: `1px solid ${C.borderMd}` },
   modeRow: { display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 },
   modeChip: { display: 'flex', alignItems: 'center', gap: 8, borderRadius: 10, padding: '10px 18px', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' },
 
-  // Shared section
   sectionInner: { maxWidth: 1200, margin: '0 auto' },
   eyebrow: { fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: C.blue500, letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 12 },
   sectionH2: { fontFamily: F.display, fontSize: 'clamp(26px, 3.6vw, 40px)', fontWeight: 900, color: C.text, margin: '0 0 14px', letterSpacing: '-0.9px', lineHeight: 1.15 },
   sectionSub: { fontFamily: F.body, fontSize: 14, color: C.sub, lineHeight: 1.68, margin: 0, maxWidth: 540 },
-  btnSecondary: { border: `1.5px solid ${C.borderMd}`, background: C.card, color: C.sub, fontFamily: F.display, fontSize: 13.5, fontWeight: 700, padding: '11px 22px', borderRadius: 10, cursor: 'pointer', boxShadow: C.shadow, transition: 'all 0.18s', whiteSpace: 'nowrap' },
 
-  // IRS section
   irsSection: { padding: '96px 32px', background: C.card },
   irsGrid: { display: 'grid', gridTemplateColumns: '1fr 1.1fr', gap: 72, alignItems: 'center' },
 
-  // Tiers
   tiersSection: { padding: '80px 32px', background: C.bgDeep },
   tiersGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginTop: 28 },
   tierCard: { padding: '20px 18px', borderRadius: 16, boxShadow: C.shadow, transition: 'all 0.2s', cursor: 'default' },
 
-  // Dimensions
   dimsSection: { padding: '80px 32px', background: C.card },
   dimsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 },
   dimCard: { padding: '16px 15px', borderRadius: 14, boxShadow: C.shadow, transition: 'all 0.22s', cursor: 'default' },
 
-  // Features
   featuresGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginTop: 36 },
   featureCard: { background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 14, padding: '24px 20px', boxShadow: C.shadow, transition: 'all 0.22s', cursor: 'default' },
 
-  // Streak
   streakSection: { padding: '72px 32px', background: C.bg },
   streakBox: { display: 'flex', alignItems: 'center', gap: 48, flexWrap: 'wrap', background: C.card, border: `1.5px solid ${C.borderMd}`, borderRadius: 22, padding: '40px 36px', boxShadow: C.shadowMd },
-  badgeGrid: { flex: '1 1 300px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
   badgeCard: { borderRadius: 14, padding: '18px 14px', textAlign: 'center', boxShadow: C.shadow, transition: 'all 0.2s', cursor: 'default' },
 
-  // Pricing
   pricingGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginTop: 36 },
   pricingCard: { borderRadius: 18, padding: '28px 24px', position: 'relative' },
 
-  // CTA
   ctaBox: { background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 50%, ${C.cyan600} 100%)`, borderRadius: 24, padding: '72px 40px', position: 'relative', overflow: 'hidden', boxShadow: C.shadowLg },
   ctaScan: { position: 'absolute', top: 0, left: 0, width: '18%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent)', animation: 'mmHeroScan 12s linear infinite', pointerEvents: 'none' },
 };
@@ -806,22 +1390,26 @@ const GLOBAL_CSS = `
   @keyframes mmFadeUp    { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 
   @media (max-width: 1000px) {
-    .mm-irs-grid      { grid-template-columns: 1fr !important; gap: 40px !important; }
-    .mm-tiers-grid    { grid-template-columns: repeat(2, 1fr) !important; }
-    .mm-features-grid { grid-template-columns: repeat(2, 1fr) !important; }
-    .mm-pricing-grid  { grid-template-columns: 1fr !important; }
+    .mm-irs-grid       { grid-template-columns: 1fr !important; gap: 40px !important; }
+    .mm-tiers-grid     { grid-template-columns: repeat(2, 1fr) !important; }
+    .mm-features-grid  { grid-template-columns: repeat(2, 1fr) !important; }
+    .mm-pricing-grid   { grid-template-columns: 1fr !important; }
+    .mm-pipeline-grid  { grid-template-columns: repeat(2, 1fr) !important; }
+    .mm-badge-grid-lg  { grid-template-columns: repeat(4, 1fr) !important; }
   }
   @media (max-width: 760px) {
-    .mm-hero-inner    { gap: 36px !important; }
-    .mm-tiers-grid    { grid-template-columns: 1fr !important; }
-    .mm-dims-grid     { grid-template-columns: repeat(2, 1fr) !important; }
-    .mm-features-grid { grid-template-columns: 1fr !important; }
-    .mm-streak-box    { flex-direction: column !important; gap: 28px !important; }
-    .mm-strip-right   { display: none !important; }
+    .mm-hero-inner     { gap: 36px !important; }
+    .mm-tiers-grid     { grid-template-columns: 1fr !important; }
+    .mm-dims-grid      { grid-template-columns: repeat(2, 1fr) !important; }
+    .mm-features-grid  { grid-template-columns: 1fr !important; }
+    .mm-pipeline-grid  { grid-template-columns: 1fr !important; }
+    .mm-streak-box     { flex-direction: column !important; gap: 28px !important; }
+    .mm-strip-right    { display: none !important; }
+    .mm-badge-grid-lg  { grid-template-columns: repeat(2, 1fr) !important; }
   }
   @media (max-width: 540px) {
-    .mm-dims-grid  { grid-template-columns: 1fr !important; }
-    .mm-badge-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .mm-dims-grid      { grid-template-columns: 1fr !important; }
+    .mm-badge-grid-lg  { grid-template-columns: repeat(2, 1fr) !important; }
   }
 `;
 

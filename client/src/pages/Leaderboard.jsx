@@ -19,7 +19,9 @@ const C = {
   ink:          '#0A1628',
   ink2:         '#111F38',
   sub:          '#41547B',
-  muted:        '#7C8CAD',
+  // Darkened from #7C8CAD (3.4:1) to clear WCAG AA (4.5:1) for the small
+  // body text this token is used on — same hue family, just deeper.
+  muted:        '#5D6C89',
   faint:        '#AFBCDA',
 
   line:         '#DEE6F7',
@@ -32,23 +34,31 @@ const C = {
   signalSoft:   '#4D8FFF',
 
   pulse:        '#00C2E8',
-  pulseDeep:    '#0093C4',
+  // Darkened from #0093C4 (3.5:1) to clear AA — used for small text (YOU
+  // badge, efficiency stat), not just the bright pulse accent.
+  pulseDeep:    '#006B8C',
   pulseTint:    '#E6FAFF',
 
-  green:        '#0E8F63',
+  // Darkened from #0E8F63 (4.1:1) — this is the "score ≥ 80" color used
+  // everywhere a high score renders, so it needs to clear AA at normal text sizes.
+  green:        '#0A6E4C',
   greenTint:    '#E9F9F1',
-  amber:        '#B4790A',
+  // Darkened from #B4790A (3.7:1) — the "score 40-59" color, same reasoning.
+  amber:        '#8C5F08',
   amberTint:    '#FFF6E5',
   orange:       '#C2530C',
   orangeTint:   '#FFF1E6',
   red:          '#C22626',
   redTint:      '#FDECEC',
 
-  bronze:       '#9C6A3E',
+  // Medal tones darkened from their originals to clear WCAG AA (4.5:1) on
+  // both plain white and each color's own tint background — same hues,
+  // deeper values. Originals: bronze #9C6A3E, silver #6E7B99, gold #AD7F10.
+  bronze:       '#8C5F37',
   bronzeTint:   '#F7EEE3',
-  silver:       '#6E7B99',
+  silver:       '#5F6C89',
   silverTint:   '#EFF2F8',
-  gold:         '#AD7F10',
+  gold:         '#8C640C',
   goldTint:     '#FBF3DE',
   platinum:     '#4C57C7',
   platinumTint: '#EDEEFC',
@@ -67,9 +77,12 @@ const C = {
 };
 
 const F = {
-  serif: "'Fraunces', 'Georgia', serif",
-  body:  "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono:  "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+  serif:   "'Fraunces', 'Georgia', serif",
+  // Matches Coach's CommandHeader (F.display in styles/tokens.js) — used only
+  // in the Leaderboard hero so the two "welcome back" surfaces read as one family.
+  display: "'Plus Jakarta Sans', 'Lexend', sans-serif",
+  body:    "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+  mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -147,6 +160,46 @@ const DeltaBadge = ({ delta, isNew = false, showDelta = true }) => {
   );
 };
 
+// ─── Avatar (real image with graceful initial-letter fallback) ──────────────
+
+const Avatar = ({ src, name, children, style }) => {
+  const [failed, setFailed] = useState(false);
+  const showImage = src && !failed;
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', ...style }}>
+      {showImage ? (
+        <img
+          src={src}
+          alt={name || 'Student avatar'}
+          onError={() => setFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      ) : children}
+    </div>
+  );
+};
+
+// ─── Streak badge (only rendered when a real streak exists) ─────────────────
+
+const StreakBadge = ({ streak, size = 'sm' }) => {
+  const n = Number(streak) || 0;
+  if (n < 2) return null; // a 0 or 1-day streak isn't meaningfully "on a streak"
+  const big = size === 'lg';
+  return (
+    <span
+      title={`${n}-day streak`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 3,
+        fontFamily: F.mono, fontSize: big ? 10 : 9, fontWeight: 800,
+        color: C.orange, background: C.orangeTint, border: `1px solid ${C.orange}40`,
+        padding: big ? '3px 8px' : '1px 7px', borderRadius: 99, flexShrink: 0,
+      }}
+    >
+      🔥{n}
+    </span>
+  );
+};
+
 // ─── Score bar ───────────────────────────────────────────────────────────────
 
 const ScoreBar = ({ score, max }) => {
@@ -165,7 +218,25 @@ const ScoreBar = ({ score, max }) => {
 
 const MiniTrend = ({ points = [] }) => {
   if (!points.length) {
-    return <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>No recent session data for this trend.</div>;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0' }}>
+        <div style={{
+          width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+          background: C.surface, border: `1.5px dashed ${C.lineMd}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
+        }}>
+          📈
+        </div>
+        <div>
+          <div style={{ fontFamily: F.body, fontSize: 11.5, fontWeight: 600, color: C.sub }}>
+            Trend arrives after a few more sessions
+          </div>
+          <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted, marginTop: 2 }}>
+            we'll chart the last 6 scores here once there's history to show
+          </div>
+        </div>
+      </div>
+    );
   }
   const max = Math.max(...points, 100);
   return (
@@ -188,10 +259,13 @@ const MiniTrend = ({ points = [] }) => {
 
 // ─── Premium podium block ────────────────────────────────────────────────────
 
+// Colors match the C.gold/C.silver/C.bronze tokens above (darkened for AA
+// contrast) — kept as literals here since this map also carries bright/tint/
+// glow variants that don't have C-object equivalents.
 const PODIUM_METALS = {
-  1: { medal: '🥇', color: '#AD7F10', bright: '#F0B93D', tint: '#FBF3DE', glow: 'rgba(173,127,16,0.38)', label: '1st', laurel: '❧' },
-  2: { medal: '🥈', color: '#6E7B99', bright: '#A7B3CE', tint: '#EFF2F8', glow: 'rgba(110,123,153,0.30)', label: '2nd', laurel: '' },
-  3: { medal: '🥉', color: '#9C6A3E', bright: '#C88E5C', tint: '#F7EEE3', glow: 'rgba(156,106,62,0.30)', label: '3rd', laurel: '' },
+  1: { medal: '🥇', color: '#8C640C', bright: '#F0B93D', tint: '#FBF3DE', glow: 'rgba(140,100,12,0.38)', label: '1st', laurel: '❧' },
+  2: { medal: '🥈', color: '#5F6C89', bright: '#A7B3CE', tint: '#EFF2F8', glow: 'rgba(95,108,137,0.30)', label: '2nd', laurel: '' },
+  3: { medal: '🥉', color: '#8C5F37', bright: '#C88E5C', tint: '#F7EEE3', glow: 'rgba(140,95,55,0.30)', label: '3rd', laurel: '' },
 };
 
 const PodiumBlock = ({ entry, place, delay, isPlatinum, mounted }) => {
@@ -269,23 +343,30 @@ const PodiumBlock = ({ entry, place, delay, isPlatinum, mounted }) => {
             position: 'absolute', inset: -6, borderRadius: '50%',
             boxShadow: `0 0 0 4px #fff, 0 10px 28px ${meta.glow}`,
           }} />
-          <div style={{
-            position: 'absolute', inset: 0, borderRadius: '50%',
-            background: `linear-gradient(135deg, ${meta.color}33, ${meta.color}CC)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: F.serif, fontSize: place === 1 ? 28 : place === 2 ? 21 : 18, fontWeight: 600, color: '#fff',
-          }}>
-            {entry?.name?.charAt(0).toUpperCase() ?? '?'}
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%' }}>
+            <Avatar src={entry?.avatar} name={entry?.name}>
+              <div style={{
+                width: '100%', height: '100%',
+                background: `linear-gradient(135deg, ${meta.color}33, ${meta.color}CC)`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: F.serif, fontSize: place === 1 ? 28 : place === 2 ? 21 : 18, fontWeight: 600, color: '#fff',
+              }}>
+                {entry?.name?.charAt(0).toUpperCase() ?? '?'}
+              </div>
+            </Avatar>
           </div>
         </div>
 
         <div style={{ fontSize: place === 1 ? 22 : 16, marginBottom: 6 }}>{meta.medal}</div>
 
-        <div style={{ fontFamily: F.body, fontSize: place === 1 ? 14.5 : 12, fontWeight: 700, color: C.ink, maxWidth: 112, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 auto' }}>
-          {entry?.name ?? '—'}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+          <div style={{ fontFamily: F.body, fontSize: place === 1 ? 14.5 : 12, fontWeight: 700, color: C.ink, maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {entry?.name ?? '—'}
+          </div>
+          {entry && <StreakBadge streak={entry.streak} />}
         </div>
 
-        <div style={{ fontFamily: F.serif, fontSize: place === 1 ? 26 : 19, fontWeight: 500, color: meta.color, marginTop: 4, lineHeight: 1 }}>
+        <div style={{ fontFamily: F.display, fontSize: place === 1 ? 28 : 20, fontWeight: 800, color: meta.color, marginTop: 5, lineHeight: 1 }}>
           {entry ? <CountUp target={avgScore} duration={950 + delay} /> : '—'}
           <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 600, color: C.muted }}>/100</span>
         </div>
@@ -357,13 +438,17 @@ const Leaderboard = () => {
 
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [mounted, setMounted] = useState(false);
   const [podiumMounted, setPodiumMounted] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
   // ─── Load leaderboard ──────────────────────────────────────────────────────
 
   useEffect(() => {
     let cancelled = false;
+    setIsLoading(true);
+    setLoadError(null);
 
     const load = async () => {
       try {
@@ -387,7 +472,10 @@ const Leaderboard = () => {
         setCurrentUser(data.currentUser ?? null);
       } catch (error) {
         console.error('Leaderboard load error:', error);
-        if (!cancelled) toast.error(error?.message || 'Failed to load leaderboard');
+        if (!cancelled) {
+          setLoadError(error?.message || 'Failed to load leaderboard');
+          toast.error(error?.message || 'Failed to load leaderboard');
+        }
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -399,7 +487,7 @@ const Leaderboard = () => {
 
     load();
     return () => { cancelled = true; };
-  }, [EMPTY_BOARD]);
+  }, [EMPTY_BOARD, retryToken]);
 
   // Replay podium entrance whenever period/scope changes
   useEffect(() => {
@@ -510,6 +598,28 @@ const Leaderboard = () => {
     );
   }
 
+  // ─── Error state — a failed fetch must never look like "0 entries" ─────────
+  if (loadError) {
+    return (
+      <div style={S.page}>
+        <div style={S.container}>
+          <div style={S.errorCard}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>⚠️</div>
+            <div style={S.emptyTitle}>Couldn't load the leaderboard</div>
+            <div style={S.emptyDesc}>{loadError}</div>
+            <button
+              onClick={() => setRetryToken(t => t + 1)}
+              style={S.btnBlue}
+              className="mm-btn-blue lb-new-iv-btn"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <GlobalStyles />
@@ -528,7 +638,7 @@ const Leaderboard = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             {userRank ? (
               <>
-                <span style={{ fontFamily: F.serif, fontSize: 20, fontWeight: 500, color: '#fff' }}>#{userRank}</span>
+                <span style={{ fontFamily: F.display, fontSize: 18, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>#{userRank}</span>
                 <span style={{ fontFamily: F.mono, fontSize: 10, color: C.pulse }}>{currentUserScore}/100</span>
               </>
             ) : (
@@ -677,7 +787,7 @@ const Leaderboard = () => {
           {/* ── Search + table header row ── */}
           {rawData.length > 0 && (
             <div style={S.searchRow}>
-              <div style={S.searchBox}>
+              <div style={S.searchBox} className="lb-search-box">
                 <span style={{ fontSize: 13, color: C.muted }}>🔍</span>
                 <input
                   value={query}
@@ -717,7 +827,9 @@ const Leaderboard = () => {
               <button onClick={() => setQuery('')} style={S.btnGhostLight}>Clear search</button>
             </div>
           ) : (
-            <div style={S.tableCard}>
+            // Keyed on period+scope so switching tabs cleanly remounts the list —
+            // real re-render with a fresh stagger-in, not a stale instant swap.
+            <div style={S.tableCard} key={`${activePeriod}-${activeTab}`} className="lb-table-swap">
               <div style={S.tableHeadRow}>
                 <div style={{ width: 46, ...S.colLabel }}>RANK</div>
                 <div style={{ width: 44 }} />
@@ -766,7 +878,7 @@ const Leaderboard = () => {
                       }}
                     >
                       <div style={{ width: 46, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                        <span style={{ fontFamily: F.mono, fontSize: 13, fontWeight: 800, color: numericRank <= 3 ? tierColor : C.muted }}>
+                        <span style={{ fontFamily: F.mono, fontSize: 12, fontWeight: 700, color: numericRank <= 3 ? tierColor : C.muted, letterSpacing: '-0.2px' }}>
                           #{numericRank}
                         </span>
                       </div>
@@ -774,16 +886,22 @@ const Leaderboard = () => {
                       <div style={{ width: 44, flexShrink: 0 }}>
                         <div style={{
                           width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-                          background: isYou
-                            ? `linear-gradient(135deg, ${C.signal}, ${C.pulse})`
-                            : (numericRank <= 3 || platinumRow) ? `linear-gradient(135deg, ${tierColor}33, ${tierColor}99)` : C.signalTint,
                           border: `2px solid ${isYou ? C.pulse : (numericRank <= 3 || platinumRow) ? `${tierColor}66` : C.lineMd}`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontFamily: F.serif, fontSize: 14, fontWeight: 600,
-                          color: isYou ? '#fff' : (numericRank <= 3 || platinumRow) ? tierColor : C.signalDeep,
                           boxShadow: isYou ? '0 2px 10px rgba(0,194,232,0.30)' : 'none',
                         }}>
-                          {entry.name?.charAt(0).toUpperCase() || '?'}
+                          <Avatar src={entry.avatar} name={entry.name} style={{ borderRadius: 8 }}>
+                            <div style={{
+                              width: '100%', height: '100%',
+                              background: isYou
+                                ? `linear-gradient(135deg, ${C.signal}, ${C.pulse})`
+                                : (numericRank <= 3 || platinumRow) ? `linear-gradient(135deg, ${tierColor}33, ${tierColor}99)` : C.signalTint,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontFamily: F.serif, fontSize: 14, fontWeight: 600,
+                              color: isYou ? '#fff' : (numericRank <= 3 || platinumRow) ? tierColor : C.signalDeep,
+                            }}>
+                              {entry.name?.charAt(0).toUpperCase() || '?'}
+                            </div>
+                          </Avatar>
                         </div>
                       </div>
 
@@ -802,6 +920,7 @@ const Leaderboard = () => {
                               ♛
                             </span>
                           )}
+                          <StreakBadge streak={entry.streak} />
                           <DeltaBadge delta={delta} isNew={isNew} showDelta={activePeriod === 'weekly'} />
                         </div>
                         <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>
@@ -820,7 +939,7 @@ const Leaderboard = () => {
                       </div>
 
                       <div style={{ width: 90, textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontFamily: F.serif, fontSize: 17, fontWeight: 500, color: sColor, marginBottom: 5 }}>
+                        <div style={{ fontFamily: F.display, fontSize: 18, fontWeight: 800, color: sColor, marginBottom: 5, letterSpacing: '-0.3px' }}>
                           {numericScore}
                           <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 600, color: C.muted }}>/100</span>
                         </div>
@@ -975,6 +1094,9 @@ const GlobalStyles = () => (
     .mm-page ::-webkit-scrollbar-thumb { background: ${C.lineMd}; border-radius: 4px; }
     .mm-page ::-webkit-scrollbar-thumb:hover { background: ${C.lineStr}; }
 
+    .lb-table-swap { animation: lbTableSwap 0.28s ease both; }
+    @keyframes lbTableSwap { from { opacity: 0.4; } to { opacity: 1; } }
+
     .lb-row { transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease; }
     .lb-row:hover { background: ${C.signalTint} !important; transform: translateX(4px); box-shadow: inset 3px 0 0 ${C.signal}; }
     .lb-row-you:hover { box-shadow: inset 3px 0 0 ${C.pulse} !important; }
@@ -983,7 +1105,13 @@ const GlobalStyles = () => (
     .lb-plinth-sweep { animation: lbPlinthSweep 3.4s ease-in-out infinite 1.1s; }
     .lb-podium-lead { position: relative; }
 
+    .lb-podium-col { transition: transform 0.22s cubic-bezier(.16,1,.3,1); cursor: default; }
+    .lb-podium-col:hover { transform: translateY(-4px); }
+
     .lb-toggle-opt { transition: color 0.2s ease; cursor: pointer; }
+
+    .lb-search-box { transition: border-color 0.16s ease, box-shadow 0.16s ease; }
+    .lb-search-box:focus-within { border-color: ${C.signal} !important; box-shadow: 0 0 0 3px ${C.signalTint} !important; }
 
     .mm-rail-cell { transition: background 0.18s ease !important; }
     .mm-rail-cell:hover { background: ${C.surfaceSunk} !important; }
@@ -1053,31 +1181,31 @@ const S = {
     boxShadow: '0 6px 20px rgba(4,12,34,0.28)', animation: 'lbFadeUp 0.22s ease',
   },
 
-  // ── HERO — brightened to match Coach's CommandHeader ──────────────────────
+  // ── HERO — aligned to Coach's CommandHeader (dark panel, glow orbs, display type) ──
   hero: {
     position: 'relative', overflow: 'hidden',
-    padding: '44px 36px', marginBottom: 18, borderRadius: 22,
+    padding: '36px 32px', marginBottom: 18, borderRadius: 24,
     background: `linear-gradient(135deg, ${C.heroDark0} 0%, ${C.heroBlue900} 40%, #001A3A 70%, ${C.heroDark0} 100%)`,
     border: '1px solid rgba(0,200,240,0.18)',
     boxShadow: '0 24px 72px rgba(0,20,80,0.55)',
   },
   heroNoise: { position: 'absolute', top: 0, left: 0, width: '30%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.025), transparent)', animation: 'heroSweep 11s linear infinite' },
-  heroGlowTop: { position: 'absolute', top: -60, right: -60, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,200,240,0.10) 0%, transparent 70%)', pointerEvents: 'none' },
-  heroGlowBottom: { position: 'absolute', bottom: -40, left: 80, width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(26,110,255,0.09) 0%, transparent 70%)', pointerEvents: 'none' },
+  heroGlowTop: { position: 'absolute', top: -60, right: -60, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,200,240,0.08) 0%, transparent 70%)', pointerEvents: 'none' },
+  heroGlowBottom: { position: 'absolute', bottom: -40, left: 80, width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(26,110,255,0.07) 0%, transparent 70%)', pointerEvents: 'none' },
   heroGrid: { position: 'relative', display: 'grid', gridTemplateColumns: '280px 1fr', gap: 44, alignItems: 'center' },
 
   irsBlock: {},
   irsLabel: { fontFamily: F.mono, fontSize: 10, fontWeight: 500, letterSpacing: '1px', color: 'rgba(255,255,255,0.42)', marginBottom: 12, textTransform: 'lowercase' },
-  irsNum: { fontFamily: F.serif, fontSize: 86, fontWeight: 500, lineHeight: 0.95, color: '#fff', letterSpacing: '-3px' },
-  irsMax: { fontSize: 24, fontWeight: 400, color: 'rgba(255,255,255,0.36)', letterSpacing: 0, fontFamily: F.body },
+  irsNum: { fontFamily: F.display, fontSize: 78, fontWeight: 800, lineHeight: 0.95, color: '#fff', letterSpacing: '-2px' },
+  irsMax: { fontSize: 22, fontWeight: 500, color: 'rgba(255,255,255,0.36)', letterSpacing: 0, fontFamily: F.body },
   tierPill: { display: 'inline-flex', alignItems: 'center', marginTop: 16, padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700, letterSpacing: '0.1px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' },
   irsBar: { position: 'relative', height: 4, marginTop: 18, borderRadius: 999, background: 'rgba(255,255,255,0.1)', overflow: 'visible' },
   irsBarFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.blueBright}, ${C.cyanBright})`, transition: 'width 1.3s cubic-bezier(.16,1,.3,1)', boxShadow: `0 0 12px ${C.cyanBright}80` },
   irsGapText: { marginTop: 10, fontFamily: F.mono, fontSize: 10.5, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.2px' },
 
   verdictBlock: {},
-  heroKicker: { fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '1.8px', color: C.cyanBright, textTransform: 'uppercase' },
-  heroH1: { margin: '14px 0 0', fontFamily: F.serif, fontSize: 32, fontWeight: 500, color: '#fff', lineHeight: 1.28, letterSpacing: '-0.4px', maxWidth: 620 },
+  heroKicker: { fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: '1.8px', color: C.cyanBright, textTransform: 'uppercase' },
+  heroH1: { margin: '10px 0 0', fontFamily: F.display, fontSize: 'clamp(22px, 3vw, 30px)', fontWeight: 900, color: '#fff', lineHeight: 1.18, letterSpacing: '-0.5px', maxWidth: 620 },
   heroSub: { margin: '15px 0 0', fontSize: 13.5, lineHeight: 1.75, color: 'rgba(255,255,255,0.62)', maxWidth: 560, fontWeight: 400 },
   heroActions: { display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 26 },
 
@@ -1114,8 +1242,9 @@ const S = {
   searchClear: { border: 'none', background: 'transparent', color: C.muted, cursor: 'pointer', fontSize: 11, padding: 2 },
 
   emptyCard: { background: C.surface, border: `1.5px dashed ${C.lineMd}`, borderRadius: 20, padding: '64px 24px', textAlign: 'center' },
+  errorCard: { background: C.surface, border: `1.5px dashed ${C.red}55`, borderRadius: 20, padding: '64px 24px', textAlign: 'center', marginTop: 20 },
   emptyTitle: { fontFamily: F.body, fontSize: 18, fontWeight: 800, color: C.ink, marginBottom: 8 },
-  emptyDesc: { fontFamily: F.body, fontSize: 14, color: C.sub, marginBottom: 6 },
+  emptyDesc: { fontFamily: F.body, fontSize: 14, color: C.sub, marginBottom: 6, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' },
 
   tableCard: { background: C.surface, border: `1px solid ${C.line}`, borderRadius: 20, overflow: 'hidden', boxShadow: C.shadow, marginBottom: 16 },
   tableHeadRow: { display: 'flex', alignItems: 'center', padding: '11px 20px', borderBottom: `1px solid ${C.line}`, background: C.surfaceSunk },
@@ -1125,7 +1254,7 @@ const S = {
   railCell: { padding: '18px 20px', borderRight: `1px solid ${C.line}` },
   railLabel: { fontSize: 10.5, fontWeight: 500, color: C.muted, letterSpacing: '0.1px', textTransform: 'uppercase' },
   railValRow: { display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 8 },
-  railVal: { fontFamily: F.serif, fontWeight: 500, lineHeight: 1, letterSpacing: '-0.3px' },
+  railVal: { fontFamily: F.display, fontWeight: 800, lineHeight: 1, letterSpacing: '-0.4px' },
   railSub: { marginTop: 6, fontSize: 10.5, color: C.muted },
 
   ctaBanner: {

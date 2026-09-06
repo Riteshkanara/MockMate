@@ -71,7 +71,20 @@ router.get('/me', authMiddleware, async (req, res) => {
       irs: 0, averageScore: user.averageScore ?? 0, tierLabel: '₹3–6 LPA',
     }));
 
-    res.json({ user: { ...user.toObject(), irs, averageScore, tierLabel } });
+    // Daily goal — count today's completed interview sessions for the navbar
+    // goal ring. Target is fixed at 3/day for now; bump it later if you add
+    // a per-user configurable goal.
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const completedToday = await Session.countDocuments({
+      $or: [{ user: user._id }, { userId: user._id }],
+      status: 'completed',
+      startedAt: { $gte: startOfToday },
+    }).catch(() => 0);
+
+    const dailyGoal = { target: 3, completed: completedToday };
+
+    res.json({ user: { ...user.toObject(), irs, averageScore, tierLabel, dailyGoal } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch user' });
   }

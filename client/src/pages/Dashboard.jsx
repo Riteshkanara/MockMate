@@ -1,94 +1,54 @@
 import API_BASE from '../config/api.js';
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef, Component } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import { getAICoach, getAIFreeform, getPerformanceAnalytics, startInterview, fixBadges } from '../Services/interviewService';
 import { getShareLink } from '../Services/profileServices';
 import PageLoader from '../components/PageLoader';
 import Button from '../components/Button';
+import { C, F } from '../styles/tokens';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MOCKMATE — READINESS TERMINAL v6
-// A placement-readiness console, not a SaaS dashboard template. Every number
-// here is computed from real session data; the design's job is to make that
-// data feel like it belongs to a product people trust with a real decision.
-//
-// v6 rebuild: light paper base with two dark "instrument panel" moments
-// (hero, activity log), a serif numeral for the one number that matters
-// (IRS), Inter for everything else, mono reserved for true data labels only.
-// Sections consolidated — Weekly Digest merged into the stat rail and
-// Growth Velocity, cutting a redundant card. Badge grid tightened. Motion
-// limited to one entrance sequence plus state-driven reveals.
+// MOCKMATE — READINESS TERMINAL v7
+// Rebuilt on the shared design system (styles/tokens.js) so Dashboard,
+// Home, and Coach read as one product instead of three. Inter everywhere
+// (no serif, no italic) — bold weight carries hierarchy instead of a
+// second typeface. Sections reveal progressively via IntersectionObserver
+// (same AnimatedSection pattern as Coach) instead of one whole-page fade.
+// Each major section is wrapped in a SectionErrorBoundary so one broken
+// card can't blank the entire dashboard.
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ─── Design tokens ────────────────────────────────────────────────────────
-const C = {
-  paper:        '#F6F8FD',
-  paperDeep:    '#EEF2FC',
-
-  surface:      '#FFFFFF',
-  surfaceSunk:  '#F3F6FD',
-
-  ink:          '#0A1628',
-  ink2:         '#111F38',
-  sub:          '#41547B',
-  muted:        '#7C8CAD',
-  faint:        '#AFBCDA',
-
-  line:         '#DEE6F7',
-  lineMd:       '#C4D2F0',
-  lineStr:      '#8FAAE8',
-
-  signal:       '#0057E8',
-  signalDeep:   '#0041B8',
-  signalTint:   '#EAF1FF',
-  signalSoft:   '#4D8FFF',
-
-  pulse:        '#00C2E8',
-  pulseDeep:    '#0093C4',
-  pulseTint:    '#E6FAFF',
-
-  green:        '#0E8F63',
-  greenTint:    '#E9F9F1',
-  amber:        '#B4790A',
-  amberTint:    '#FFF6E5',
-  orange:       '#C2530C',
-  orangeTint:   '#FFF1E6',
-  red:          '#C22626',
-  redTint:      '#FDECEC',
-
-  bronze:       '#9C6A3E',
-  bronzeTint:   '#F7EEE3',
-  silver:       '#6E7B99',
-  silverTint:   '#EFF2F8',
-  gold:         '#AD7F10',
-  goldTint:     '#FBF3DE',
-  platinum:     '#4C57C7',
+// ─── Derived/extra tokens not in the shared file but needed here ──────────
+// (kept local — additive only, never overrides shared tokens)
+const X = {
+  signalTint: C.blue50,
+  pulseTint: '#E3FAFF',
+  bronze: '#9C6A3E',
+  bronzeTint: '#F7EEE3',
+  silver: '#6E7B99',
+  silverTint: '#EFF2F8',
+  gold: '#AD7F10',
+  goldTint: '#FBF3DE',
+  platinum: '#4C57C7',
   platinumTint: '#EDEEFC',
-
-  shadow:   '0 1px 2px rgba(10,22,40,0.04), 0 8px 24px rgba(15,45,120,0.06)',
-  shadowMd: '0 4px 14px rgba(15,45,120,0.08), 0 1px 3px rgba(10,22,40,0.05)',
-  shadowLg: '0 24px 64px rgba(6,16,50,0.28)',
-};
-
-const F = {
-  serif: "'Fraunces', 'Georgia', serif",
-  body:  "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono:  "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+  dark0: '#080F1E',
+  dark1: '#0A1628',
+  dark2: '#0D1F3C',
 };
 
 const TIER_STYLE = {
-  bronze:   { color: C.bronze,   tint: C.bronzeTint,   ring: 'rgba(156,106,62,0.28)' },
-  silver:   { color: C.silver,   tint: C.silverTint,   ring: 'rgba(110,123,153,0.28)' },
-  gold:     { color: C.gold,     tint: C.goldTint,     ring: 'rgba(173,127,16,0.28)' },
-  platinum: { color: C.platinum, tint: C.platinumTint, ring: 'rgba(76,87,199,0.28)' },
+  bronze:   { color: X.bronze,   tint: X.bronzeTint,   ring: 'rgba(156,106,62,0.28)' },
+  silver:   { color: X.silver,   tint: X.silverTint,   ring: 'rgba(110,123,153,0.28)' },
+  gold:     { color: X.gold,     tint: X.goldTint,     ring: 'rgba(173,127,16,0.28)' },
+  platinum: { color: X.platinum, tint: X.platinumTint, ring: 'rgba(76,87,199,0.28)' },
 };
 
 const TIER_META = {
-  '₹3–6 LPA':   { color: C.muted,   bg: C.surfaceSunk },
+  '₹3–6 LPA':   { color: C.muted,   bg: C.cardAlt },
   '₹6–12 LPA':  { color: C.amber,   bg: C.amberTint },
-  '₹12–20 LPA': { color: C.signal,  bg: C.signalTint },
-  '₹20 LPA+':   { color: C.pulseDeep, bg: C.pulseTint },
+  '₹12–20 LPA': { color: C.blue500, bg: C.blue50 },
+  '₹20 LPA+':   { color: C.cyan500, bg: X.pulseTint },
 };
 
 const DIMENSION_META = [
@@ -246,11 +206,11 @@ const useLiveClock = () => {
 };
 
 const scoreColor = (s) =>
-  s >= 80 ? C.green : s >= 60 ? C.signal : s >= 40 ? C.amber : C.orange;
+  s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.orange;
 
 const heatColor = (score, hasData) => {
   if (!hasData) return 'rgba(255,255,255,0.06)';
-  if (score >= 88) return C.pulse;
+  if (score >= 88) return C.cyan400;
   if (score >= 75) return '#3FA8E0';
   if (score >= 60) return '#5F82C4';
   if (score >= 45) return '#4A5C8A';
@@ -259,13 +219,75 @@ const heatColor = (score, hasData) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ERROR BOUNDARY — same pattern as Coach.jsx so one broken card can't
+// blank the entire dashboard.
+// ═══════════════════════════════════════════════════════════════════════════
+class SectionErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err) { console.error('[Dashboard section error]', err); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '20px 24px', borderRadius: 16, marginBottom: 18, background: C.redTint, border: `1px solid ${C.red}30`, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 20 }}>⚠️</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.red }}>This section ran into a problem</div>
+            <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>
+              The rest of the dashboard is working fine.{' '}
+              <button onClick={() => this.setState({ hasError: false })} style={{ color: C.blue500, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, padding: 0 }}>Try again</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANIMATED SECTION — same IntersectionObserver reveal pattern as Coach.jsx,
+// replacing the old single whole-page fade-in for a smoother, progressive
+// load as the user scrolls.
+// ═══════════════════════════════════════════════════════════════════════════
+const AnimatedSection = ({ children, delay = 0, style = {} }) => {
+  const [visible, setVisible] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); observer.disconnect(); } },
+      { threshold: 0.08 }
+    );
+    const t = setTimeout(() => observer.observe(el), delay);
+    return () => { clearTimeout(t); observer.disconnect(); };
+  }, [delay]);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(24px)',
+        transition: `opacity 0.55s cubic-bezier(.16,1,.3,1) ${delay}ms, transform 0.55s cubic-bezier(.16,1,.3,1) ${delay}ms`,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
 // AI COACH MODAL
 // ═══════════════════════════════════════════════════════════════════════════
 const sectionAccents = {
-  'VERDICT':               C.pulse,
+  'VERDICT':               C.cyan400,
   'CRITICAL GAPS':         '#FF6B6B',
   'STRENGTHS TO LEVERAGE': '#4ADE9C',
-  '30-DAY BATTLE PLAN':    C.signalSoft,
+  '30-DAY BATTLE PLAN':    C.blue400,
   'MINDSET ALERT':         '#F0B94D',
 };
 const sectionIcons = {
@@ -388,7 +410,7 @@ Hard limit: 350 words total. Every word must earn its place.`;
         const lines = s.trim().split('\n');
         const heading = lines[0].trim();
         const body = lines.slice(1).join('\n').trim();
-        return { heading, body, accent: sectionAccents[heading] || C.signalSoft, icon: sectionIcons[heading] || '•' };
+        return { heading, body, accent: sectionAccents[heading] || C.blue400, icon: sectionIcons[heading] || '•' };
       }).filter(s => s.heading && s.body)
     : [];
 
@@ -410,15 +432,15 @@ Hard limit: 350 words total. Every word must earn its place.`;
       `}</style>
       <div style={{
         width: '100%', maxWidth: 760, maxHeight: '90vh',
-        background: 'linear-gradient(160deg, #060E20 0%, #0A1832 42%, #0C2340 100%)',
-        border: '1px solid rgba(0,194,232,0.18)', borderRadius: 20, overflow: 'hidden',
+        background: `linear-gradient(135deg, ${X.dark0} 0%, ${C.blue900} 40%, #001A3A 70%, ${X.dark0} 100%)`,
+        border: '1px solid rgba(0,200,240,0.18)', borderRadius: 20, overflow: 'hidden',
         boxShadow: '0 40px 90px rgba(2,8,24,0.65)', display: 'flex', flexDirection: 'column',
         animation: 'coachSlideUp 0.32s cubic-bezier(.16,1,.3,1)',
       }}>
         <div style={{ padding: '24px 28px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
           <div>
-            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, letterSpacing: '1.4px', color: C.pulse, marginBottom: 8 }}>AI Readiness Coach</div>
-            <h2 style={{ margin: 0, fontFamily: F.serif, fontSize: 22, fontWeight: 600, color: '#fff', lineHeight: 1.22, fontStyle: 'italic' }}>Your personalised action plan</h2>
+            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, letterSpacing: '1.4px', color: C.cyan400, marginBottom: 8 }}>AI Readiness Coach</div>
+            <h2 style={{ margin: 0, fontFamily: F.display, fontSize: 22, fontWeight: 800, color: '#fff', lineHeight: 1.22, letterSpacing: '-0.4px' }}>Your personalised action plan</h2>
             <p style={{ margin: '8px 0 0', color: 'rgba(255,255,255,0.46)', fontSize: 12, lineHeight: 1.65, maxWidth: 440 }}>Built from your IRS components, score variance, and dimension gaps — not generic advice.</p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -434,8 +456,8 @@ Hard limit: 350 words total. Every word must earn its place.`;
         <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
           {[
             { label: 'IRS', val: `${irs}/100`, color: scoreColor(irs) },
-            { label: 'Tier', val: topTier?.label || '—', color: C.pulse },
-            { label: 'Archetype', val: archetype?.label || '—', color: C.signalSoft },
+            { label: 'Tier', val: topTier?.label || '—', color: C.cyan400 },
+            { label: 'Archetype', val: archetype?.label || '—', color: C.blue400 },
             { label: 'Trend', val: slope >= 0 ? `+${slope.toFixed(1)}/s` : `${slope.toFixed(1)}/s`, color: slope >= 0 ? '#4ADE9C' : '#FF8B6B' },
           ].map((item, i) => (
             <div key={i} style={{ flex: 1, padding: '12px 14px', borderRight: i < 3 ? '1px solid rgba(255,255,255,0.06)' : 'none', textAlign: 'center' }}>
@@ -454,8 +476,8 @@ Hard limit: 350 words total. Every word must earn its place.`;
                 `Mapping ${strongest?.label || '—'} strength vs ${weakest?.label || '—'} gap…`,
                 'Drafting your 30-day battle plan…',
               ].map((msg, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 15px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(0,194,232,0.12)' }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.pulse, flexShrink: 0, animation: `livePulse 1.4s ease ${i * 0.28}s infinite` }} />
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 15px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(0,200,240,0.12)' }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.cyan400, flexShrink: 0, animation: `livePulse 1.4s ease ${i * 0.28}s infinite` }} />
                   <div style={{ color: 'rgba(255,255,255,0.46)', fontSize: 12, fontFamily: F.mono }}>{msg}</div>
                 </div>
               ))}
@@ -472,9 +494,9 @@ Hard limit: 350 words total. Every word must earn its place.`;
                   <p style={{ margin: 0, color: 'rgba(255,255,255,0.8)', fontSize: 13, lineHeight: 1.75, whiteSpace: 'pre-line' }}>{s.body}</p>
                 </div>
               ))}
-              <div style={{ marginTop: 4, padding: '14px 18px', borderRadius: 12, background: 'rgba(0,87,232,0.1)', border: '1px solid rgba(0,87,232,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ marginTop: 4, padding: '14px 18px', borderRadius: 12, background: 'rgba(26,110,255,0.1)', border: '1px solid rgba(26,110,255,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.52)', lineHeight: 1.5 }}>Deep-dive into skill velocity, confidence gaps, and blind spots on your Analytics page.</div>
-                <a href="/analytics" onClick={onClose} style={{ border: 'none', borderRadius: 9, background: `linear-gradient(135deg, ${C.signal}, ${C.pulse})`, color: '#fff', padding: '9px 16px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap', boxShadow: '0 4px 14px rgba(0,194,232,0.25)' }}>
+                <a href="/analytics" onClick={onClose} style={{ border: 'none', borderRadius: 9, background: `linear-gradient(135deg, ${C.blue500}, ${C.cyan500})`, color: '#fff', padding: '9px 16px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap', boxShadow: '0 4px 14px rgba(0,200,240,0.25)' }}>
                   Open full analytics →
                 </a>
               </div>
@@ -567,8 +589,8 @@ Reply with ONLY the one sentence. No preamble, no label.`;
   const col = scoreColor(score);
 
   return (
-    <section style={{ ...S.card, background: `linear-gradient(160deg, #fff 0%, ${C.signalTint} 130%)`, position: 'relative', overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: -50, right: -50, width: 160, height: 160, borderRadius: '50%', background: `radial-gradient(circle, ${C.signalTint} 0%, transparent 70%)`, pointerEvents: 'none' }} />
+    <section style={{ ...S.card, background: `linear-gradient(160deg, #fff 0%, ${C.blue50} 130%)`, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: -50, right: -50, width: 160, height: 160, borderRadius: '50%', background: `radial-gradient(circle, ${C.blue50} 0%, transparent 70%)`, pointerEvents: 'none' }} />
       <div style={{ position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>
           <div>
@@ -579,18 +601,18 @@ Reply with ONLY the one sentence. No preamble, no label.`;
             top priority
           </div>
         </div>
-        <div style={{ padding: '16px 18px', borderRadius: 14, background: '#fff', border: `1px solid ${C.line}`, boxShadow: C.shadow, marginBottom: 13 }}>
+        <div style={{ padding: '16px 18px', borderRadius: 14, background: '#fff', border: `1px solid ${C.border}`, boxShadow: C.shadow, marginBottom: 13 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontFamily: F.body, fontSize: 16, fontWeight: 700, color: C.ink }}>{topic}</div>
-            <div style={{ fontFamily: F.serif, fontSize: 20, fontWeight: 600, color: col }}>{score}</div>
+            <div style={{ fontFamily: F.body, fontSize: 16, fontWeight: 800, color: C.text }}>{topic}</div>
+            <div style={{ fontFamily: F.display, fontSize: 20, fontWeight: 900, color: col }}>{score}</div>
           </div>
-          <div style={{ height: 5, borderRadius: 999, background: C.line, overflow: 'hidden', marginBottom: 12 }}>
+          <div style={{ height: 5, borderRadius: 999, background: C.border, overflow: 'hidden', marginBottom: 12 }}>
             <div style={{ height: '100%', width: `${score}%`, background: col, borderRadius: 999, transition: 'width 1s ease' }} />
           </div>
           <div style={{ minHeight: 32, display: 'flex', alignItems: 'center', gap: 8 }}>
             {loading ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.signalSoft, animation: 'livePulse 1.2s ease infinite' }} />
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.blue400, animation: 'livePulse 1.2s ease infinite' }} />
                 <span style={{ fontFamily: F.mono, fontSize: 10.5, color: C.muted }}>AI is picking your focus…</span>
               </div>
             ) : focus ? (
@@ -607,7 +629,7 @@ Reply with ONLY the one sentence. No preamble, no label.`;
             {[...topicPerformance].sort((a, b) => (a.averageScore || 0) - (b.averageScore || 0)).slice(1, 4).map(t => {
               const c = scoreColor(t.averageScore || 0);
               return (
-                <div key={t.topic} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 8, background: C.surfaceSunk, border: `1px solid ${C.line}`, cursor: 'pointer' }} onClick={() => onDrill(t.topic)}>
+                <div key={t.topic} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 8, background: C.cardAlt, border: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => onDrill(t.topic)}>
                   <span style={{ fontFamily: F.mono, fontSize: 10.5, fontWeight: 700, color: c }}>{t.averageScore || 0}</span>
                   <span style={{ fontSize: 11, fontWeight: 500, color: C.sub }}>{t.topic}</span>
                 </div>
@@ -636,7 +658,6 @@ const Dashboard = () => {
 
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -655,7 +676,6 @@ const Dashboard = () => {
         console.error('Dashboard load:', e);
       } finally {
         setLoading(false);
-        requestAnimationFrame(() => setTimeout(() => setMounted(true), 40));
       }
     })();
   }, []);
@@ -720,7 +740,7 @@ const Dashboard = () => {
   const apiTiers = analytics?.tiers ?? [];
   const nextTierApi = apiTiers.find(t => !t.isUnlocked && t.label !== currentTierLabel) ?? null;
   const nextTier = nextTierApi
-    ? { label: nextTierApi.label, minScore: nextTierApi.minIRS, color: TIER_META[nextTierApi.label]?.color ?? C.signal, advice: nextTierApi.advice }
+    ? { label: nextTierApi.label, minScore: nextTierApi.minIRS, color: TIER_META[nextTierApi.label]?.color ?? C.blue500, advice: nextTierApi.advice }
     : null;
   const irsGap = nextTier ? Math.max(0, nextTier.minScore - irs) : 0;
 
@@ -799,271 +819,314 @@ const Dashboard = () => {
         scoreTrend={scoreTrend}
         totalSessions={totalInterviews}
       />
-      <div style={{ ...S.container, opacity: mounted ? 1 : 0, transform: mounted ? 'none' : 'translateY(8px)', transition: 'opacity 0.6s ease, transform 0.6s cubic-bezier(.16,1,.3,1)' }}>
+      <div style={S.container}>
 
         {/* ── STATUS STRIP ──────────────────────────────────────────── */}
-        <div style={S.strip} className="mm-strip">
-          <div style={S.stripL}>
-            <span style={S.liveDot} />
-            <span style={S.mono}>mockmate readiness terminal</span>
+        <AnimatedSection delay={0}>
+          <div style={S.strip} className="mm-strip">
+            <div style={S.stripL}>
+              <span style={S.liveDot} />
+              <span style={S.mono}>mockmate readiness terminal</span>
+            </div>
+            <div style={S.stripR} className="mm-strip-r">
+              <span style={S.mono}>session {sessionId}</span>
+              <span style={{ color: C.borderMd }}>·</span>
+              <span style={S.mono}>
+                {clock.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toLowerCase()}{' '}
+                {clock.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            </div>
           </div>
-          <div style={S.stripR} className="mm-strip-r">
-            <span style={S.mono}>session {sessionId}</span>
-            <span style={{ color: C.lineMd }}>·</span>
-            <span style={S.mono}>
-              {clock.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toLowerCase()}{' '}
-              {clock.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            </span>
-          </div>
-        </div>
+        </AnimatedSection>
 
         {/* ── HERO ──────────────────────────────────────────────────── */}
-        <section style={S.hero} className="mm-hero">
-          <div style={S.heroNoise} />
-          <div style={S.heroGrid} className="mm-hero-grid">
+        <AnimatedSection delay={60}>
+          <SectionErrorBoundary>
+          <section style={S.hero} className="mm-hero">
+            <div style={S.heroNoise} />
+            <div style={S.heroGrid} className="mm-hero-grid">
 
-            <div style={S.irsBlock}>
-              <div style={S.irsLabel}>interview readiness score</div>
-              <div style={S.irsNum} className="mm-irs-num">
-                {hasData ? irs : '—'}
-                {hasData && <span style={S.irsMax}>/100</span>}
-              </div>
-              {hasData && (
-                <>
-                  <div style={{ ...S.tierPill, background: `rgba(255,255,255,0.08)`, color: '#fff', border: `1px solid rgba(255,255,255,0.18)` }}>
-                    {currentTier.label} eligible
-                  </div>
-                  {analytics?.currentTierIsGated && (
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.42)', marginTop: 8, lineHeight: 1.55, maxWidth: 240 }}>
-                      Math already tracks toward {analytics.currentTierRaw} — {analytics.sessionsNeededForRawTier} more session{analytics.sessionsNeededForRawTier === 1 ? '' : 's'} to confirm it.
+              <div style={S.irsBlock}>
+                <div style={S.irsLabel}>interview readiness score</div>
+                <div style={S.irsNum} className="mm-irs-num">
+                  {hasData ? irs : '—'}
+                  {hasData && <span style={S.irsMax}>/100</span>}
+                </div>
+                {hasData && (
+                  <>
+                    <div style={{ ...S.tierPill, background: `rgba(255,255,255,0.08)`, color: '#fff', border: `1px solid rgba(255,255,255,0.18)` }}>
+                      {currentTier.label} eligible
                     </div>
-                  )}
-                  <div style={S.irsBar}>
-                    <div style={{ ...S.irsBarFill, width: mounted ? `${irs}%` : '0%' }} />
-                    {nextTier && (
-                      <div style={{ ...S.irsNextMark, left: `${nextTier.minScore}%` }} title={`${nextTier.label} threshold`} />
+                    {analytics?.currentTierIsGated && (
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.42)', marginTop: 8, lineHeight: 1.55, maxWidth: 240 }}>
+                        Math already tracks toward {analytics.currentTierRaw} — {analytics.sessionsNeededForRawTier} more session{analytics.sessionsNeededForRawTier === 1 ? '' : 's'} to confirm it.
+                      </div>
                     )}
-                  </div>
-                  {nextTier && (
-                    <div style={S.irsGapText}>
-                      {irsGap} points to <span style={{ color: C.pulse, fontWeight: 600 }}>{nextTier.label}</span>
+                    <div style={S.irsBar}>
+                      <div style={{ ...S.irsBarFill, width: `${irs}%` }} />
+                      {nextTier && (
+                        <div style={{ ...S.irsNextMark, left: `${nextTier.minScore}%` }} title={`${nextTier.label} threshold`} />
+                      )}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div style={S.verdictBlock}>
-              <div style={S.heroKicker}>Placement verdict</div>
-              <h1 style={S.heroH1}>
-                {user?.name?.split(' ')[0] ? `${user.name.split(' ')[0]}, ` : ''}
-                {!hasData
-                  ? "let's build your readiness profile."
-                  : `you're trending toward ${currentTier.label}.`}
-              </h1>
-              {!hasData ? (
-                <p style={S.heroSub}>
-                  Run one interview and MockMate computes your IRS — a weighted score
-                  across six dimensions that maps to real package tiers.
-                </p>
-              ) : (
-                <p style={S.heroSub}>
-                  {totalInterviews} session{totalInterviews !== 1 ? 's' : ''} logged ·{' '}
-                  strongest in <strong style={{ color: '#fff', fontWeight: 600 }}>{strongestDim?.label ?? '—'}</strong>,
-                  sharpest gap in <strong style={{ color: C.pulse, fontWeight: 600 }}>{weakestDim?.label ?? '—'}</strong>.
-                </p>
-              )}
-              <div style={S.heroActions}>
-                <Button surface="dark" variant="primary" onClick={() => startQuick()} disabled={starting}>
-                  {starting ? 'Launching…' : hasData ? 'New mock interview' : 'Run first interview'}
-                </Button>
-                {hasData && (
-                  <Button surface="dark" variant="ghost" onClick={() => navigate('/analytics')}>
-                    Full analytics
-                  </Button>
-                )}
-                {hasData && (
-                  <Button
-                    surface="dark" variant="ghost"
-                    className="!bg-[rgba(0,194,232,0.1)] !border-[rgba(0,194,232,0.3)] !text-[#8FE9FF]"
-                    onClick={() => setCoachOpen(true)}
-                  >
-                    AI Coach
-                  </Button>
+                    {nextTier && (
+                      <div style={S.irsGapText}>
+                        {irsGap} points to <span style={{ color: C.cyan400, fontWeight: 700 }}>{nextTier.label}</span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
+
+              <div style={S.verdictBlock}>
+                <div style={S.heroKicker}>Placement verdict</div>
+                <h1 style={S.heroH1}>
+                  {user?.name?.split(' ')[0] ? `${user.name.split(' ')[0]}, ` : ''}
+                  {!hasData
+                    ? "let's build your readiness profile."
+                    : `you're trending toward ${currentTier.label}.`}
+                </h1>
+                {!hasData ? (
+                  <p style={S.heroSub}>
+                    Run one interview and MockMate computes your IRS — a weighted score
+                    across six dimensions that maps to real package tiers.
+                  </p>
+                ) : (
+                  <p style={S.heroSub}>
+                    {totalInterviews} session{totalInterviews !== 1 ? 's' : ''} logged ·{' '}
+                    strongest in <strong style={{ color: '#fff', fontWeight: 700 }}>{strongestDim?.label ?? '—'}</strong>,
+                    sharpest gap in <strong style={{ color: C.cyan400, fontWeight: 700 }}>{weakestDim?.label ?? '—'}</strong>.
+                  </p>
+                )}
+                <div style={S.heroActions}>
+                  <Button surface="dark" variant="primary" onClick={() => startQuick()} disabled={starting}>
+                    {starting ? 'Launching…' : hasData ? 'New mock interview' : 'Run first interview'}
+                  </Button>
+                  {hasData && (
+                    <Button surface="dark" variant="ghost" onClick={() => navigate('/analytics')}>
+                      Full analytics
+                    </Button>
+                  )}
+                  {hasData && (
+                    <Button
+                      surface="dark" variant="ghost"
+                      className="!bg-[rgba(0,200,240,0.1)] !border-[rgba(0,200,240,0.3)] !text-[#8FE9FF]"
+                      onClick={() => setCoachOpen(true)}
+                    >
+                      AI Coach
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+          </SectionErrorBoundary>
+        </AnimatedSection>
 
         {hasData && (<>
 
           {/* ── STAT RAIL ─────────────────────────────────────────────── */}
-          <section style={S.statRail} className="mm-stat-rail">
-            <RailStat label="Average score" value={averageScore} unit="/100" sub="Mean across all sessions" color={scoreColor(averageScore)} onClick={() => navigate('/analytics')} />
-            <RailStat label="Best session" value={bestScore} unit="/100" sub="Your personal ceiling" color={C.signal} onClick={() => navigate('/history')} />
-            <RailStat label="Sessions logged" value={totalInterviews} unit="" sub={streakDays ? `${streakDays}-day streak` : 'No active streak'} color={C.green} onClick={() => navigate('/history')} />
-            <RailStat label="Last session" value={`${delta >= 0 ? '+' : ''}${delta}`} unit=" pts" sub={delta > 0 ? 'Moving up' : delta < 0 ? 'Slipping — drill now' : 'Flat'} color={delta >= 0 ? C.green : C.orange} onClick={() => startQuick()} />
-          </section>
+          <AnimatedSection delay={0}>
+            <SectionErrorBoundary>
+            <section style={S.statRail} className="mm-stat-rail">
+              <RailStat label="Average score" value={averageScore} unit="/100" sub="Mean across all sessions" color={scoreColor(averageScore)} onClick={() => navigate('/analytics')} />
+              <RailStat label="Best session" value={bestScore} unit="/100" sub="Your personal ceiling" color={C.blue500} onClick={() => navigate('/history')} />
+              <RailStat label="Sessions logged" value={totalInterviews} unit="" sub={streakDays ? `${streakDays}-day streak` : 'No active streak'} color={C.green} onClick={() => navigate('/history')} />
+              <RailStat label="Last session" value={`${delta >= 0 ? '+' : ''}${delta}`} unit=" pts" sub={delta > 0 ? 'Moving up' : delta < 0 ? 'Slipping — drill now' : 'Flat'} color={delta >= 0 ? C.green : C.orange} onClick={() => startQuick()} />
+            </section>
+            </SectionErrorBoundary>
+          </AnimatedSection>
 
           {/* ── PREDICTOR + FOCUS THIS WEEK ─────────────────────────────── */}
-          <section style={S.twoCol} className="mm-two-col">
-            <PredictorCard prediction={nextPrediction} lastScore={latestScore} averageScore={averageScore} onStart={() => startQuick()} starting={starting} />
-            <FocusThisWeekCard
-              topicPerformance={topicPerformance}
-              dimensionProfile={dimensionProfile}
-              weakestDim={weakestDim}
-              scoreTrend={scoreTrend}
-              onDrill={startQuick}
-              starting={starting}
-            />
-          </section>
+          <AnimatedSection delay={0}>
+            <SectionErrorBoundary>
+            <section style={S.twoCol} className="mm-two-col">
+              <PredictorCard prediction={nextPrediction} lastScore={latestScore} averageScore={averageScore} onStart={() => startQuick()} starting={starting} />
+              <FocusThisWeekCard
+                topicPerformance={topicPerformance}
+                dimensionProfile={dimensionProfile}
+                weakestDim={weakestDim}
+                scoreTrend={scoreTrend}
+                onDrill={startQuick}
+                starting={starting}
+              />
+            </section>
+            </SectionErrorBoundary>
+          </AnimatedSection>
 
           {/* ── IRS BREAKDOWN + FIX THIS NEXT ───────────────────────────── */}
-          <section style={S.twoCol} className="mm-two-col">
-            <div style={S.card}>
-              <div style={S.cardHeader}>
-                <div>
-                  <div style={S.eyebrow}>Six-dimension breakdown</div>
-                  <h2 style={S.cardH2}>Your IRS components</h2>
-                  <p style={S.cardSub}>
-                    Each bar is weighted — heavier dimensions influence your IRS more.
-                    Gaps here are where readiness points are actually lost.
-                  </p>
-                </div>
-                <Button surface="light" variant="link" onClick={() => navigate('/analytics')}>Full radar →</Button>
-              </div>
-              <div style={S.dimList}>
-                {dimensionProfile.map(d => {
-                  const col = d.hasData ? scoreColor(d.score) : C.faint;
-                  return (
-                    <div key={d.key} style={S.dimRow} className="mm-dim-row" title={d.tip}>
-                      <div style={S.dimMeta}>
-                        <div style={S.dimLeft}>
-                          <span style={S.dimIcon}>{d.icon}</span>
-                          <div>
-                            <span style={S.dimName}>{d.label}</span>
-                            <span style={S.dimWeight}>{Math.round((d.weight ?? 0) * 100)}% weight</span>
-                          </div>
-                        </div>
-                        <span style={{ ...S.dimScore, color: d.hasData ? col : C.faint }}>
-                          {d.hasData ? d.score : '—'}
-                          {d.isProvisional && d.hasData && <span title="Provisional — more sessions needed" style={{ fontSize: 9, marginLeft: 3, color: C.amber, fontWeight: 700 }}>~</span>}
-                        </span>
-                      </div>
-                      <div style={S.dimTrack}>
-                        <div style={{ ...S.dimFill, width: mounted && d.hasData ? `${d.score}%` : '0%', background: col, opacity: d.hasData ? 1 : 0.3 }} />
-                      </div>
-                      {!d.hasData && <div style={S.dimNoData}>No sessions for these topics yet</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div style={{ ...S.card, display: 'flex', flexDirection: 'column' }}>
-              <div style={S.eyebrow}>Highest-ROI fix</div>
-              <h2 style={S.cardH2}>Where to drill next</h2>
-
-              {fixTarget ? (
-                <>
-                  <div style={S.fixBox}>
-                    <div style={S.fixTop}>
-                      <span style={S.fixTopic}>{fixTarget.topic}</span>
-                      <span style={{ ...S.fixScore, color: scoreColor(fixTarget.averageScore || 0) }}>{fixTarget.averageScore || 0}</span>
-                    </div>
-                    <div style={S.fixTrack}>
-                      <div style={{ ...S.fixFill, width: `${fixTarget.averageScore || 0}%`, background: scoreColor(fixTarget.averageScore || 0) }} />
-                    </div>
-                    <div style={S.fixStats}>
-                      <span style={S.fixStat}><strong>{100 - (fixTarget.averageScore || 0)}</strong> pts headroom</span>
-                      <span style={S.fixStat}><strong>{Math.round(fixTarget.roi * 10) / 10}</strong> ROI score</span>
-                      <span style={S.fixStat}><strong>{fixTarget.attempts ?? '—'}</strong> questions attempted</span>
-                    </div>
-                    <p style={S.fixHint}>
-                      ROI score = dimension weight × score gap. Closing this topic gap
-                      moves your IRS more than any other single change right now.
+          <AnimatedSection delay={0}>
+            <SectionErrorBoundary>
+            <section style={S.twoCol} className="mm-two-col">
+              <div style={S.card}>
+                <div style={S.cardHeader}>
+                  <div>
+                    <div style={S.eyebrow}>Six-dimension breakdown</div>
+                    <h2 style={S.cardH2}>Your IRS components</h2>
+                    <p style={S.cardSub}>
+                      Each bar is weighted — heavier dimensions influence your IRS more.
+                      Gaps here are where readiness points are actually lost.
                     </p>
                   </div>
-
-                  <div style={S.archetypeBox}>
-                    <div style={S.archetypeHead}>
-                      <span style={S.archetypeIcon}>{archetype.icon}</span>
-                      <div>
-                        <div style={S.archetypeName}>{archetype.label}</div>
-                        <div style={S.archetypeDesc}>{archetype.desc}</div>
+                  <Button surface="light" variant="link" onClick={() => navigate('/analytics')}>Full radar →</Button>
+                </div>
+                <div style={S.dimList}>
+                  {dimensionProfile.map(d => {
+                    const col = d.hasData ? scoreColor(d.score) : C.faint;
+                    return (
+                      <div key={d.key} style={S.dimRow} className="mm-dim-row" title={d.tip}>
+                        <div style={S.dimMeta}>
+                          <div style={S.dimLeft}>
+                            <span style={S.dimIcon}>{d.icon}</span>
+                            <div>
+                              <span style={S.dimName}>{d.label}</span>
+                              <span style={S.dimWeight}>{Math.round((d.weight ?? 0) * 100)}% weight</span>
+                            </div>
+                          </div>
+                          <span style={{ ...S.dimScore, color: d.hasData ? col : C.faint }}>
+                            {d.hasData ? d.score : '—'}
+                            {d.isProvisional && d.hasData && <span title="Provisional — more sessions needed" style={{ fontSize: 9, marginLeft: 3, color: C.amber, fontWeight: 700 }}>~</span>}
+                          </span>
+                        </div>
+                        <div style={S.dimTrack}>
+                          <div style={{ ...S.dimFill, width: d.hasData ? `${d.score}%` : '0%', background: col, opacity: d.hasData ? 1 : 0.3 }} />
+                        </div>
+                        {!d.hasData && <div style={S.dimNoData}>No sessions for these topics yet</div>}
                       </div>
-                    </div>
-                    <div style={S.archetypeFix}>{archetype.fix}</div>
-                  </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-                  <Button variant="gradient" className="mt-auto" onClick={() => startQuick(fixTarget.topic)} disabled={starting}>
-                    Drill {fixTarget.topic} now
-                  </Button>
-                </>
-              ) : (
-                <p style={S.cardSub}>Complete a few more sessions to unlock targeted recommendations.</p>
-              )}
-            </div>
-          </section>
+              <div style={{ ...S.card, display: 'flex', flexDirection: 'column' }}>
+                <div style={S.eyebrow}>Highest-ROI fix</div>
+                <h2 style={S.cardH2}>Where to drill next</h2>
+
+                {fixTarget ? (
+                  <>
+                    <div style={S.fixBox}>
+                      <div style={S.fixTop}>
+                        <span style={S.fixTopic}>{fixTarget.topic}</span>
+                        <span style={{ ...S.fixScore, color: scoreColor(fixTarget.averageScore || 0) }}>{fixTarget.averageScore || 0}</span>
+                      </div>
+                      <div style={S.fixTrack}>
+                        <div style={{ ...S.fixFill, width: `${fixTarget.averageScore || 0}%`, background: scoreColor(fixTarget.averageScore || 0) }} />
+                      </div>
+                      <div style={S.fixStats}>
+                        <span style={S.fixStat}><strong>{100 - (fixTarget.averageScore || 0)}</strong> pts headroom</span>
+                        <span style={S.fixStat}><strong>{Math.round(fixTarget.roi * 10) / 10}</strong> ROI score</span>
+                        <span style={S.fixStat}><strong>{fixTarget.attempts ?? '—'}</strong> questions attempted</span>
+                      </div>
+                      <p style={S.fixHint}>
+                        ROI score = dimension weight × score gap. Closing this topic gap
+                        moves your IRS more than any other single change right now.
+                      </p>
+                    </div>
+
+                    <div style={S.archetypeBox}>
+                      <div style={S.archetypeHead}>
+                        <span style={S.archetypeIcon}>{archetype.icon}</span>
+                        <div>
+                          <div style={S.archetypeName}>{archetype.label}</div>
+                          <div style={S.archetypeDesc}>{archetype.desc}</div>
+                        </div>
+                      </div>
+                      <div style={S.archetypeFix}>{archetype.fix}</div>
+                    </div>
+
+                    <Button variant="gradient" className="mt-auto" onClick={() => startQuick(fixTarget.topic)} disabled={starting}>
+                      Drill {fixTarget.topic} now
+                    </Button>
+                  </>
+                ) : (
+                  <p style={S.cardSub}>Complete a few more sessions to unlock targeted recommendations.</p>
+                )}
+              </div>
+            </section>
+            </SectionErrorBoundary>
+          </AnimatedSection>
 
           {/* ── BADGE SHOWCASE ───────────────────────────────────────────── */}
-          <BadgeShowcase badges={badges} unlockedCount={unlockedCount} nextBadge={nextBadge} mounted={mounted} onFixBadges={handleFixBadges} />
+          <AnimatedSection delay={0}>
+            <SectionErrorBoundary>
+              <BadgeShowcase badges={badges} unlockedCount={unlockedCount} nextBadge={nextBadge} onFixBadges={handleFixBadges} />
+            </SectionErrorBoundary>
+          </AnimatedSection>
 
           {/* ── AI COACH TEASER + WEEKLY CHALLENGES ──────────────────────── */}
-          <section style={S.twoCol} className="mm-two-col">
-            <AICoachTeaserCard onOpen={() => setCoachOpen(true)} weakestDim={weakestDim} irs={irs} tier={currentTier} />
-            <WeeklyChallenges scoreTrend={scoreTrend} topicPerformance={topicPerformance} streakDays={streakDays} />
-          </section>
+          <AnimatedSection delay={0}>
+            <SectionErrorBoundary>
+            <section style={S.twoCol} className="mm-two-col">
+              <AICoachTeaserCard onOpen={() => setCoachOpen(true)} weakestDim={weakestDim} irs={irs} tier={currentTier} />
+              <WeeklyChallenges scoreTrend={scoreTrend} topicPerformance={topicPerformance} streakDays={streakDays} />
+            </section>
+            </SectionErrorBoundary>
+          </AnimatedSection>
 
           {/* ── GROWTH VELOCITY ──────────────────────────────────────────── */}
-          <GrowthVelocityCard scoreTrend={scoreTrend} longestStreak={dashStats?.stats?.longestStreak} hmStats={hmStats} totalInterviews={totalInterviews} />
+          <AnimatedSection delay={0}>
+            <SectionErrorBoundary>
+              <GrowthVelocityCard scoreTrend={scoreTrend} longestStreak={dashStats?.stats?.longestStreak} hmStats={hmStats} totalInterviews={totalInterviews} />
+            </SectionErrorBoundary>
+          </AnimatedSection>
 
           {/* ── SHARE CARD ────────────────────────────────────────────────── */}
-          <ShareCard
-            name={user?.name?.split(' ')[0] || 'Candidate'}
-            irs={irs}
-            tier={currentTier}
-            strongest={strongestDim}
-            archetype={archetype}
-            sessions={totalInterviews}
-          />
+          <AnimatedSection delay={0}>
+            <SectionErrorBoundary>
+              <ShareCard
+                name={user?.name?.split(' ')[0] || 'Candidate'}
+                irs={irs}
+                tier={currentTier}
+                strongest={strongestDim}
+                archetype={archetype}
+                sessions={totalInterviews}
+              />
+            </SectionErrorBoundary>
+          </AnimatedSection>
 
           {/* ── ACTIVITY LOG (dark panel) ─────────────────────────────────── */}
-          <ActivityHeatmap
-            heatmap={heatmap}
-            stats={{ ...hmStats, longestStreak: dashStats?.stats?.longestStreak ?? hmStats.longestStreak }}
-            total={totalInterviews}
-            mounted={mounted}
-          />
+          <AnimatedSection delay={0}>
+            <SectionErrorBoundary>
+              <ActivityHeatmap
+                heatmap={heatmap}
+                stats={{ ...hmStats, longestStreak: dashStats?.stats?.longestStreak ?? hmStats.longestStreak }}
+                total={totalInterviews}
+              />
+            </SectionErrorBoundary>
+          </AnimatedSection>
 
           {/* ── NEXT TIER BANNER ─────────────────────────────────────────── */}
           {nextTier && (
-            <section style={S.tierBanner} className="mm-banner">
-              <div style={{ flex: 1 }}>
-                <div style={S.eyebrow}>Next milestone</div>
-                <h2 style={S.bannerH2}>
-                  {irsGap} IRS points from <span style={{ color: nextTier.color }}>{nextTier.label}</span>
-                </h2>
-                <p style={S.bannerSub}>
-                  {nextTier.advice} {weakestDim && `Focus on ${weakestDim.label} — it's your largest open gap.`}
-                </p>
-                <div style={S.bannerTrack}>
-                  <div style={{ ...S.bannerFill, width: mounted ? `${Math.min(100, nextTier.minScore > 0 ? (irs / nextTier.minScore) * 100 : 100)}%` : '0%' }} />
-                  <div style={{ ...S.bannerMark, left: '100%' }} title={`${nextTier.label} threshold`} />
+            <AnimatedSection delay={0}>
+              <SectionErrorBoundary>
+              <section style={S.tierBanner} className="mm-banner">
+                <div style={{ flex: 1 }}>
+                  <div style={S.eyebrow}>Next milestone</div>
+                  <h2 style={S.bannerH2}>
+                    {irsGap} IRS points from <span style={{ color: nextTier.color }}>{nextTier.label}</span>
+                  </h2>
+                  <p style={S.bannerSub}>
+                    {nextTier.advice} {weakestDim && `Focus on ${weakestDim.label} — it's your largest open gap.`}
+                  </p>
+                  <div style={S.bannerTrack}>
+                    <div style={{ ...S.bannerFill, width: `${Math.min(100, nextTier.minScore > 0 ? (irs / nextTier.minScore) * 100 : 100)}%` }} />
+                    <div style={{ ...S.bannerMark, left: '100%' }} title={`${nextTier.label} threshold`} />
+                  </div>
+                  <div style={S.bannerCaption}>{irs}/{nextTier.minScore} IRS needed</div>
                 </div>
-                <div style={S.bannerCaption}>{irs}/{nextTier.minScore} IRS needed</div>
-              </div>
-              <Button variant="gradient" onClick={() => startQuick()} disabled={starting}>Keep climbing →</Button>
-            </section>
+                <Button variant="gradient" onClick={() => startQuick()} disabled={starting}>Keep climbing →</Button>
+              </section>
+              </SectionErrorBoundary>
+            </AnimatedSection>
           )}
 
         </>)}
 
-        <footer style={S.footerRow}>
-          <span style={S.mono}>mockmate readiness engine v6.0</span>
-          <span style={S.mono}>irs = weighted dimension avg · ewma trend · breadth · consistency</span>
-        </footer>
+        <AnimatedSection delay={0}>
+          <footer style={S.footerRow}>
+            <span style={S.mono}>mockmate readiness engine v7.0</span>
+            <span style={S.mono}>irs = weighted dimension avg · ewma trend · breadth · consistency</span>
+          </footer>
+        </AnimatedSection>
       </div>
     </div>
   );
@@ -1119,7 +1182,7 @@ const PredictorCard = ({ prediction, lastScore, averageScore, onStart, starting 
             <div style={{ ...S.predictMarkerAvg, left: `${clamp(averageScore)}%` }} title={`Your average: ${averageScore}`} />
           </div>
           <div style={S.predictLegend}>
-            <span><span style={{ ...S.legendDot, background: C.signal }} /> Forecast</span>
+            <span><span style={{ ...S.legendDot, background: C.blue500 }} /> Forecast</span>
             <span><span style={{ ...S.legendDot, background: C.faint }} /> Your average</span>
           </div>
           <p style={S.predictNote}>
@@ -1135,7 +1198,7 @@ const PredictorCard = ({ prediction, lastScore, averageScore, onStart, starting 
 };
 
 // ─── Badge Showcase ─────────────────────────────────────────────────────────
-const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted, onFixBadges }) => {
+const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
   const [selected, setSelected] = useState(null);
   const [fixing, setFixing] = useState(false);
 
@@ -1155,7 +1218,7 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted, onFixBadges 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
           {nextBadge && (
             <div style={S.nextBadgeChip}>
-              <span style={{ fontSize: 14, color: C.signal }}>{nextBadge.icon}</span>
+              <span style={{ fontSize: 14, color: C.blue500 }}>{nextBadge.icon}</span>
               <div>
                 <div style={S.nextBadgeLabel}>next up</div>
                 <div style={S.nextBadgeName}>{nextBadge.label}</div>
@@ -1180,7 +1243,7 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted, onFixBadges 
       </div>
 
       <div style={S.badgeGrid} className="mm-badge-grid">
-        {badges.map((b, i) => {
+        {badges.map((b) => {
           const tierStyle = TIER_STYLE[b.tier] || TIER_STYLE.bronze;
           const isSelected = selected === b.id;
           return (
@@ -1189,17 +1252,14 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, mounted, onFixBadges 
               onClick={() => setSelected(isSelected ? null : b.id)}
               style={{
                 ...S.badgeCell,
-                opacity: mounted ? 1 : 0,
-                transform: mounted ? 'scale(1)' : 'scale(0.94)',
-                transitionDelay: `${i * 20}ms`,
-                background: b.unlocked ? tierStyle.tint : C.surfaceSunk,
-                border: `1px solid ${b.unlocked ? tierStyle.ring : C.line}`,
+                background: b.unlocked ? tierStyle.tint : C.cardAlt,
+                border: `1px solid ${b.unlocked ? tierStyle.ring : C.border}`,
                 boxShadow: isSelected ? `0 0 0 2px ${tierStyle.ring}` : 'none',
               }}
               title={b.desc}
             >
               <div style={{ ...S.badgeIcon, color: b.unlocked ? tierStyle.color : C.faint, opacity: b.unlocked ? 1 : 0.5 }}>{b.icon}</div>
-              <div style={{ ...S.badgeName, color: b.unlocked ? C.ink : C.faint }}>{b.label}</div>
+              <div style={{ ...S.badgeName, color: b.unlocked ? C.text : C.faint }}>{b.label}</div>
               {b.unlocked ? (
                 <div style={{ ...S.badgeTierTag, color: tierStyle.color, background: `${tierStyle.color}16` }}>{b.tier}</div>
               ) : typeof b.progress === 'number' && b.progress > 0 ? (
@@ -1248,7 +1308,7 @@ const AICoachTeaserCard = ({ onOpen, weakestDim }) => (
     <div style={S.coachTeaserGlow} />
     <div style={{ position: 'relative' }}>
       <div style={S.heroKicker}>AI Readiness Coach</div>
-      <h2 style={{ fontFamily: F.serif, fontSize: 19, fontWeight: 600, color: '#fff', margin: '10px 0 10px', lineHeight: 1.3, fontStyle: 'italic' }}>
+      <h2 style={{ fontFamily: F.display, fontSize: 19, fontWeight: 800, color: '#fff', margin: '10px 0 10px', lineHeight: 1.3, letterSpacing: '-0.3px' }}>
         Get your personalised 30-day battle plan.
       </h2>
       <p style={{ margin: '0 0 16px', color: 'rgba(255,255,255,0.6)', fontSize: 12.5, lineHeight: 1.7 }}>
@@ -1269,7 +1329,7 @@ const AICoachTeaserCard = ({ onOpen, weakestDim }) => (
       </div>
       {weakestDim && (
         <div style={{ marginBottom: 18, padding: '11px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', fontSize: 12, color: 'rgba(255,255,255,0.62)', lineHeight: 1.55 }}>
-          Biggest unlock: <strong style={{ color: '#fff', fontWeight: 600 }}>{weakestDim.label}</strong> at {weakestDim.score}/100 — your coach will tell you exactly how to fix this.
+          Biggest unlock: <strong style={{ color: '#fff', fontWeight: 700 }}>{weakestDim.label}</strong> at {weakestDim.score}/100 — your coach will tell you exactly how to fix this.
         </div>
       )}
       <Button variant="gradient" onClick={onOpen}>
@@ -1325,12 +1385,12 @@ const WeeklyChallenges = ({ scoreTrend, topicPerformance, streakDays }) => {
                     <div style={S.challengeTitle}>{challenge.title}</div>
                     <div style={S.challengeHelper}>{challenge.helper}</div>
                   </div>
-                  <div style={{ ...S.challengeCount, color: done ? C.green : C.signalDeep }}>
+                  <div style={{ ...S.challengeCount, color: done ? C.green : C.blue600 }}>
                     {challenge.current}/{challenge.target}
                   </div>
                 </div>
                 <div style={S.challengeTrack}>
-                  <div style={{ ...S.challengeFill, width: `${progress}%`, background: done ? C.green : `linear-gradient(90deg, ${C.signal}, ${C.pulse})` }} />
+                  <div style={{ ...S.challengeFill, width: `${progress}%`, background: done ? C.green : `linear-gradient(90deg, ${C.blue500}, ${C.cyan500})` }} />
                 </div>
               </div>
               <div style={{ ...S.challengeStatus, color: done ? C.green : C.muted }}>
@@ -1350,11 +1410,11 @@ const Toast = ({ toast }) => {
   return (
     <div style={{
       position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
-      background: isError ? C.red : C.ink,
+      background: isError ? C.red : C.text,
       color: '#fff', padding: '11px 20px', borderRadius: 12,
-      fontWeight: 600, fontSize: 13, zIndex: 9999, pointerEvents: 'none',
+      fontWeight: 700, fontSize: 13, zIndex: 9999, pointerEvents: 'none',
       fontFamily: F.body, letterSpacing: '-0.1px',
-      boxShadow: `0 8px 28px ${isError ? 'rgba(194,38,38,0.3)' : 'rgba(10,22,40,0.3)'}`,
+      boxShadow: `0 8px 28px ${isError ? 'rgba(220,38,38,0.3)' : 'rgba(15,26,53,0.3)'}`,
       animation: 'fadeUp 0.22s ease',
     }}>
       {toast.msg}
@@ -1444,7 +1504,7 @@ const GrowthVelocityCard = ({ scoreTrend, longestStreak, hmStats, totalInterview
           <div style={S.digestLabel}>sessions this week</div>
         </div>
         <div style={S.digestCell}>
-          <div style={{ ...S.digestVal, color: C.signal }}>{displayLongestStreak}d</div>
+          <div style={{ ...S.digestVal, color: C.blue500 }}>{displayLongestStreak}d</div>
           <div style={S.digestLabel}>longest streak</div>
         </div>
         <div style={S.digestCell}>
@@ -1466,7 +1526,7 @@ const GrowthVelocityCard = ({ scoreTrend, longestStreak, hmStats, totalInterview
 // ─── Activity heatmap — dark instrument panel, echoes the hero ──────────────
 const MONTH_LABELS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 
-const ActivityHeatmap = ({ heatmap, stats, mounted }) => {
+const ActivityHeatmap = ({ heatmap, stats }) => {
   const [hovered, setHovered] = useState(null);
 
   const monthCols = useMemo(() => {
@@ -1484,7 +1544,7 @@ const ActivityHeatmap = ({ heatmap, stats, mounted }) => {
       <div style={S.hmPanelHeader}>
         <div>
           <div style={S.heroKicker}>Practice activity</div>
-          <h2 style={{ fontFamily: F.body, fontSize: 17, fontWeight: 700, color: '#fff', margin: '8px 0 0' }}>Session log — last 14 weeks</h2>
+          <h2 style={{ fontFamily: F.display, fontSize: 17, fontWeight: 800, color: '#fff', margin: '8px 0 0', letterSpacing: '-0.2px' }}>Session log — last 14 weeks</h2>
           <p style={{ margin: '6px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.44)', lineHeight: 1.6, maxWidth: 420 }}>
             Each cell is one day. Brighter cyan means a higher score that day.
           </p>
@@ -1525,7 +1585,7 @@ const ActivityHeatmap = ({ heatmap, stats, mounted }) => {
                     border: day.future ? `1px dashed rgba(255,255,255,0.12)` : 'none',
                     cursor: day.hasData ? 'pointer' : 'default',
                     transform: hovered?.date === day.date ? 'scale(1.7)' : 'scale(1)',
-                    boxShadow: hovered?.date === day.date ? `0 0 0 2px ${C.pulse}, 0 2px 10px rgba(0,194,232,0.4)` : 'none',
+                    boxShadow: hovered?.date === day.date ? `0 0 0 2px ${C.cyan400}, 0 2px 10px rgba(0,200,240,0.4)` : 'none',
                     zIndex: hovered?.date === day.date ? 2 : 1,
                   }}
                 />
@@ -1538,7 +1598,7 @@ const ActivityHeatmap = ({ heatmap, stats, mounted }) => {
       {hovered && hovered.hasData && (
         <div style={S.hmTooltip}>
           <strong>{new Date(hovered.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</strong>
-          {' '}· Score: <strong style={{ color: C.pulse }}>{hovered.score}/100</strong>
+          {' '}· Score: <strong style={{ color: C.cyan400 }}>{hovered.score}/100</strong>
           {' '}· {hovered.score >= 80 ? 'Strong session' : hovered.score >= 60 ? 'Solid session' : hovered.score >= 40 ? 'Room to grow' : 'Tough one — happens to everyone'}
         </div>
       )}
@@ -1611,8 +1671,8 @@ const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2 style={S.shareTitle}>{name} is {tier.label} eligible</h2>
           <p style={S.shareDesc}>
-            Strongest: <strong style={{ color: '#fff', fontWeight: 600 }}>{strongest?.label ?? '—'}</strong>
-            {percentile ? <> · Top <strong style={{ color: C.pulse, fontWeight: 600 }}>{100 - percentile + 1}%</strong></> : null}
+            Strongest: <strong style={{ color: '#fff', fontWeight: 700 }}>{strongest?.label ?? '—'}</strong>
+            {percentile ? <> · Top <strong style={{ color: C.cyan400, fontWeight: 700 }}>{100 - percentile + 1}%</strong></> : null}
             {' '}· {archetype.label}
           </p>
           <div>
@@ -1630,7 +1690,7 @@ const ShareCard = ({ name, irs, tier, strongest, percentile, archetype, sessions
 // ─── Global styles ─────────────────────────────────────────────────────────────
 const GlobalStyles = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
     @keyframes spin        { to { transform: rotate(360deg); } }
     @keyframes livePulse   { 0%,100% { opacity:1; } 50% { opacity:0.28; } }
@@ -1640,21 +1700,21 @@ const GlobalStyles = () => (
     @keyframes heroSweep   { 0% { transform:translateX(-30%); } 100% { transform:translateX(130%); } }
 
     *, *::before, *::after { box-sizing: border-box; }
-    ::selection { background: rgba(0,87,232,0.16); color: ${C.ink}; }
+    ::selection { background: rgba(26,110,255,0.16); color: ${C.text}; }
 
     .mm-page button:focus-visible, .mm-page a:focus-visible {
-      outline: 2px solid ${C.signal}; outline-offset: 3px; border-radius: 6px;
+      outline: 2px solid ${C.blue500}; outline-offset: 3px; border-radius: 6px;
     }
 
     .mm-page ::-webkit-scrollbar { width: 5px; height: 5px; }
     .mm-page ::-webkit-scrollbar-track { background: transparent; }
-    .mm-page ::-webkit-scrollbar-thumb { background: ${C.lineMd}; border-radius: 4px; }
-    .mm-page ::-webkit-scrollbar-thumb:hover { background: ${C.lineStr}; }
+    .mm-page ::-webkit-scrollbar-thumb { background: ${C.borderMd}; border-radius: 4px; }
+    .mm-page ::-webkit-scrollbar-thumb:hover { background: ${C.borderStr}; }
 
     .mm-rail-cell {
       transition: background 0.18s ease !important;
     }
-    .mm-rail-cell:hover { background: ${C.surfaceSunk} !important; }
+    .mm-rail-cell:hover { background: ${C.cardAlt} !important; }
 
     .mm-card-hover, .mm-page section {
       transition: box-shadow 0.2s ease, border-color 0.2s ease !important;
@@ -1663,7 +1723,7 @@ const GlobalStyles = () => (
     .mm-badge-grid button {
       transition: transform 0.22s cubic-bezier(.16,1,.3,1), box-shadow 0.18s ease, border-color 0.18s ease !important;
     }
-    .mm-badge-grid button:hover { transform: translateY(-3px) !important; box-shadow: 0 6px 18px rgba(0,87,232,0.14) !important; }
+    .mm-badge-grid button:hover { transform: translateY(-3px) !important; box-shadow: 0 6px 18px rgba(26,110,255,0.14) !important; }
     .mm-badge-grid button:active { transform: translateY(-1px) !important; }
 
     .mm-btn-primary {
@@ -1680,7 +1740,7 @@ const GlobalStyles = () => (
     .mm-btn-blue {
       transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important;
     }
-    .mm-btn-blue:hover { box-shadow: 0 8px 22px rgba(0,87,232,0.35) !important; transform: translateY(-2px) !important; }
+    .mm-btn-blue:hover { box-shadow: 0 8px 22px rgba(26,110,255,0.35) !important; transform: translateY(-2px) !important; }
     .mm-btn-blue:active { transform: translateY(0) !important; }
     .mm-btn-blue:disabled { opacity: 0.55; transform: none !important; box-shadow: none !important; cursor: not-allowed; }
 
@@ -1688,38 +1748,37 @@ const GlobalStyles = () => (
       transition: color 0.15s ease, transform 0.15s ease !important; display: inline-flex; align-items: center; gap: 4px;
       border: none; background: transparent; cursor: pointer; font-family: ${F.body};
     }
-    .mm-link-btn:hover { color: ${C.signalDeep} !important; transform: translateX(2px) !important; }
+    .mm-link-btn:hover { color: ${C.blue600} !important; transform: translateX(2px) !important; }
 
     .mm-coach-btn {
       transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important;
     }
-    .mm-coach-btn:hover { box-shadow: 0 10px 26px rgba(0,194,232,0.4) !important; transform: translateY(-2px) !important; }
+    .mm-coach-btn:hover { box-shadow: 0 10px 26px rgba(0,200,240,0.4) !important; transform: translateY(-2px) !important; }
 
     .mm-dim-row {
       transition: background 0.16s ease, border-color 0.16s ease !important;
     }
-    .mm-dim-row:hover { background: ${C.signalTint} !important; border-color: ${C.lineMd} !important; }
+    .mm-dim-row:hover { background: ${C.blue50} !important; border-color: ${C.borderMd} !important; }
 
     .mm-challenge-row {
       transition: background 0.16s ease, border-color 0.16s ease !important;
     }
-    .mm-challenge-row:hover { background: ${C.signalTint} !important; border-color: ${C.lineMd} !important; }
+    .mm-challenge-row:hover { background: ${C.blue50} !important; border-color: ${C.borderMd} !important; }
 
     .mm-strip { transition: box-shadow 0.2s ease !important; }
-    .mm-strip:hover { box-shadow: ${C.shadowMd} !important; }
+    .mm-strip:hover { box-shadow: ${C.shadowLg} !important; }
 
     .mm-share-btn { transition: box-shadow 0.18s ease, transform 0.18s ease !important; }
-    .mm-share-btn:hover { transform: translateY(-2px) !important; box-shadow: 0 8px 20px rgba(0,194,232,0.35) !important; }
+    .mm-share-btn:hover { transform: translateY(-2px) !important; box-shadow: 0 8px 20px rgba(0,200,240,0.35) !important; }
     .mm-share-link-btn { transition: background 0.18s ease, transform 0.18s ease !important; }
     .mm-share-link-btn:hover { background: rgba(255,255,255,0.12) !important; transform: translateY(-1px) !important; }
 
     .mm-banner-cta { transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important; }
-    .mm-banner-cta:hover { box-shadow: 0 10px 24px rgba(0,87,232,0.32) !important; transform: translateY(-2px) !important; }
+    .mm-banner-cta:hover { box-shadow: 0 10px 24px rgba(26,110,255,0.32) !important; transform: translateY(-2px) !important; }
 
     .mm-recheck-btn { transition: background 0.15s ease, border-color 0.15s ease !important; }
-    .mm-recheck-btn:hover:not(:disabled) { background: ${C.signalTint} !important; border-color: ${C.lineMd} !important; }
+    .mm-recheck-btn:hover:not(:disabled) { background: ${C.blue50} !important; border-color: ${C.borderMd} !important; }
 
-    .mm-container { animation: fadeUp 0.5s cubic-bezier(.16,1,.3,1) both; }
     .mm-irs-num { animation: scaleIn 0.7s cubic-bezier(.16,1,.3,1) both 0.1s; }
     .mm-irs-fill { animation: barFill 1.4s cubic-bezier(.16,1,.3,1) both 0.3s; }
 
@@ -1755,14 +1814,14 @@ const GlobalStyles = () => (
 const S = {
   page: {
     minHeight: 'calc(100vh - 64px)',
-    background: C.paper,
-    backgroundImage: `radial-gradient(ellipse at 6% -4%, rgba(0,87,232,0.05) 0%, transparent 46%), radial-gradient(ellipse at 96% 4%, rgba(0,194,232,0.04) 0%, transparent 40%)`,
+    background: C.bg,
+    backgroundImage: `radial-gradient(ellipse at 6% -4%, rgba(26,110,255,0.05) 0%, transparent 46%), radial-gradient(ellipse at 96% 4%, rgba(0,200,240,0.04) 0%, transparent 40%)`,
     padding: '24px 28px 80px',
     fontFamily: F.body,
   },
   container: { maxWidth: 1260, margin: '0 auto' },
 
-  strip: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 18px', marginBottom: 20, borderRadius: 11, background: C.surface, border: `1px solid ${C.line}`, boxShadow: C.shadow },
+  strip: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 18px', marginBottom: 20, borderRadius: 11, background: C.card, border: `1px solid ${C.border}`, boxShadow: C.shadow },
   stripL: { display: 'flex', alignItems: 'center', gap: 9 },
   stripR: { display: 'flex', alignItems: 'center', gap: 10 },
   liveDot: { width: 6, height: 6, borderRadius: '50%', background: C.green, animation: 'livePulse 2.4s ease-in-out infinite' },
@@ -1771,7 +1830,7 @@ const S = {
   hero: {
     position: 'relative', overflow: 'hidden',
     padding: '44px 36px', marginBottom: 20, borderRadius: 22,
-    background: `linear-gradient(150deg, #060E20 0%, #0A1A38 38%, #0C2242 66%, #0E3358 100%)`,
+    background: `linear-gradient(135deg, ${X.dark0} 0%, ${C.blue900} 40%, #001A3A 70%, ${X.dark0} 100%)`,
     boxShadow: '0 28px 70px rgba(4,12,34,0.34)',
   },
   heroNoise: { position: 'absolute', top: 0, left: 0, width: '30%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.025), transparent)', animation: 'heroSweep 11s linear infinite' },
@@ -1779,154 +1838,146 @@ const S = {
 
   irsBlock: {},
   irsLabel: { fontFamily: F.mono, fontSize: 10, fontWeight: 500, letterSpacing: '1px', color: 'rgba(255,255,255,0.42)', marginBottom: 12 },
-  irsNum: { fontFamily: F.serif, fontSize: 86, fontWeight: 500, lineHeight: 0.95, color: '#fff', letterSpacing: '-3px' },
-  irsMax: { fontSize: 24, fontWeight: 400, color: 'rgba(255,255,255,0.36)', letterSpacing: 0, fontFamily: F.body },
-  tierPill: { display: 'inline-flex', alignItems: 'center', marginTop: 16, padding: '6px 13px', borderRadius: 8, fontSize: 11.5, fontWeight: 600, letterSpacing: '0.1px' },
+  irsNum: { fontFamily: F.display, fontSize: 82, fontWeight: 900, lineHeight: 0.95, color: '#fff', letterSpacing: '-3px' },
+  irsMax: { fontSize: 22, fontWeight: 600, color: 'rgba(255,255,255,0.36)', letterSpacing: 0, fontFamily: F.body },
+  tierPill: { display: 'inline-flex', alignItems: 'center', marginTop: 16, padding: '6px 13px', borderRadius: 8, fontSize: 11.5, fontWeight: 700, letterSpacing: '0.1px' },
   irsBar: { position: 'relative', height: 4, marginTop: 18, borderRadius: 999, background: 'rgba(255,255,255,0.1)', overflow: 'visible' },
-  irsBarFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.signalSoft}, ${C.pulse})`, transition: 'width 1.3s cubic-bezier(.16,1,.3,1)' },
+  irsBarFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.blue400}, ${C.cyan400})`, transition: 'width 1.3s cubic-bezier(.16,1,.3,1)' },
   irsNextMark: { position: 'absolute', top: -4, width: 2, height: 12, borderRadius: 1, background: 'rgba(255,255,255,0.5)', transform: 'translateX(-50%)' },
   irsGapText: { marginTop: 10, fontFamily: F.mono, fontSize: 10.5, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.2px' },
 
   verdictBlock: {},
-  heroKicker: { fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '1.8px', color: C.cyanBright, textTransform: 'uppercase' },
-  heroH1: { margin: '14px 0 0', fontFamily: F.serif, fontSize: 32, fontWeight: 500, color: '#fff', lineHeight: 1.28, letterSpacing: '-0.4px', maxWidth: 620 },
+  heroKicker: { fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '1.8px', color: C.cyan400, textTransform: 'uppercase' },
+  heroH1: { margin: '14px 0 0', fontFamily: F.display, fontSize: 32, fontWeight: 900, color: '#fff', lineHeight: 1.22, letterSpacing: '-0.8px', maxWidth: 620 },
   heroSub: { margin: '15px 0 0', fontSize: 13.5, lineHeight: 1.75, color: 'rgba(255,255,255,0.62)', maxWidth: 560, fontWeight: 400 },
   heroActions: { display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 26 },
 
-  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 11, background: '#fff', color: C.ink, padding: '13px 22px', fontSize: 13.5, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: '0 4px 16px rgba(0,0,0,0.18)', letterSpacing: '-0.1px' },
-  btnGhost: { border: '1px solid rgba(255,255,255,0.16)', borderRadius: 11, background: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(8px)', color: '#fff', padding: '13px 20px', fontSize: 13, fontWeight: 500, fontFamily: F.body, cursor: 'pointer' },
-  btnBlue: { border: 'none', borderRadius: 11, background: `linear-gradient(135deg, ${C.signalDeep}, ${C.signal})`, color: '#fff', padding: '12px 20px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 4px 14px rgba(0,87,232,0.28)`, textAlign: 'center', letterSpacing: '-0.1px' },
-  btnShare: { marginTop: 16, border: 'none', borderRadius: 10, background: `linear-gradient(135deg, ${C.signal}, ${C.pulse})`, color: '#fff', padding: '11px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,194,232,0.28)' },
-  btnShareLink: { marginTop: 16, marginLeft: 10, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.82)', padding: '11px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-  btnBannerCta: { flexShrink: 0, border: 'none', borderRadius: 12, background: `linear-gradient(135deg, ${C.signalDeep}, ${C.signal})`, color: '#fff', padding: '14px 24px', fontSize: 13.5, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 6px 20px rgba(0,87,232,0.26)`, alignSelf: 'flex-start' },
-
   // Stat rail — one divided strip instead of four identical cards
-  statRail: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 20, borderRadius: 18, background: C.surface, border: `1px solid ${C.line}`, boxShadow: C.shadow, overflow: 'hidden' },
-  railCell: { padding: '20px 24px', borderRight: `1px solid ${C.line}` },
-  railLabel: { fontSize: 11, fontWeight: 500, color: C.muted, letterSpacing: '0.1px' },
+  statRail: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 20, borderRadius: 18, background: C.card, border: `1px solid ${C.border}`, boxShadow: C.shadow, overflow: 'hidden' },
+  railCell: { padding: '20px 24px', borderRight: `1px solid ${C.border}` },
+  railLabel: { fontSize: 11, fontWeight: 600, color: C.muted, letterSpacing: '0.1px' },
   railValRow: { display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 10 },
-  railVal: { fontFamily: F.serif, fontSize: 32, fontWeight: 500, lineHeight: 1, letterSpacing: '-0.5px' },
+  railVal: { fontFamily: F.display, fontSize: 32, fontWeight: 900, lineHeight: 1, letterSpacing: '-0.8px' },
   railUnit: { fontFamily: F.mono, fontSize: 12, color: C.muted },
   railSub: { marginTop: 8, fontSize: 11, color: C.muted, lineHeight: 1.5 },
 
-  card: { background: C.surface, border: `1px solid ${C.line}`, borderRadius: 18, padding: 26, boxShadow: C.shadow, marginBottom: 18 },
+  card: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 18, padding: 26, boxShadow: C.shadow, marginBottom: 18 },
   cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 22 },
-  eyebrow: { fontFamily: F.mono, fontSize: 10.5, fontWeight: 500, letterSpacing: '0.8px', color: C.signal, marginBottom: 7, textTransform: 'lowercase' },
-  cardH2: { margin: 0, fontFamily: F.body, fontSize: 17, fontWeight: 700, color: C.ink, letterSpacing: '-0.2px' },
+  eyebrow: { fontFamily: F.mono, fontSize: 10.5, fontWeight: 700, letterSpacing: '0.8px', color: C.blue500, marginBottom: 7, textTransform: 'lowercase' },
+  cardH2: { margin: 0, fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.text, letterSpacing: '-0.3px' },
   cardSub: { margin: '7px 0 0', fontSize: 12.5, lineHeight: 1.65, color: C.sub, maxWidth: 440 },
 
   twoCol: { display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 18, marginBottom: 18 },
 
   dimList: { display: 'flex', flexDirection: 'column', gap: 10 },
-  dimRow: { padding: '14px 16px', borderRadius: 12, background: C.surfaceSunk, border: `1px solid ${C.line}` },
+  dimRow: { padding: '14px 16px', borderRadius: 12, background: C.cardAlt, border: `1px solid ${C.border}` },
   dimMeta: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 9 },
   dimLeft: { display: 'flex', alignItems: 'center', gap: 11 },
-  dimIcon: { fontSize: 14, width: 20, textAlign: 'center', flexShrink: 0, color: C.signal },
-  dimName: { fontSize: 12.5, fontWeight: 600, color: C.ink, display: 'block' },
+  dimIcon: { fontSize: 14, width: 20, textAlign: 'center', flexShrink: 0, color: C.blue500 },
+  dimName: { fontSize: 12.5, fontWeight: 700, color: C.text, display: 'block' },
   dimWeight: { fontSize: 10, color: C.muted, fontFamily: F.mono, display: 'block', marginTop: 2 },
-  dimScore: { fontFamily: F.serif, fontSize: 19, fontWeight: 500 },
-  dimTrack: { height: 5, borderRadius: 999, background: C.line, overflow: 'hidden' },
+  dimScore: { fontFamily: F.display, fontSize: 19, fontWeight: 800 },
+  dimTrack: { height: 5, borderRadius: 999, background: C.border, overflow: 'hidden' },
   dimFill: { height: '100%', borderRadius: 999, transition: 'width 1.1s cubic-bezier(.16,1,.3,1)' },
   dimNoData: { marginTop: 5, fontSize: 10.5, color: C.faint, fontFamily: F.mono },
 
-  fixBox: { marginTop: 16, padding: 17, borderRadius: 13, background: C.signalTint, border: `1px solid ${C.lineMd}` },
+  fixBox: { marginTop: 16, padding: 17, borderRadius: 13, background: C.blue50, border: `1px solid ${C.borderMd}` },
   fixTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11 },
-  fixTopic: { fontFamily: F.body, fontSize: 15.5, fontWeight: 700, color: C.ink },
-  fixScore: { fontFamily: F.serif, fontSize: 19, fontWeight: 500 },
-  fixTrack: { height: 6, borderRadius: 999, background: C.line, overflow: 'hidden', marginBottom: 13 },
+  fixTopic: { fontFamily: F.body, fontSize: 15.5, fontWeight: 800, color: C.text },
+  fixScore: { fontFamily: F.display, fontSize: 19, fontWeight: 800 },
+  fixTrack: { height: 6, borderRadius: 999, background: C.border, overflow: 'hidden', marginBottom: 13 },
   fixFill: { height: '100%', borderRadius: 999 },
   fixStats: { display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 11 },
   fixStat: { fontSize: 11.5, color: C.sub, fontFamily: F.mono },
   fixHint: { margin: 0, fontSize: 11.5, color: C.sub, lineHeight: 1.65 },
 
-  archetypeBox: { marginTop: 16, padding: 15, borderRadius: 13, background: C.surfaceSunk, border: `1px solid ${C.line}` },
+  archetypeBox: { marginTop: 16, padding: 15, borderRadius: 13, background: C.cardAlt, border: `1px solid ${C.border}` },
   archetypeHead: { display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 11 },
-  archetypeIcon: { width: 40, height: 40, borderRadius: 10, fontSize: 17, background: C.signalTint, border: `1px solid ${C.lineMd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: C.signal },
-  archetypeName: { fontFamily: F.body, fontSize: 14, fontWeight: 700, color: C.ink },
+  archetypeIcon: { width: 40, height: 40, borderRadius: 10, fontSize: 17, background: C.blue50, border: `1px solid ${C.borderMd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: C.blue500 },
+  archetypeName: { fontFamily: F.body, fontSize: 14, fontWeight: 800, color: C.text },
   archetypeDesc: { fontSize: 12, color: C.sub, marginTop: 3, lineHeight: 1.55 },
-  archetypeFix: { fontSize: 11.5, color: C.signalDeep, lineHeight: 1.6, paddingTop: 9, borderTop: `1px solid ${C.line}` },
+  archetypeFix: { fontSize: 11.5, color: C.blue600, lineHeight: 1.6, paddingTop: 9, borderTop: `1px solid ${C.border}` },
 
   predictRow: { display: 'flex', alignItems: 'center', gap: 24, marginTop: 6 },
   predictBlock: { textAlign: 'center', flexShrink: 0, width: 96 },
-  predictNum: { fontFamily: F.serif, fontSize: 46, fontWeight: 500, color: C.signalDeep, lineHeight: 1 },
+  predictNum: { fontFamily: F.display, fontSize: 44, fontWeight: 900, color: C.blue600, lineHeight: 1 },
   predictBand: { fontFamily: F.mono, fontSize: 10, color: C.muted, marginTop: 5 },
-  predictBarTrack: { position: 'relative', height: 7, borderRadius: 999, background: C.line, marginTop: 6 },
-  predictBarLow: { position: 'absolute', top: 0, height: '100%', borderRadius: 999, background: C.signalTint },
-  predictMarker: { position: 'absolute', top: -3, width: 3, height: 13, borderRadius: 2, background: C.signalDeep, transform: 'translateX(-50%)' },
+  predictBarTrack: { position: 'relative', height: 7, borderRadius: 999, background: C.border, marginTop: 6 },
+  predictBarLow: { position: 'absolute', top: 0, height: '100%', borderRadius: 999, background: C.blue50 },
+  predictMarker: { position: 'absolute', top: -3, width: 3, height: 13, borderRadius: 2, background: C.blue600, transform: 'translateX(-50%)' },
   predictMarkerAvg: { position: 'absolute', top: -2, width: 2, height: 11, borderRadius: 1, background: C.faint, transform: 'translateX(-50%)' },
   predictLegend: { display: 'flex', gap: 16, marginTop: 9, fontSize: 10.5, color: C.sub, fontFamily: F.mono },
   legendDot: { display: 'inline-block', width: 7, height: 7, borderRadius: '50%', marginRight: 5 },
   predictNote: { margin: '11px 0 0', fontSize: 11.5, color: C.sub, lineHeight: 1.6 },
 
   digestGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 18 },
-  digestCell: { textAlign: 'center', padding: '14px 8px', background: C.surfaceSunk, borderRadius: 11, border: `1px solid ${C.line}` },
-  digestVal: { fontFamily: F.serif, fontSize: 22, fontWeight: 500, color: C.ink },
+  digestCell: { textAlign: 'center', padding: '14px 8px', background: C.cardAlt, borderRadius: 11, border: `1px solid ${C.border}` },
+  digestVal: { fontFamily: F.display, fontSize: 22, fontWeight: 900, color: C.text },
   digestLabel: { fontFamily: F.mono, fontSize: 9, fontWeight: 500, letterSpacing: '0.3px', color: C.muted, marginTop: 6 },
 
-  nextBadgeChip: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 12, background: C.signalTint, border: `1px solid ${C.lineMd}`, flexShrink: 0, minWidth: 180 },
+  nextBadgeChip: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 12, background: C.blue50, border: `1px solid ${C.borderMd}`, flexShrink: 0, minWidth: 180 },
   nextBadgeLabel: { fontFamily: F.mono, fontSize: 8.5, fontWeight: 500, letterSpacing: '0.4px', color: C.muted },
-  nextBadgeName: { fontSize: 11.5, fontWeight: 700, color: C.ink, marginTop: 1 },
+  nextBadgeName: { fontSize: 11.5, fontWeight: 800, color: C.text, marginTop: 1 },
   nextBadgeProgress: { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' },
-  nextBadgeTrack: { width: 44, height: 5, borderRadius: 999, background: C.line, overflow: 'hidden' },
-  nextBadgeFill: { height: '100%', borderRadius: 999, background: C.signal },
-  nextBadgePct: { fontFamily: F.mono, fontSize: 9.5, color: C.signalDeep, fontWeight: 600 },
+  nextBadgeTrack: { width: 44, height: 5, borderRadius: 999, background: C.border, overflow: 'hidden' },
+  nextBadgeFill: { height: '100%', borderRadius: 999, background: C.blue500 },
+  nextBadgePct: { fontFamily: F.mono, fontSize: 9.5, color: C.blue600, fontWeight: 700 },
 
   badgeGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10 },
   badgeCell: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '17px 10px', borderRadius: 14, cursor: 'pointer', fontFamily: F.body, textAlign: 'center', position: 'relative', overflow: 'hidden' },
   badgeIcon: { fontSize: 19 },
-  badgeName: { fontSize: 10, fontWeight: 600, lineHeight: 1.25 },
-  badgeTierTag: { fontSize: 8.5, fontWeight: 700, padding: '2px 7px', borderRadius: 6, textTransform: 'lowercase', letterSpacing: '0.2px', fontFamily: F.mono },
+  badgeName: { fontSize: 10, fontWeight: 700, lineHeight: 1.25 },
+  badgeTierTag: { fontSize: 8.5, fontWeight: 800, padding: '2px 7px', borderRadius: 6, textTransform: 'lowercase', letterSpacing: '0.2px', fontFamily: F.mono },
   badgeLockedTag: { fontSize: 8.5, fontWeight: 500, color: C.faint, fontFamily: F.mono, letterSpacing: '0.2px' },
-  badgeMiniTrack: { width: '80%', height: 4, borderRadius: 999, background: C.line, overflow: 'hidden', marginTop: 2 },
-  badgeMiniFill: { height: '100%', borderRadius: 999, background: C.signalSoft },
-  badgeDetail: { display: 'flex', gap: 15, alignItems: 'flex-start', marginTop: 18, padding: '17px 19px', borderRadius: 13, background: C.surfaceSunk, border: '1.5px solid' },
-  badgeDetailName: { fontFamily: F.body, fontSize: 15, fontWeight: 700, color: C.ink },
+  badgeMiniTrack: { width: '80%', height: 4, borderRadius: 999, background: C.border, overflow: 'hidden', marginTop: 2 },
+  badgeMiniFill: { height: '100%', borderRadius: 999, background: C.blue400 },
+  badgeDetail: { display: 'flex', gap: 15, alignItems: 'flex-start', marginTop: 18, padding: '17px 19px', borderRadius: 13, background: C.cardAlt, border: '1.5px solid' },
+  badgeDetailName: { fontFamily: F.body, fontSize: 15, fontWeight: 800, color: C.text },
   badgeDetailDesc: { margin: '7px 0 0', fontSize: 12, color: C.sub, lineHeight: 1.6 },
-  badgeDetailMeta: { margin: '9px 0 0', fontSize: 11, color: C.signalDeep, lineHeight: 1.6, fontFamily: F.mono },
+  badgeDetailMeta: { margin: '9px 0 0', fontSize: 11, color: C.blue600, lineHeight: 1.6, fontFamily: F.mono },
 
-  coachTeaserCard: { position: 'relative', overflow: 'hidden', padding: '24px 26px', borderRadius: 18, background: `linear-gradient(160deg, #060E20 0%, #0A1832 50%, #0C2340 100%)`, boxShadow: C.shadowLg, display: 'flex', flexDirection: 'column' },
-  coachTeaserGlow: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: '50%', background: `radial-gradient(circle, rgba(0,194,232,0.18), transparent 68%)`, pointerEvents: 'none' },
-  coachTeaserBtn: { position: 'relative', marginTop: 4, alignSelf: 'flex-start', border: 'none', borderRadius: 10, background: `linear-gradient(135deg, ${C.signal}, ${C.pulse})`, color: '#fff', padding: '10px 18px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,194,232,0.3)', fontFamily: F.body },
+  coachTeaserCard: { position: 'relative', overflow: 'hidden', padding: '24px 26px', borderRadius: 18, background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 55%, ${C.cyan600} 100%)`, boxShadow: C.shadowLg, display: 'flex', flexDirection: 'column' },
+  coachTeaserGlow: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: '50%', background: `radial-gradient(circle, rgba(0,200,240,0.18), transparent 68%)`, pointerEvents: 'none' },
 
-  challengeSummary: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 54, height: 54, borderRadius: 12, background: C.signalTint, border: `1px solid ${C.lineMd}`, color: C.signalDeep, fontFamily: F.serif, fontSize: 19, fontWeight: 500, lineHeight: 1 },
+  challengeSummary: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 54, height: 54, borderRadius: 12, background: C.blue50, border: `1px solid ${C.borderMd}`, color: C.blue600, fontFamily: F.display, fontSize: 19, fontWeight: 900, lineHeight: 1 },
   challengeSummarySpan: { marginTop: 4, fontFamily: F.mono, fontSize: 8, color: C.muted, letterSpacing: '0.3px' },
   challengeList: { display: 'flex', flexDirection: 'column', gap: 10 },
-  challengeRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', borderRadius: 12, background: C.surfaceSunk, border: `1px solid ${C.line}` },
-  challengeIcon: { width: 34, height: 34, borderRadius: 9, background: C.signalTint, border: `1px solid ${C.lineMd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: C.signal, flexShrink: 0 },
+  challengeRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', borderRadius: 12, background: C.cardAlt, border: `1px solid ${C.border}` },
+  challengeIcon: { width: 34, height: 34, borderRadius: 9, background: C.blue50, border: `1px solid ${C.borderMd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: C.blue500, flexShrink: 0 },
   challengeBody: { flex: 1, minWidth: 0 },
   challengeTop: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 },
-  challengeTitle: { fontSize: 11.5, fontWeight: 700, color: C.ink },
+  challengeTitle: { fontSize: 11.5, fontWeight: 800, color: C.text },
   challengeHelper: { marginTop: 2, fontSize: 10, color: C.muted },
-  challengeCount: { fontFamily: F.mono, fontSize: 10, fontWeight: 600, flexShrink: 0 },
-  challengeTrack: { height: 5, borderRadius: 999, background: C.line, overflow: 'hidden' },
+  challengeCount: { fontFamily: F.mono, fontSize: 10, fontWeight: 700, flexShrink: 0 },
+  challengeTrack: { height: 5, borderRadius: 999, background: C.border, overflow: 'hidden' },
   challengeFill: { height: '100%', borderRadius: 999, transition: 'width 0.8s cubic-bezier(.16,1,.3,1)' },
-  challengeStatus: { width: 28, textAlign: 'right', fontFamily: F.mono, fontSize: 9, fontWeight: 600, flexShrink: 0 },
+  challengeStatus: { width: 28, textAlign: 'right', fontFamily: F.mono, fontSize: 9, fontWeight: 700, flexShrink: 0 },
 
-  growthDelta: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', fontFamily: F.serif, fontSize: 22, fontWeight: 500, flexShrink: 0 },
+  growthDelta: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', fontFamily: F.display, fontSize: 22, fontWeight: 900, flexShrink: 0 },
   growthDeltaSpan: { marginTop: 3, fontFamily: F.mono, fontSize: 8, color: C.muted, fontWeight: 400 },
 
   velocityChart: { display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, height: 155, marginTop: 8, padding: '10px 4px 0' },
   velocityColumn: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 6, height: '100%', flex: 1, minWidth: 0 },
-  velocityScore: { fontFamily: F.mono, fontSize: 8.5, color: C.sub, fontWeight: 600 },
-  velocityTrack: { position: 'relative', width: '100%', maxWidth: 28, height: 105, display: 'flex', alignItems: 'flex-end', borderRadius: 6, background: C.surfaceSunk, border: `1px solid ${C.line}`, overflow: 'hidden' },
-  velocityBar: { width: '100%', minHeight: 6, borderRadius: '6px 6px 0 0', background: `linear-gradient(180deg, ${C.pulse}, ${C.signal})`, transition: 'height 0.8s cubic-bezier(.16,1,.3,1)' },
+  velocityScore: { fontFamily: F.mono, fontSize: 8.5, color: C.sub, fontWeight: 700 },
+  velocityTrack: { position: 'relative', width: '100%', maxWidth: 28, height: 105, display: 'flex', alignItems: 'flex-end', borderRadius: 6, background: C.cardAlt, border: `1px solid ${C.border}`, overflow: 'hidden' },
+  velocityBar: { width: '100%', minHeight: 6, borderRadius: '6px 6px 0 0', background: `linear-gradient(180deg, ${C.cyan400}, ${C.blue500})`, transition: 'height 0.8s cubic-bezier(.16,1,.3,1)' },
   velocityWeek: { fontFamily: F.mono, fontSize: 8, color: C.muted },
-  velocityFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}`, fontFamily: F.mono, fontSize: 9.5, color: C.sub },
+  velocityFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}`, fontFamily: F.mono, fontSize: 9.5, color: C.sub },
 
-  shareCard: { position: 'relative', overflow: 'hidden', padding: '28px 30px', borderRadius: 18, background: `linear-gradient(150deg, #060E20 0%, #0A1F42 50%, #0C2848 100%)`, boxShadow: C.shadowLg, marginBottom: 18 },
-  shareGlow: { position: 'absolute', top: -90, right: -90, width: 260, height: 260, borderRadius: '50%', background: `radial-gradient(circle, rgba(0,194,232,0.16), transparent 68%)`, pointerEvents: 'none' },
+  shareCard: { position: 'relative', overflow: 'hidden', padding: '28px 30px', borderRadius: 18, background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 50%, ${C.cyan600} 100%)`, boxShadow: C.shadowLg, marginBottom: 18 },
+  shareGlow: { position: 'absolute', top: -90, right: -90, width: 260, height: 260, borderRadius: '50%', background: `radial-gradient(circle, rgba(0,200,240,0.16), transparent 68%)`, pointerEvents: 'none' },
   shareRow: { position: 'relative', display: 'flex', alignItems: 'center', gap: 24 },
   shareLeft: { textAlign: 'center', flexShrink: 0, width: 92 },
-  shareIRS: { fontFamily: F.serif, fontSize: 60, fontWeight: 500, color: '#fff', lineHeight: 1 },
+  shareIRS: { fontFamily: F.display, fontSize: 58, fontWeight: 900, color: '#fff', lineHeight: 1 },
   shareIRSLabel: { fontFamily: F.mono, fontSize: 9.5, letterSpacing: '0.5px', color: 'rgba(255,255,255,0.42)', marginTop: 6 },
-  shareTitle: { margin: 0, fontFamily: F.body, fontSize: 18, fontWeight: 700, color: '#fff' },
+  shareTitle: { margin: 0, fontFamily: F.display, fontSize: 18, fontWeight: 800, color: '#fff' },
   shareDesc: { margin: '8px 0 0', fontSize: 12.5, color: 'rgba(255,255,255,0.66)', lineHeight: 1.6 },
 
   // Dark activity panel (echoes hero)
   hmPanel: {
     position: 'relative', overflow: 'hidden',
     padding: '28px 30px', marginBottom: 18, borderRadius: 20,
-    background: `linear-gradient(155deg, #060E20 0%, #0A1A38 40%, #0C2242 100%)`,
+    background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 46%, ${C.blue600} 78%, ${C.cyan600} 100%)`,
     boxShadow: C.shadowLg,
   },
   hmPanelHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 22, flexWrap: 'wrap' },
@@ -1947,26 +1998,19 @@ const S = {
 
   hmFooterGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, marginTop: 22, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' },
   hmStatBox: { padding: '15px 16px', background: 'rgba(255,255,255,0.03)', textAlign: 'center' },
-  hmStatVal: { fontFamily: F.serif, fontSize: 22, fontWeight: 500, color: C.pulse },
+  hmStatVal: { fontFamily: F.display, fontSize: 22, fontWeight: 900, color: C.cyan400 },
   hmStatLabel: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 500, letterSpacing: '0.5px', color: 'rgba(255,255,255,0.5)', marginTop: 5 },
   hmStatSub: { fontSize: 10.5, color: 'rgba(255,255,255,0.34)', marginTop: 3, lineHeight: 1.4 },
 
-  tierBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, padding: '32px 34px', marginBottom: 18, borderRadius: 20, background: `linear-gradient(135deg, ${C.signalTint} 0%, ${C.pulseTint} 100%)`, border: `1px solid ${C.lineMd}`, boxShadow: C.shadow },
-  bannerH2: { margin: '9px 0', fontFamily: F.serif, fontSize: 24, fontWeight: 500, color: C.ink },
+  tierBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, padding: '32px 34px', marginBottom: 18, borderRadius: 20, background: `linear-gradient(135deg, ${C.blue50} 0%, ${X.pulseTint} 100%)`, border: `1px solid ${C.borderMd}`, boxShadow: C.shadow },
+  bannerH2: { margin: '9px 0', fontFamily: F.display, fontSize: 24, fontWeight: 900, color: C.text, letterSpacing: '-0.5px' },
   bannerSub: { margin: 0, fontSize: 12.5, color: C.sub, maxWidth: 540, lineHeight: 1.6 },
-  bannerTrack: { marginTop: 15, width: 'min(440px, 100%)', height: 5, borderRadius: 999, background: C.lineMd, overflow: 'visible', position: 'relative' },
-  bannerFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.signal}, ${C.pulse})`, transition: 'width 1.2s cubic-bezier(.16,1,.3,1)', position: 'relative' },
-  bannerMark: { position: 'absolute', top: -3, width: 2, height: 11, background: C.signalDeep, borderRadius: 1, transform: 'translateX(-50%)' },
+  bannerTrack: { marginTop: 15, width: 'min(440px, 100%)', height: 5, borderRadius: 999, background: C.borderMd, overflow: 'visible', position: 'relative' },
+  bannerFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.blue500}, ${C.cyan500})`, transition: 'width 1.2s cubic-bezier(.16,1,.3,1)', position: 'relative' },
+  bannerMark: { position: 'absolute', top: -3, width: 2, height: 11, background: C.blue600, borderRadius: 1, transform: 'translateX(-50%)' },
   bannerCaption: { marginTop: 7, fontFamily: F.mono, fontSize: 10, color: C.muted },
 
   footerRow: { display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, padding: '20px 4px 0', opacity: 0.42 },
-
-  loadingWrap: { minHeight: '70vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
-  spinner: { width: 44, height: 44, borderRadius: '50%', border: `4px solid ${C.signalTint}`, borderTopColor: C.signal, animation: 'spin 0.75s linear infinite' },
-  loadTitle: { marginTop: 18, fontFamily: F.body, fontSize: 15, fontWeight: 700, color: C.ink },
-  loadSub: { marginTop: 6, fontSize: 12, color: C.muted },
-
-  emptyMsg: { padding: '28px 16px', textAlign: 'center', border: `1.5px dashed ${C.line}`, borderRadius: 12, color: C.muted, fontSize: 12 },
 };
 
 export default Dashboard;

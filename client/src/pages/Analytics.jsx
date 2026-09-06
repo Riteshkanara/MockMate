@@ -1157,6 +1157,8 @@ const SkillVelocityGraph = ({ scoreTrend }) => {
           return (
             <button key={key} onClick={() => toggleDim(key)}
               className={`an-tab${active ? " an-tab-active" : ""}`}
+              aria-pressed={active}
+              aria-label={`${VELOCITY_LABELS[key]}, ${active ? "shown" : "hidden"}`}
               style={{
                 border: `1.5px solid ${active ? color : C.border}`,
                 borderRadius: 999, padding: "5px 13px",
@@ -1182,7 +1184,8 @@ const SkillVelocityGraph = ({ scoreTrend }) => {
             <Line key={key} type="monotone" dataKey={key}
               stroke={VELOCITY_COLORS[key]} strokeWidth={2}
               dot={{ r: 3, fill: VELOCITY_COLORS[key], strokeWidth: 0 }}
-              activeDot={{ r: 5 }} connectNulls={false} />
+              activeDot={{ r: 5 }} connectNulls={false}
+              animationDuration={500} animationEasing="ease-out" />
           ))}
         </LineChart>
       </ResponsiveContainer>
@@ -1203,7 +1206,19 @@ const BlindSpotAlertCard = () => {
     })();
   }, []);
 
-  if (loading || !data || !data.blindSpots?.length) return null;
+  if (loading) return (
+    <div style={{ ...S.card, borderLeft: `3px solid ${C.border}`, marginBottom: 18 }}>
+      <div className="an-skel" style={{ width: 220, height: 10, marginBottom: 10 }} />
+      <div className="an-skel" style={{ width: "70%", height: 16, marginBottom: 8 }} />
+      <div className="an-skel" style={{ width: "50%", height: 12, marginBottom: 16 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+        {[0, 1, 2].map(i => (
+          <div key={i} className="an-skel" style={{ height: 52 }} />
+        ))}
+      </div>
+    </div>
+  );
+  if (!data || !data.blindSpots?.length) return null;
   const { blindSpots, sessionsAnalyzed } = data;
   const severityConfig = {
     high:   { color: C.red,    bg: C.redTint,   icon: "🔴", label: "High" },
@@ -1259,8 +1274,23 @@ const SessionQualityCard = () => {
 
   if (loading) return (
     <div style={S.card} className="an-card">
-      <div style={{ ...S.eyebrow, color: C.violet }}>LAST SESSION QUALITY</div>
-      <div style={{ color: C.muted, fontSize: 12, padding: "16px 0" }}>Loading session data…</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ ...S.eyebrow, color: C.violet }}>LAST SESSION QUALITY</div>
+          <div className="an-skel" style={{ width: "60%", height: 17, marginBottom: 8 }} />
+          <div className="an-skel" style={{ width: "40%", height: 12 }} />
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className="an-skel" style={{ width: 72, height: 52, borderRadius: 10 }} />
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16 }}>
+        {[0, 1, 2, 3, 4].map(i => (
+          <div key={i} className="an-skel" style={{ height: 8 }} />
+        ))}
+      </div>
     </div>
   );
   if (error || !breakdown) return null;
@@ -1289,9 +1319,9 @@ const SessionQualityCard = () => {
             { label: "Perfect (90+)", value: perfect, sub: `of ${answered.length} answered`, color: C.green },
             { label: "Struggled (<50)", value: struggle, sub: `of ${answered.length} answered`, color: struggle > 2 ? C.red : C.muted },
           ].map(({ label, value, sub, color }) => (
-            <div key={label} style={{ padding: "8px 12px", borderRadius: 10, background: C.cardAlt, border: `1px solid ${C.border}`, textAlign: "center", minWidth: 72 }}>
-              <div style={{ fontFamily: F.display, fontSize: 18, fontWeight: 800, color }}>{value}</div>
-              <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted, marginTop: 1 }}>{label.toUpperCase()}</div>
+            <div key={label} className="an-milestone" style={{ padding: "9px 12px", borderRadius: 10, background: C.cardAlt, border: `1px solid ${C.border}`, textAlign: "center", minWidth: 72 }}>
+              <div style={{ fontFamily: F.display, fontSize: 18, fontWeight: 900, color, lineHeight: 1.1 }}>{value}</div>
+              <div style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 600, color: C.muted, marginTop: 3 }}>{label.toUpperCase()}</div>
               <div style={{ fontSize: 9, color: C.sub, marginTop: 2 }}>{sub}</div>
             </div>
           ))}
@@ -1351,7 +1381,7 @@ const DimensionDrillPanel = ({ dim, onClose, navigate }) => {
             </div>
           </div>
         </div>
-        <button onClick={onClose} style={{ background: `${col}10`, border: `1px solid ${col}30`, borderRadius: 10, padding: "6px 12px", cursor: "pointer", fontSize: 13, color: C.sub, fontFamily: F.body, flexShrink: 0 }}>✕</button>
+        <button onClick={onClose} aria-label="Close panel" style={{ background: `${col}10`, border: `1px solid ${col}30`, borderRadius: 10, padding: "6px 12px", cursor: "pointer", fontSize: 13, color: C.sub, fontFamily: F.body, flexShrink: 0 }}>✕</button>
       </div>
       <div style={{ margin: "16px 20px", padding: "14px 16px", background: `${col}10`, border: `1.5px solid ${col}40`, borderRadius: 14, display: "flex", alignItems: "center", gap: 16 }}>
         <div style={{ fontFamily: F.display, fontSize: 38, fontWeight: 900, color: col, lineHeight: 1 }}>{score}</div>
@@ -1434,6 +1464,8 @@ const StreakCalendar = ({ scoreTrend }) => {
   const today = new Date();
   const WEEKS = 15;
   const DAYS = WEEKS * 7;
+  const containerRef = useRef(null);
+  const [hovered, setHovered] = useState(null); // { x, y, label }
   const sessionMap = useMemo(() => {
     const map = {};
     (scoreTrend || []).forEach(s => {
@@ -1462,14 +1494,28 @@ const StreakCalendar = ({ scoreTrend }) => {
     return `${C.violet}35`;
   };
 
+  const dateLabel = (d) => d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+
   return (
-    <div style={{ overflowX: "auto", paddingBottom: 8 }}>
+    <div ref={containerRef} style={{ overflowX: "auto", paddingBottom: 8, position: "relative" }}>
+      {hovered && (
+        <div role="tooltip" className="an-fade-in" style={{
+          position: "absolute", left: hovered.x, top: hovered.y, transform: "translate(-50%, -100%)",
+          background: C.text, color: "#fff", padding: "6px 10px", borderRadius: 8,
+          fontFamily: F.body, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap",
+          pointerEvents: "none", zIndex: 20, boxShadow: "0 6px 20px rgba(0,0,0,0.22)",
+          animationDuration: "0.12s",
+        }}>
+          {hovered.label}
+          <div style={{ position: "absolute", left: "50%", bottom: -4, transform: "translateX(-50%)", width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: `5px solid ${C.text}` }} />
+        </div>
+      )}
       <div style={{ display: "flex", gap: 3 }}>
         {Array.from({ length: WEEKS }, (_, w) => (
           <div key={w} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {cells.slice(w * 7, w * 7 + 7).map((cell, d) => (
               <div key={d}
-                title={cell.hasData ? `${cell.date.toDateString()} · Score: ${cell.score}` : cell.date.toDateString()}
+                aria-label={cell.hasData ? `${dateLabel(cell.date)}: score ${cell.score}` : `${dateLabel(cell.date)}: no session`}
                 style={{
                   width: 13, height: 13, borderRadius: 3, flexShrink: 0,
                   background: heatColor(cell.score, cell.hasData),
@@ -1477,8 +1523,17 @@ const StreakCalendar = ({ scoreTrend }) => {
                   transition: "transform 0.12s",
                   border: cell.hasData ? "none" : `1px solid ${C.border}`,
                 }}
-                onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.45)"; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = "scale(1.45)";
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const parentRect = containerRef.current.getBoundingClientRect();
+                  setHovered({
+                    x: rect.left - parentRect.left + rect.width / 2 + containerRef.current.scrollLeft,
+                    y: rect.top - parentRect.top - 6,
+                    label: cell.hasData ? `${dateLabel(cell.date)} · Score ${cell.score}` : dateLabel(cell.date),
+                  });
+                }}
+                onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; setHovered(null); }}
               />
             ))}
           </div>
@@ -1510,10 +1565,10 @@ const MetricCard = ({ icon, label, value, sub, color, accentColor }) => (
       border: `1px solid ${accentColor || color}30`,
       display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21,
     }}>{icon}</div>
-    <div>
-      <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: C.muted, letterSpacing: "0.8px", marginBottom: 4, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontFamily: F.display, fontSize: 23, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-0.3px" }}>{value}</div>
-      {sub && <div style={{ fontSize: 10.5, color: C.sub, marginTop: 4, lineHeight: 1.4 }}>{sub}</div>}
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 600, color: C.muted, letterSpacing: "0.9px", marginBottom: 5, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontFamily: F.display, fontSize: 26, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-0.5px" }}>{value}</div>
+      {sub && <div style={{ fontSize: 10.5, fontWeight: 500, color: C.sub, marginTop: 5, lineHeight: 1.4 }}>{sub}</div>}
     </div>
   </div>
 );
@@ -2086,6 +2141,16 @@ if (loading) return (
         @keyframes fadeUp      { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
         @keyframes livePulse   { 0%,100% { opacity:1; } 50% { opacity:0.28; } }
         @keyframes barFill     { from { width:0; } }
+        @keyframes anShimmer   { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+        @keyframes anFadeIn    { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+
+        .an-skel {
+          background: linear-gradient(90deg, ${C.border} 25%, #EEF3FF 37%, ${C.border} 63%);
+          background-size: 400px 100%;
+          animation: anShimmer 1.4s ease infinite;
+          border-radius: 8px;
+        }
+        .an-fade-in { animation: anFadeIn 0.5s cubic-bezier(.16,1,.3,1) both; }
 
         *, *::before, *::after { box-sizing: border-box; }
         ::selection { background: rgba(26,110,255,0.15); color: ${C.text}; }
@@ -2107,6 +2172,9 @@ if (loading) return (
           position: relative; overflow: hidden;
         }
         .an-stat-card:hover { box-shadow: 0 8px 32px rgba(26,110,255,0.13) !important; transform: translateY(-3px) !important; }
+
+        .an-milestone { transition: transform 0.18s cubic-bezier(.16,1,.3,1), box-shadow 0.18s ease !important; }
+        .an-milestone:hover { transform: translateY(-2px) !important; box-shadow: 0 6px 20px rgba(26,110,255,0.1) !important; }
 
         .an-tier-card {
           transition: box-shadow 0.2s ease, transform 0.2s cubic-bezier(.16,1,.3,1), border-color 0.2s ease !important;
@@ -2160,6 +2228,7 @@ if (loading) return (
 
         @media (prefers-reduced-motion: reduce) {
           .an-page * { animation: none !important; transition-duration: 0.01ms !important; }
+          .an-fade-in { opacity: 1 !important; transform: none !important; }
         }
         @media (max-width: 960px) {
           .an-two-col { grid-template-columns: 1fr !important; }
@@ -2174,6 +2243,7 @@ if (loading) return (
           .an-page  { padding: 16px 12px 60px !important; }
           .an-stats { grid-template-columns: 1fr !important; }
           .an-dims  { grid-template-columns: 1fr !important; }
+          .an-milestone-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
@@ -2211,6 +2281,7 @@ if (loading) return (
                 const active = selectedCompany?.id === cp.id;
                 return (
                   <button key={cp.id} onClick={() => setSelectedCompany(active ? null : cp)}
+                    aria-pressed={active}
                     style={{
                       border: `1.5px solid ${active ? C.violet : C.border}`,
                       borderRadius: 999, padding: "3px 10px",
@@ -2327,10 +2398,18 @@ if (loading) return (
         <>
         {/* ── STAT CARDS — each with unique accent ─────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }} className="an-stats">
-          <MetricCard icon="🎤" label="SESSIONS"   value={totalSessions}           sub={`${topicPerformance.length} topics covered`}                                                    color={C.violet}  accentColor={C.violet} />
-          <MetricCard icon="📈" label="AVG SCORE"  value={`${averageScore}/100`}   sub={delta >= 0 ? `↑ ${delta} pts vs last` : `↓ ${Math.abs(delta)} pts vs last`}                   color={scoreColor(averageScore)} accentColor={scoreColor(averageScore)} />
-          <MetricCard icon="🏆" label="BEST SCORE" value={`${highestScore}/100`}   sub="Your performance ceiling"                                                                       color={C.amber}   accentColor={C.amber} />
-          <MetricCard icon="⏱"  label="AVG TIME/Q" value={`${avgTimePerQ ?? "—"}s`} sub={avgTimePerQ ? (avgTimePerQ < 30 ? "Fast paced" : avgTimePerQ > 55 ? "Methodical" : "Balanced") : "No data"} color={C.blue600} accentColor={C.blue500} />
+          <div className="an-fade-in" style={{ animationDelay: "0ms" }}>
+            <MetricCard icon="🎤" label="SESSIONS"   value={totalSessions}           sub={`${topicPerformance.length} topics covered`}                                                    color={C.violet}  accentColor={C.violet} />
+          </div>
+          <div className="an-fade-in" style={{ animationDelay: "70ms" }}>
+            <MetricCard icon="📈" label="AVG SCORE"  value={`${averageScore}/100`}   sub={delta >= 0 ? `↑ ${delta} pts vs last` : `↓ ${Math.abs(delta)} pts vs last`}                   color={scoreColor(averageScore)} accentColor={scoreColor(averageScore)} />
+          </div>
+          <div className="an-fade-in" style={{ animationDelay: "140ms" }}>
+            <MetricCard icon="🏆" label="BEST SCORE" value={`${highestScore}/100`}   sub="Your performance ceiling"                                                                       color={C.amber}   accentColor={C.amber} />
+          </div>
+          <div className="an-fade-in" style={{ animationDelay: "210ms" }}>
+            <MetricCard icon="⏱"  label="AVG TIME/Q" value={`${avgTimePerQ ?? "—"}s`} sub={avgTimePerQ ? (avgTimePerQ < 30 ? "Fast paced" : avgTimePerQ > 55 ? "Methodical" : "Balanced") : "No data"} color={C.blue600} accentColor={C.blue500} />
+          </div>
         </div>
 
         </>
@@ -2395,15 +2474,16 @@ if (loading) return (
             <h2 style={S.cardH2}>15-week session log</h2>
             <p style={{ ...S.cardSub, marginBottom: 16 }}>Darker violet = higher score. Hover for date and exact score.</p>
             <StreakCalendar scoreTrend={scoreTrend} />
-            <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+            <div className="an-milestone-grid" style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
               {[
-                { label: "Total", val: totalSessions, color: C.violet },
-                { label: "Strong (80+)", val: scoreTrend.filter(s => (s.score || 0) >= 80).length, color: C.green },
-                { label: "Last delta", val: `${delta >= 0 ? "+" : ""}${delta}`, color: delta >= 0 ? C.green : C.orange },
-              ].map(({ label, val, color }) => (
-                <div key={label} style={{ textAlign: "center", padding: "10px", background: C.violetTint, borderRadius: 10, border: `1px solid ${C.violet}15` }}>
-                  <div style={{ fontFamily: F.display, fontSize: 20, fontWeight: 800, color }}>{val}</div>
-                  <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 3 }}>{label.toUpperCase()}</div>
+                { label: "Total", val: totalSessions, color: C.violet, icon: "🎤", bg: C.violetTint },
+                { label: "Strong (80+)", val: scoreTrend.filter(s => (s.score || 0) >= 80).length, color: C.green, icon: "🏅", bg: C.greenTint },
+                { label: "Last delta", val: `${delta >= 0 ? "+" : ""}${delta}`, color: delta >= 0 ? C.green : C.orange, icon: delta >= 0 ? "↑" : "↓", bg: delta >= 0 ? C.greenTint : C.orangeTint },
+              ].map(({ label, val, color, icon, bg }) => (
+                <div key={label} className="an-milestone" style={{ textAlign: "center", padding: "12px 10px", background: bg, borderRadius: 12, border: `1.5px solid ${color}30`, borderTop: `2.5px solid ${color}` }}>
+                  <div style={{ fontSize: 13, marginBottom: 3 }}>{icon}</div>
+                  <div style={{ fontFamily: F.display, fontSize: 21, fontWeight: 900, color, lineHeight: 1 }}>{val}</div>
+                  <div style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 600, color: C.muted, marginTop: 4, letterSpacing: "0.4px" }}>{label.toUpperCase()}</div>
                 </div>
               ))}
             </div>
@@ -2437,7 +2517,8 @@ if (loading) return (
                   <Area type="monotone" dataKey="score"
                     stroke={C.violet} strokeWidth={2.5} fill="url(#scoreGrad)"
                     dot={{ r: 4.5, fill: C.violet, strokeWidth: 2, stroke: "#fff" }}
-                    activeDot={{ r: 7, fill: C.violetLight }} />
+                    activeDot={{ r: 7, fill: C.violetLight }}
+                    animationDuration={600} animationEasing="ease-out" />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (

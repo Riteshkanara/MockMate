@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
 
 import API_BASE from '../config/api.js';
 import useAuth from './useAuth.js';
@@ -68,7 +67,17 @@ const normalizeQuestion = question => ({
       : '',
 });
 
-export const useInterview = () => {
+export const useInterview = ({ notify } = {}) => {
+  // n wraps the notify API passed from Interview.jsx's useNotif().
+  // It's assigned once at call time and stable across the session lifecycle.
+  const notifyFallback = {
+    loading: (m) => console.info('[notif loading]', m),
+    success: (m) => console.info('[notif success]', m),
+    error:   (m) => console.error('[notif error]', m),
+    info:    (m) => console.info('[notif info]', m),
+    dismiss: () => {},
+  };
+  const n = notify || notifyFallback;
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
 
@@ -138,7 +147,7 @@ export const useInterview = () => {
 setIsLoading(true);
 setError('');
 
-const toastId = toast.loading('Generating your interview...');
+n.loading('Generating your interview…');
 
 try {
         const data =
@@ -179,15 +188,10 @@ try {
         setIsSubmitted(false);
         setSessionStarted(true);
 
-        toast.dismiss(toastId);
-        toast.success(
-          'Interview ready!'
-        );
+        n.success('Interview ready — good luck!');
 
         return data;
       } catch (err) {
-        toast.dismiss(toastId);
-
         const message =
           getErrorMessage(
             err,
@@ -195,14 +199,14 @@ try {
           );
 
         setError(message);
-
-        toast.error(message);
+        n.error(message);
 
         throw err;
       } finally {
         setIsLoading(false);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -268,10 +272,10 @@ try {
           );
 
         setError(message);
-
-        toast.error(message);
+        n.error(message);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -316,14 +320,7 @@ try {
       setIsLoading(true);
       setError('');
 
-      const toastId =
-        toast.loading(
-          skipped
-            ? 'Saving skipped question...'
-            : question.questionType === 'open'
-              ? 'Evaluating your answer...'
-              : 'Checking your answer...'
-        );
+      n.loading(skipped ? 'Saving…' : 'Evaluating your answer…');
 
       try {
         const data =
@@ -395,39 +392,10 @@ try {
         });
 
         setIsSubmitted(true);
-
-        toast.dismiss(toastId);
-
-        const wasSkipped = Boolean(data?.skipped);
-
-        if (wasSkipped) {
-          // Skipped — neutral grey toast, not a red error
-          toast('Question skipped.', { icon: '⏭️' });
-        } else if (
-          question.questionType !== 'open' &&
-          data?.correct === true
-        ) {
-          toast.success('Correct answer!');
-        } else if (
-          question.questionType !== 'open' &&
-          data?.correct === false
-        ) {
-          // Wrong MCQ/aptitude answer — red but honest message
-          toast.error('Wrong answer.');
-        } else if (
-          parsedFeedback.aiAvailable === false
-        ) {
-          toast.error(
-            'Answer saved. AI evaluation is temporarily unavailable.'
-          );
-        } else {
-          toast.success('Feedback ready!');
-        }
+        n.dismiss();
 
         return data;
       } catch (err) {
-        toast.dismiss(toastId);
-
         setIsSubmitted(false);
 
         const message =
@@ -437,8 +405,7 @@ try {
           );
 
         setError(message);
-
-        toast.error(message);
+        n.error(message);
 
         return null;
       } finally {
@@ -446,6 +413,7 @@ try {
         submitInFlightRef.current = false;
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       sessionId,
       questions,
@@ -526,10 +494,7 @@ try {
       if (isLast) {
         setIsLoading(true);
 
-        const toastId =
-          toast.loading(
-            'Preparing your final report...'
-          );
+        n.loading('Preparing your final report…');
 
         try {
           const data =
@@ -540,11 +505,7 @@ try {
           // Refresh auth context so Navbar IRS/AVG update immediately
           refreshUser().catch(() => {});
 
-          toast.dismiss(toastId);
-
-          toast.success(
-            'Interview completed!'
-          );
+          n.success('Interview completed!');
 
           navigate('/result', {
             state: {
@@ -554,8 +515,6 @@ try {
 
           return data;
         } catch (err) {
-          toast.dismiss(toastId);
-
           const message =
             getErrorMessage(
               err,
@@ -563,8 +522,7 @@ try {
             );
 
           setError(message);
-
-          toast.error(message);
+          n.error(message);
 
           return null;
         } finally {
@@ -583,11 +541,13 @@ try {
       );
       setIsSubmitted(false);
       advanceLockRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
       currentIndex,
       questions.length,
       sessionId,
       navigate,
+      refreshUser,
     ]);
 
   const selectAnswer =
@@ -608,7 +568,7 @@ try {
 
       setIsLoading(true);
 
-      const toastId = toast.loading('Re-evaluating your answer...');
+      n.loading('Re-evaluating your answer…');
 
       try {
         const data = await retryQuestionApi(sessionId, questionId);
@@ -628,26 +588,24 @@ try {
           raw: data?.feedback || '',
         }));
 
-        toast.dismiss(toastId);
-        toast.success('Re-evaluated!');
+        n.success('Re-evaluation complete!');
 
         return data;
       } catch (err) {
-        toast.dismiss(toastId);
-
         const message = getErrorMessage(
           err,
           'Unable to retry this question.'
         );
 
         setError(message);
-        toast.error(message);
+        n.error(message);
 
         return null;
       } finally {
         setIsLoading(false);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sessionId]
   );
 

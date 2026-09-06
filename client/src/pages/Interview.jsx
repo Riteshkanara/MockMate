@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -193,13 +194,105 @@ const formatTime = (seconds) => {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 };
 
-const scoreColor = (s) =>
-  s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.red;
+// ═══════════════════════════════════════════════════════════════════════════
+// INLINE NOTIFICATION SYSTEM
+// Replaces react-hot-toast for all in-session feedback. A slim animated bar
+// at the top of the console card — visible, contextual, non-intrusive.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const useNotif = () => {
+  const [notif, setNotif] = useState(null);
+  const timerRef = useRef(null);
+
+  const show = useCallback((message, type = 'info', duration = 3500) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setNotif({ message, type, key: Date.now() });
+    if (duration !== Infinity) {
+      timerRef.current = setTimeout(() => setNotif(null), duration);
+    }
+  }, []);
+
+  const dismiss = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setNotif(null);
+  }, []);
+
+  // Convenience methods matching toast API shape
+  const notifApi = useMemo(() => ({
+    notif,
+    loading: (msg) => show(msg, 'loading', Infinity),
+    success: (msg, dur) => show(msg, 'success', dur ?? 3000),
+    error:   (msg, dur) => show(msg, 'error',   dur ?? 4500),
+    info:    (msg, dur) => show(msg, 'info',     dur ?? 3000),
+    dismiss,
+  }), [notif, show, dismiss]);
+
+  return notifApi;
+};
+
+const NOTIF_ICONS = {
+  loading: null,   // spinner rendered via CSS
+  success: '✓',
+  error:   '✕',
+  info:    'ℹ',
+};
+
+const NOTIF_COLORS = {
+  loading: { bg: '#EFF6FF', border: '#BFDBFE', text: '#1D4ED8', spinner: '#3B82F6' },
+  success: { bg: '#F0FDF4', border: '#BBF7D0', text: '#15803D', spinner: null },
+  error:   { bg: '#FFF1F2', border: '#FECDD3', text: '#BE123C', spinner: null },
+  info:    { bg: '#F8FAFF', border: '#C7DAFF', text: '#1A6EFF', spinner: null },
+};
+
+const NotifBar = ({ notif }) => {
+  if (!notif) return null;
+  const { bg, border, text, spinner } = NOTIF_COLORS[notif.type] || NOTIF_COLORS.info;
+  const icon = NOTIF_ICONS[notif.type];
+  return (
+    <div
+      key={notif.key}
+      className="iv-notif-bar"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 14px',
+        background: bg,
+        border: `1px solid ${border}`,
+        borderRadius: 10,
+        marginBottom: 10,
+        color: text,
+        fontSize: 12.5,
+        fontFamily: F.body,
+        fontWeight: 500,
+        lineHeight: 1.4,
+      }}
+    >
+      {notif.type === 'loading' ? (
+        <span className="iv-notif-spinner" style={{ color: spinner, flexShrink: 0 }} />
+      ) : (
+        <span style={{
+          width: 18, height: 18, borderRadius: '50%',
+          background: `${text}18`, border: `1.5px solid ${text}40`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 10, fontWeight: 800, flexShrink: 0,
+          color: text,
+        }}>
+          {icon}
+        </span>
+      )}
+      <span style={{ flex: 1 }}>{notif.message}</span>
+    </div>
+  );
+};
 
 const Interview = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // In-session notification bar — replaces react-hot-toast for all interview events
+  const notify = useNotif();
 
   const {
     questions,
@@ -220,8 +313,7 @@ const Interview = () => {
     handleNext,
     selectAnswer,
     handleAbandon,
-    handleRetryQuestion,
-  } = useInterview();
+  } = useInterview({ notify });
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
@@ -249,6 +341,13 @@ const Interview = () => {
     location.state?.topic || ''
   );
   const [textAnswer, setTextAnswer] = useState('');
+
+  // Refs that mirror the two answer state values so the timer's useEffect
+  // can read the latest answer without adding them to its dependency array.
+  // Without this, every keystroke re-ran the effect, cleared the interval,
+  // and restarted it — causing the timer to visually freeze while typing.
+  const textAnswerRef = useRef('');
+  const selectedAnswerIndexRef = useRef(null);
   const [secondsLeft, setSecondsLeft] = useState(90);
   const [timerStarted, setTimerStarted] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -282,6 +381,11 @@ const Interview = () => {
 
   const isLastQuestion = currentIndex === totalQuestions - 1;
 
+  // Session-level time estimate: remaining questions × average time per question
+  // Approximate: remaining questions × 90s average → minutes remaining
+  const questionsLeft = Math.max(0, totalQuestions - currentIndex - 1);
+  const sessionMinsLeft = Math.ceil((questionsLeft * 90 + secondsLeft) / 60);
+
   // ── Restore a dashboard-created session ───────────────────────────────
   useEffect(() => {
     const incoming = location.state;
@@ -289,9 +393,11 @@ const Interview = () => {
     if (incoming?.sessionId && incoming?.questions?.length) {
       hydrateSession(incoming.sessionId, incoming.questions);
 
+      /* eslint-disable react-hooks/set-state-in-effect */
       setSelectedMode(incoming.mode || selectedMode);
       setSelectedCompany(incoming.company || '');
       setSelectedTopic(incoming.topic || '');
+      /* eslint-enable react-hooks/set-state-in-effect */
 
       navigate(location.pathname, {
         replace: true,
@@ -310,6 +416,10 @@ const Interview = () => {
   }, [isSubmitted]);
 
   // ── Reset per-question state ────────────────────────────────────────────
+  // Intentional: these setState calls batch in React 18 and are safe here.
+  // The effect runs exactly when the question id/timeLimit changes, which is
+  // the right time to reset all transient per-question UI state in one shot.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setTextAnswer('');
     setQuestionKey((k) => k + 1);
@@ -335,7 +445,12 @@ const Interview = () => {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
+    // currentQuestion object itself is intentionally excluded — only id and
+    // timeLimit are needed to detect a question change. Including the full
+    // object would cause re-runs on every render where the reference changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentQuestion?.id, currentQuestion?.timeLimit]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── Timer ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -361,12 +476,12 @@ const Interview = () => {
 
       if (isObjective) {
         if (
-          selectedAnswerIndex !== null &&
-          selectedAnswerIndex !== undefined
+          selectedAnswerIndexRef.current !== null &&
+          selectedAnswerIndexRef.current !== undefined
         ) {
           handleSubmit(
             null,
-            selectedAnswerIndex,
+            selectedAnswerIndexRef.current,
             timeTaken,
             false
           ).finally(() => {
@@ -377,9 +492,9 @@ const Interview = () => {
             submitLockRef.current = false;
           });
         }
-      } else if (textAnswer.trim()) {
+      } else if (textAnswerRef.current.trim()) {
         handleSubmit(
-          textAnswer,
+          textAnswerRef.current,
           null,
           timeTaken,
           false
@@ -417,8 +532,9 @@ const Interview = () => {
     handleTimeUp,
     handleSubmit,
     isObjective,
-    textAnswer,
-    selectedAnswerIndex,
+    // textAnswerRef and selectedAnswerIndexRef are refs — intentionally excluded.
+    // Reading .current inside the interval callback always gets the latest value
+    // without re-creating the interval on every keystroke.
   ]);
 
   const timerPercent = currentQuestion?.timeLimit
@@ -431,6 +547,15 @@ const Interview = () => {
       )
     : 100;
 
+  // Sync refs after every render so timer effect reads latest values without
+  // adding them to its dep array. useLayoutEffect runs synchronously before
+  // paint — the timer interval always sees the current answer on its next tick.
+  useLayoutEffect(() => {
+    textAnswerRef.current = textAnswer;
+    selectedAnswerIndexRef.current = selectedAnswerIndex;
+  });
+
+  const timerWarning  = secondsLeft <= 30 && secondsLeft > 15;
   const timerCritical = secondsLeft <= 15;
 
   const canSubmit =
@@ -730,9 +855,10 @@ const Interview = () => {
             style={S.card}
             className="iv-builder-card"
           >
-            <div style={S.groupBlock}>
+            <div style={S.groupBlock} className="iv-group-block">
               <div style={S.groupHead}>
                 <strong style={S.groupTitle}>
+                  <span style={S.groupTitleAccent} />
                   Assessment type
                 </strong>
 
@@ -781,11 +907,11 @@ const Interview = () => {
                         </div>
 
                         <div style={S.modeCopy}>
-                          <strong style={S.modeLabel}>
+                          <strong style={S.modeLabel} className="iv-mode-label">
                             {meta.label}
                           </strong>
 
-                          <span style={S.modeDesc}>
+                          <span style={S.modeDesc} className="iv-mode-desc">
                             {meta.description}
                           </span>
                         </div>
@@ -815,9 +941,10 @@ const Interview = () => {
 
             <div style={S.divider} />
 
-            <div style={S.groupBlock}>
+            <div style={S.groupBlock} className="iv-group-block">
               <div style={S.groupHead}>
                 <strong style={S.groupTitle}>
+                  <span style={S.groupTitleAccent} />
                   Difficulty
                 </strong>
 
@@ -875,12 +1002,14 @@ const Interview = () => {
                       >
                         <strong
                           style={S.difficultyLabel}
+                          className="iv-difficulty-label"
                         >
                           {option.label}
                         </strong>
 
                         <span
                           style={S.difficultyDesc}
+                          className="iv-difficulty-desc"
                         >
                           {option.description}
                         </span>
@@ -910,9 +1039,10 @@ const Interview = () => {
               <div className="iv-fade-in">
                 <div style={S.divider} />
 
-                <div style={S.groupBlock}>
+                <div style={S.groupBlock} className="iv-group-block">
                   <div style={S.groupHead}>
                     <strong style={S.groupTitle}>
+                      <span style={S.groupTitleAccent} />
                       Target
                     </strong>
 
@@ -924,6 +1054,7 @@ const Interview = () => {
                   {selectedMode === 'company' && (
                     <select
                       style={S.builderSelect}
+                      className="iv-builder-select"
                       value={selectedCompany}
                       onChange={(e) =>
                         setSelectedCompany(
@@ -949,6 +1080,7 @@ const Interview = () => {
                   {selectedMode === 'topic' && (
                     <select
                       style={S.builderSelect}
+                      className="iv-builder-select"
                       value={selectedTopic}
                       onChange={(e) =>
                         setSelectedTopic(
@@ -1039,7 +1171,7 @@ const Interview = () => {
               </button>
             </div>
 
-            <div style={S.footnote}>
+            <div style={S.footnote} className="iv-footnote">
               Difficulty:{' '}
               <strong style={{ color: C.sub }}>
                 {selectedDifficulty}
@@ -1139,6 +1271,7 @@ const Interview = () => {
           >
             <div
               style={S.exitModal}
+              className="iv-exit-modal"
               onClick={(e) =>
                 e.stopPropagation()
               }
@@ -1192,6 +1325,9 @@ const Interview = () => {
           style={S.consoleCard}
           className="iv-console-card"
         >
+          {/* Inline notification bar — replaces all toasts during a session */}
+          <NotifBar notif={notify.notif} />
+
           <div style={S.consoleTop}>
             <div style={S.consoleContext}>
               <div
@@ -1227,31 +1363,34 @@ const Interview = () => {
                 <TimerRing
                   seconds={secondsLeft}
                   percent={timerPercent}
+                  warning={timerWarning}
                   critical={timerCritical}
                   accent={mode.accent}
                 />
               )}
 
               <div style={S.questionNumber}>
-                <strong
-                  style={{
-                    color: mode.accent,
-                  }}
-                >
-                  {String(currentIndex + 1).padStart(
-                    2,
-                    '0'
-                  )}
+                <strong style={{ color: mode.accent }}>
+                  {String(currentIndex + 1).padStart(2, '0')}
                 </strong>
 
                 <span>
-                  /
-                  {String(totalQuestions).padStart(
-                    2,
-                    '0'
-                  )}
+                  /{String(totalQuestions).padStart(2, '0')}
                 </span>
               </div>
+
+              {/* Session time estimate — faint, only when multiple questions remain */}
+              {questionsLeft > 0 && (
+                <span style={{
+                  fontFamily: F.mono,
+                  fontSize: 10,
+                  color: C.faint,
+                  whiteSpace: 'nowrap',
+                  letterSpacing: '0.2px',
+                }}>
+                  ~{sessionMinsLeft}m left
+                </span>
+              )}
             </div>
           </div>
 
@@ -1259,7 +1398,11 @@ const Interview = () => {
             <div
               style={{
                 width: `${progress}%`,
+                height: '100%',
+                borderRadius: 999,
                 background: `linear-gradient(90deg, ${mode.accent}, ${C.cyan400})`,
+                transition: 'width 0.65s cubic-bezier(0.16, 1, 0.3, 1)',
+                boxShadow: `0 0 6px ${mode.accent}55`,
               }}
             />
           </div>
@@ -1309,16 +1452,33 @@ const Interview = () => {
           <section
             key={`q-${questionKey}`}
             style={S.questionPanel}
-            className="iv-fade-in iv-question-panel"
+            className="iv-question-slide iv-question-panel"
           >
             <div style={S.questionPanelTop}>
-              <span style={S.questionLabel}>
-                QUESTION{' '}
-                {String(currentIndex + 1).padStart(
-                  2,
-                  '0'
-                )}
-              </span>
+              {/* Q n of N pill — reduces "how many left" anxiety */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <span style={S.questionLabel}>
+                  QUESTION{' '}
+                  {String(currentIndex + 1).padStart(2, '0')}
+                </span>
+                <span style={{
+                  fontFamily: F.mono,
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  color: C.faint,
+                  background: C.cardAlt,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 999,
+                  padding: '2px 8px',
+                  letterSpacing: '0.3px',
+                }}>
+                  {currentIndex + 1} / {questions.length}
+                </span>
+              </div>
 
               <div style={S.questionTags}>
                 <span
@@ -1521,13 +1681,25 @@ const Interview = () => {
 
                 <div style={S.answerFooter}>
                   <span
-                    style={S.answerFooterHint}
+                    style={{
+                      ...S.answerFooterHint,
+                      ...(isObjective
+                        ? selectedAnswerIndex !== null
+                          ? { color: C.green, fontWeight: 600 }
+                          : {}
+                        : textAnswer.trim().length > 0
+                          ? { color: C.blue500, fontWeight: 600 }
+                          : {}),
+                      transition: 'color 0.2s ease',
+                    }}
                   >
                     {isObjective
                       ? selectedAnswerIndex !== null
-                        ? 'Answer selected'
+                        ? '✓ Answer selected'
                         : 'Select one option to continue'
-                      : `${textAnswer.length} characters`}
+                      : textAnswer.trim().length > 0
+                        ? `${textAnswer.trim().split(/\s+/).filter(Boolean).length} words · ${textAnswer.length} chars`
+                        : 'Start typing your answer…'}
                   </span>
 
                   <div
@@ -1555,18 +1727,49 @@ const Interview = () => {
                         ...(!canSubmit
                           ? S.btnDisabled
                           : {}),
+                        ...(isLoading
+                          ? { opacity: 0.82, cursor: 'wait' }
+                          : {}),
                       }}
-                      className="iv-submit-btn"
-                      disabled={!canSubmit}
+                      className={`iv-submit-btn${isLoading ? ' iv-btn-loading' : ''}`}
+                      disabled={!canSubmit || isLoading}
                       onClick={doSubmit}
                     >
                       {isLoading
-                        ? 'Checking…'
+                        ? 'Checking'
                         : isLastQuestion
                           ? 'Submit final answer'
                           : 'Submit answer →'}
                     </button>
                   </div>
+
+                  {/* Enter ↵ to submit hint — faint, only shows when answer ready */}
+                  {canSubmit && !isLoading && (
+                    <div style={{
+                      textAlign: 'right',
+                      marginTop: 6,
+                      fontSize: 10,
+                      color: C.faint,
+                      fontFamily: F.mono,
+                    }}>
+                      press{' '}
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '1px 5px',
+                        borderRadius: 4,
+                        border: `1px solid ${C.border}`,
+                        borderBottomWidth: 2,
+                        background: C.cardAlt,
+                        fontSize: 9.5,
+                        fontWeight: 700,
+                        color: C.sub,
+                        lineHeight: 1.4,
+                      }}>
+                        Enter ↵
+                      </span>{' '}
+                      to submit
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -1623,25 +1826,39 @@ const Interview = () => {
 const TimerRing = ({
   seconds,
   percent,
+  warning,
   critical,
   accent,
 }) => {
-  const size = 46;
-  const stroke = 4;
+  const size = 54;
+  const stroke = 4.5;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset =
     circumference * (1 - percent / 100);
-  const color = critical ? C.red : accent;
+
+  // Three-stage colour: accent → amber → red
+  const color = critical
+    ? C.red
+    : warning
+      ? C.amber
+      : accent;
+
+  // Urgency class drives the pulse animation
+  const urgencyClass = critical
+    ? 'iv-ring-critical'
+    : warning
+      ? 'iv-ring-warning'
+      : '';
 
   return (
     <div
-      style={S.ringWrap}
-      className={
-        critical
-          ? 'iv-ring-critical'
-          : ''
-      }
+      style={{
+        ...S.ringWrap,
+        width: size,
+        height: size,
+      }}
+      className={urgencyClass}
     >
       <svg
         width={size}
@@ -1651,6 +1868,7 @@ const TimerRing = ({
           transform: 'rotate(-90deg)',
         }}
       >
+        {/* Track */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -1660,6 +1878,7 @@ const TimerRing = ({
           fill="none"
         />
 
+        {/* Drain arc */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -1672,7 +1891,12 @@ const TimerRing = ({
           strokeLinecap="round"
           style={{
             transition:
-              'stroke-dashoffset 1s linear, stroke 0.3s ease',
+              'stroke-dashoffset 1s linear, stroke 0.4s ease',
+            filter: critical
+              ? 'drop-shadow(0 0 3px rgba(220,38,38,0.55))'
+              : warning
+                ? 'drop-shadow(0 0 2px rgba(217,119,6,0.4))'
+                : 'none',
           }}
         />
       </svg>
@@ -1681,6 +1905,9 @@ const TimerRing = ({
         style={{
           ...S.ringLabel,
           color,
+          fontSize: critical || warning ? 11 : 10,
+          fontWeight: critical ? 800 : 700,
+          transition: 'color 0.4s ease, font-size 0.2s ease',
         }}
       >
         {formatTime(seconds)}
@@ -1760,7 +1987,9 @@ const FeedbackView = ({
   const objColor = correct ? C.green : C.red;
   const objBg    = correct ? C.greenTint : C.redTint;
   const objEmoji = correct ? '✅' : '❌';
-  const objVibe  = correct ? 'Nailed it. Move on.' : 'Wrong one — but read why below.';
+  const objVibe  = correct
+    ? 'Nailed it. On to the next one.'
+    : 'Scroll down — the correct answer and explanation are right below.';
 
   return (
     <div style={S.feedback} className="iv-fade-in">
@@ -1789,9 +2018,21 @@ const FeedbackView = ({
         </div>
 
         {!objective && (
-          <div style={S.fbScoreRight}>
-            <div style={{ ...S.fbScoreNum, color: cfg.color }}>{score}</div>
-            <div style={S.fbScoreOutOf}>/100</div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+            <div style={S.fbScoreRight}>
+              <div style={{ ...S.fbScoreNum, color: cfg.color }} className="iv-fb-score-num">{score}</div>
+              <div style={S.fbScoreOutOf}>/100</div>
+            </div>
+            {feedback?.timeTaken > 0 && (
+              <span style={{
+                fontFamily: F.mono,
+                fontSize: 9.5,
+                color: C.faint,
+                letterSpacing: '0.2px',
+              }}>
+                answered in {feedback.timeTaken}s
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -1855,9 +2096,7 @@ const FeedbackView = ({
         /* ── Objective (MCQ/Aptitude) feedback ─────────────────────────── */
         <McqExplanation
           question={question}
-          feedback={feedback}
           correct={correct}
-          objColor={objColor}
           userAnswerIndex={userAnswerIndex}
         />
       )}
@@ -1889,36 +2128,47 @@ const FeedbackView = ({
       )}
 
       {/* ── Continue button ─────────────────────────────────────────────── */}
-      <button
-        type="button"
-        style={{
-          ...S.nextBtn,
-          background: `linear-gradient(135deg, ${C.blue700}, ${accent})`,
-          ...(isLoading ? S.btnDisabled : {}),
-          marginTop: 16,
-        }}
-        className="iv-next-btn"
-        onClick={onNext}
-        disabled={isLoading}
-      >
-        {isLoading ? (
-          <><span style={S.spinner} />{isLast ? 'Preparing your report…' : 'Preparing…'}</>
-        ) : isLast ? (
-          'View your results →'
-        ) : (
-          'Next question →'
-        )}
-      </button>
+      <div className="iv-next-btn-wrap" style={{
+        marginTop: 20,
+        paddingTop: 16,
+        borderTop: `1px solid ${C.border}`,
+      }}>
+        <button
+          type="button"
+          style={{
+            ...S.nextBtn,
+            background: `linear-gradient(135deg, ${C.blue700}, ${accent})`,
+            ...(isLoading ? S.btnDisabled : {}),
+          }}
+          className="iv-next-btn"
+          onClick={onNext}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <><span style={S.spinner} />{isLast ? 'Preparing your report…' : 'Preparing…'}</>
+          ) : isLast ? (
+            'View your results →'
+          ) : (
+            'Next question →'
+          )}
+        </button>
 
-      <div style={S.nextBtnHint}>
-        Press <kbd style={S.kbd}>Enter</kbd> to continue
+        <div style={S.nextBtnHint}>
+          Press <kbd style={S.kbd}>Enter</kbd> to continue
+        </div>
       </div>
     </div>
   );
 };
 
 const FeedbackBlock = ({ icon, title, bullets, color, bg }) => (
-  <div style={{ ...S.feedbackBlock, background: bg, borderColor: `${color}28` }}>
+  <div style={{
+    ...S.feedbackBlock,
+    background: bg,
+    borderColor: `${color}28`,
+    borderLeftColor: `${color}70`,
+    borderLeftWidth: 3,
+  }}>
     <div style={S.fbBlockHeader}>
       <span style={S.fbBlockIcon}>{icon}</span>
       <span style={{ ...S.fbBlockTitle, color }}>{title}</span>
@@ -1938,64 +2188,76 @@ const FeedbackBlock = ({ icon, title, bullets, color, bg }) => (
 // MCQ EXPLANATION CARD
 // ═══════════════════════════════════════════════════════════════════════════
 
-const McqExplanation = ({ question, feedback, correct, objColor, userAnswerIndex }) => {
-  // Correct answer text from the question options
+const McqExplanation = ({ question, correct, userAnswerIndex }) => {
   const correctIndex = question?.correctAnswerIndex;
   const correctText  = (correctIndex !== null && correctIndex !== undefined)
-    ? question?.options?.[correctIndex]
-    : null;
+    ? question?.options?.[correctIndex] : null;
 
-  // User's chosen option — comes from selectedAnswerIndex in the hook
   const userIndex = userAnswerIndex ?? null;
   const userText  = (userIndex !== null && userIndex !== undefined)
-    ? question?.options?.[userIndex]
-    : null;
+    ? question?.options?.[userIndex] : null;
 
-  // explanation comes from the question object (preserved in normalizeQuestion)
-  // raw is the backend fallback string — use whichever is richer
   const explanation = question?.explanation || '';
 
   return (
     <div style={S.mcqWrap}>
 
-      {/* ── Answer comparison row ──────────────────────────────────────── */}
-      <div style={S.mcqAnswerRow}>
+      {/* ── Answer reveal — stacked when wrong so correct gets full width ── */}
+      <div style={{
+        ...S.mcqAnswerRow,
+        flexDirection: correct ? 'row' : 'column',
+        gap: correct ? 10 : 12,
+      }}>
 
-        {/* User's pick */}
+        {/* User pick */}
         <div style={{
           ...S.mcqAnswerBox,
-          borderColor: `${objColor}35`,
+          borderColor: correct ? `${C.green}40` : `${C.red}40`,
           background: correct ? C.greenTint : C.redTint,
+          flex: correct ? 1 : 'unset',
         }}>
-          <span style={{ ...S.mcqAnswerTag, color: objColor }}>
-            {correct ? '✅ Your answer' : '❌ Your answer'}
+          <span style={{ ...S.mcqAnswerTag, color: correct ? C.green : C.red }}>
+            {correct ? '✅ Your answer · Correct' : '❌ Your answer'}
           </span>
           <span style={S.mcqAnswerText}>
             {userText || 'No option selected'}
           </span>
         </div>
 
-        {/* Correct answer — only shown when wrong */}
+        {/* Correct answer — full-width hero box when wrong */}
         {!correct && correctText && (
           <div style={{
             ...S.mcqAnswerBox,
-            borderColor: `${C.green}35`,
+            borderColor: `${C.green}50`,
             background: C.greenTint,
+            border: `2px solid ${C.green}50`,
+            padding: '14px 16px',
           }}>
-            <span style={{ ...S.mcqAnswerTag, color: C.green }}>
-              ✓ Correct answer
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+              <span style={{ ...S.mcqAnswerTag, color: C.green, marginBottom: 0 }}>
+                ✓ Correct answer
+              </span>
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: C.green,
+                background: `${C.green}15`, border: `1px solid ${C.green}30`,
+                borderRadius: 6, padding: '2px 8px',
+              }}>
+                Remember this
+              </span>
+            </div>
+            <span style={{ ...S.mcqAnswerText, color: `${C.green}`, fontWeight: 700, fontSize: 14 }}>
+              {correctText}
             </span>
-            <span style={S.mcqAnswerText}>{correctText}</span>
           </div>
         )}
       </div>
 
-      {/* ── Explanation ────────────────────────────────────────────────── */}
+      {/* ── Why this is the answer ─────────────────────────────────────── */}
       {explanation ? (
         <div style={S.mcqExplainWrap}>
           <div style={S.mcqExplainHeader}>
             <span style={S.mcqExplainIcon}>💡</span>
-            <span style={S.mcqExplainTitle}>Why?</span>
+            <span style={S.mcqExplainTitle}>Why this is the answer</span>
           </div>
           <div style={S.mcqExplainBody}>
             {splitToBullets(explanation).map((pt, i) => (
@@ -2007,34 +2269,31 @@ const McqExplanation = ({ question, feedback, correct, objColor, userAnswerIndex
           </div>
         </div>
       ) : (
-        <div style={S.mcqNoExplain}>
-          Your answer has been recorded.
-        </div>
+        <div style={S.mcqNoExplain}>Your answer has been recorded.</div>
       )}
 
-      {/* ── All options map (quick visual reference) ───────────────────── */}
+      {/* ── All options colour-coded ────────────────────────────────────── */}
       {question?.options?.length > 0 && (
         <div style={S.mcqOptionsWrap}>
-          <span style={S.mcqOptionsLabel}>All options</span>
+          <span style={S.mcqOptionsLabel}>All options at a glance</span>
           <div style={S.mcqOptionsList}>
             {question.options.map((opt, i) => {
               const isCorrect = i === correctIndex;
               const isUser    = i === userIndex;
-              const both      = isCorrect && isUser;
               const bg   = isCorrect ? C.greenTint : isUser ? C.redTint : C.cardAlt;
               const col  = isCorrect ? C.green     : isUser ? C.red     : C.muted;
-              const bord = isCorrect ? `${C.green}35` : isUser ? `${C.red}25` : C.border;
+              const bord = isCorrect ? `${C.green}40` : isUser ? `${C.red}30` : C.border;
               return (
-                <div key={i} style={{ ...S.mcqOption, background: bg, borderColor: bord }}>
-                  <span style={{ ...S.mcqOptionBullet, color: col, borderColor: `${col}40`, background: isCorrect || isUser ? `${col}15` : 'transparent' }}>
+                <div key={i} style={{ ...S.mcqOption, background: bg, borderColor: bord, borderWidth: isCorrect ? 1.5 : 1 }}>
+                  <span style={{ ...S.mcqOptionBullet, color: col, borderColor: `${col}40`, background: isCorrect || isUser ? `${col}15` : 'transparent', fontWeight: isCorrect ? 800 : 600 }}>
                     {String.fromCharCode(65 + i)}
                   </span>
-                  <span style={{ ...S.mcqOptionText, color: isCorrect ? C.green : isUser ? C.red : C.sub }}>
+                  <span style={{ ...S.mcqOptionText, color: isCorrect ? C.green : isUser ? C.red : C.sub, fontWeight: isCorrect ? 600 : 400 }}>
                     {opt}
                   </span>
-                  {both   && <span style={S.mcqOptionBadge}>✓ correct</span>}
-                  {isCorrect && !isUser && <span style={{ ...S.mcqOptionBadge, color: C.green, background: `${C.green}15`, borderColor: `${C.green}30` }}>correct</span>}
-                  {isUser && !isCorrect && <span style={{ ...S.mcqOptionBadge, color: C.red, background: `${C.red}12`, borderColor: `${C.red}25` }}>your pick</span>}
+                  {isCorrect && !isUser && <span style={{ ...S.mcqOptionBadge, color: C.green, background: `${C.green}15`, borderColor: `${C.green}30` }}>✓ correct</span>}
+                  {isCorrect && isUser  && <span style={{ ...S.mcqOptionBadge, color: C.green, background: `${C.green}15`, borderColor: `${C.green}30` }}>✓ correct · your pick</span>}
+                  {isUser && !isCorrect && <span style={{ ...S.mcqOptionBadge, color: C.red,   background: `${C.red}12`,   borderColor: `${C.red}25`   }}>your pick</span>}
                 </div>
               );
             })}
@@ -2089,6 +2348,19 @@ const GlobalStyles = () => (
       }
     }
 
+    /* Directional slide for question-to-question transitions — feels like
+       moving forward through the session rather than things just appearing */
+    @keyframes ivSlideQuestion {
+      from {
+        opacity: 0;
+        transform: translateX(10px) translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0) translateY(0);
+      }
+    }
+
     @keyframes ivPopIn {
       0% {
         opacity:0;
@@ -2127,11 +2399,19 @@ const GlobalStyles = () => (
 
     @keyframes ivRingPulse {
       0%,100% {
-        box-shadow: 0 0 0 0 rgba(220,38,38,0.35);
+        box-shadow: 0 0 0 0 rgba(220,38,38,0.40);
       }
-
       50% {
-        box-shadow: 0 0 0 6px rgba(220,38,38,0);
+        box-shadow: 0 0 0 7px rgba(220,38,38,0);
+      }
+    }
+
+    @keyframes ivRingWarn {
+      0%,100% {
+        box-shadow: 0 0 0 0 rgba(217,119,6,0.35);
+      }
+      50% {
+        box-shadow: 0 0 0 6px rgba(217,119,6,0);
       }
     }
 
@@ -2141,6 +2421,11 @@ const GlobalStyles = () => (
 
     .iv-fade-in {
       animation: ivFadeIn 0.32s cubic-bezier(.16,1,.3,1);
+    }
+
+    /* Question panel gets the directional slide — feels like advancing */
+    .iv-question-slide {
+      animation: ivSlideQuestion 0.30s cubic-bezier(.16,1,.3,1);
     }
 
     .iv-pop-in {
@@ -2153,20 +2438,28 @@ const GlobalStyles = () => (
 
     .iv-ring-critical {
       border-radius: 50%;
-      animation: ivRingPulse 1.1s ease-in-out infinite;
+      animation: ivRingPulse 1.0s ease-in-out infinite;
+    }
+
+    .iv-ring-warning {
+      border-radius: 50%;
+      animation: ivRingWarn 1.4s ease-in-out infinite;
     }
 
     .iv-page button {
       transition:
-        transform 0.14s ease,
-        box-shadow 0.14s ease,
-        border-color 0.14s ease,
-        background 0.14s ease,
-        opacity 0.14s ease;
+        transform 0.16s cubic-bezier(.16,1,.3,1),
+        box-shadow 0.16s ease,
+        border-color 0.16s ease,
+        background 0.16s ease,
+        opacity 0.16s ease,
+        filter 0.16s ease,
+        color 0.16s ease;
     }
 
     .iv-page button:active:not(:disabled) {
-      transform: scale(0.97);
+      transform: scale(0.96) !important;
+      filter: brightness(0.97);
     }
 
     .iv-page button:disabled {
@@ -2176,68 +2469,142 @@ const GlobalStyles = () => (
     .iv-page button:focus-visible,
     .iv-page textarea:focus-visible,
     .iv-page select:focus-visible {
-      outline: 2px solid ${C.blue500};
+      outline: 2.5px solid ${C.blue500};
       outline-offset: 2px;
+    }
+
+    /* Select focus ring — needs separate rule since selects have native chrome */
+    .iv-builder-select:focus {
+      border-color: ${C.blue500} !important;
+      box-shadow: 0 0 0 3px rgba(26,110,255,0.12) !important;
+      outline: none !important;
     }
 
     .iv-mode-card:hover:not(:disabled) {
       border-color: ${C.borderStr} !important;
-      box-shadow: ${C.shadow};
-      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(26,110,255,0.10);
+      transform: translateY(-2px);
     }
 
     .iv-difficulty-card:hover:not(:disabled) {
       border-color: ${C.borderStr} !important;
-      transform: translateY(-1px);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 14px rgba(26,110,255,0.08);
     }
 
+    /* MCQ options get a horizontal nudge — feels like selection, not hover */
     .iv-option:hover:not(:disabled) {
-      border-color: ${C.borderStr} !important;
-      transform: translateY(-1px);
+      border-color: ${C.borderMd} !important;
+      transform: translateX(2px);
+      box-shadow: 0 3px 12px rgba(26,110,255,0.07);
     }
 
     .iv-exit-btn:hover {
       background: ${C.cardAlt} !important;
       border-color: ${C.borderStr} !important;
+      color: ${C.red} !important;
     }
 
     .iv-skip-btn:hover:not(:disabled) {
       background: ${C.cardAlt} !important;
-      border-color: ${C.borderStr} !important;
+      border-color: ${C.borderMd} !important;
+      color: ${C.sub} !important;
     }
 
     .iv-btn-launch:hover:not(:disabled) {
-      box-shadow: 0 12px 30px rgba(26,110,255,0.36) !important;
-      transform: translateY(-1px);
+      box-shadow: 0 14px 36px rgba(26,110,255,0.38) !important;
+      transform: translateY(-2px);
     }
 
     .iv-submit-btn:hover:not(:disabled) {
-      box-shadow: 0 10px 24px rgba(26,110,255,0.32) !important;
-      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(26,110,255,0.38) !important;
+      transform: translateY(-2px);
+      filter: brightness(1.05);
     }
 
     .iv-next-btn:hover:not(:disabled) {
-      filter: brightness(1.06);
-      transform: translateY(-1px);
+      filter: brightness(1.07);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(26,110,255,0.32) !important;
     }
 
     .iv-page textarea {
       transition:
-        border-color 0.15s ease,
-        box-shadow 0.15s ease,
-        background 0.15s ease;
+        border-color 0.18s ease,
+        box-shadow 0.18s ease,
+        background 0.18s ease;
     }
 
     .iv-page textarea:focus {
       border-color: ${C.blue500};
-      box-shadow: 0 0 0 3px rgba(26,110,255,0.08);
+      box-shadow: 0 0 0 3px rgba(26,110,255,0.10);
       background: #fff;
+      outline: none;
+    }
+
+    /* Textarea with content (ready to submit) — subtle green-tinted border
+       signals "you have something to say" without distracting */
+    .iv-page textarea:not(:placeholder-shown):not(:focus) {
+      border-color: ${C.green}80;
+      background: #FAFFFE;
+    }
+
+    @keyframes ivNotifIn {
+      from { opacity: 0; transform: translateY(-6px) scaleY(0.92); }
+      to   { opacity: 1; transform: translateY(0)    scaleY(1); }
+    }
+
+    @keyframes ivNotifSpin {
+      to { transform: rotate(360deg); }
+    }
+
+    .iv-notif-bar {
+      animation: ivNotifIn 0.22s cubic-bezier(.16,1,.3,1);
+      transform-origin: top center;
+    }
+
+    .iv-notif-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: ivNotifSpin 0.7s linear infinite;
+      opacity: 0.8;
+    }
+
+    @keyframes ivSpin {
+      to { transform: rotate(360deg); }
+    }
+    .iv-btn-loading::after {
+      content: '';
+      display: inline-block;
+      width: 11px;
+      height: 11px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: ivSpin 0.65s linear infinite;
+      margin-left: 7px;
+      vertical-align: middle;
     }
 
     .iv-question-panel,
     .iv-answer-panel,
     .iv-console-card {
-      transition: box-shadow 0.2s ease;
+      transition:
+        box-shadow 0.24s ease,
+        border-color 0.24s ease;
+    }
+
+    .iv-question-panel:hover {
+      box-shadow: 0 8px 28px rgba(26,110,255,0.09) !important;
+      border-color: ${C.borderMd} !important;
+    }
+
+    .iv-answer-panel:hover {
+      box-shadow: 0 6px 22px rgba(26,110,255,0.07) !important;
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -2247,10 +2614,11 @@ const GlobalStyles = () => (
       }
     }
 
+    /* ── 1020px: hero stacks, room grid stacks ──────────────────────── */
     @media (max-width: 1020px) {
       .iv-hero-grid {
         grid-template-columns: 1fr !important;
-        gap: 22px !important;
+        gap: 20px !important;
         text-align: center;
       }
 
@@ -2265,6 +2633,14 @@ const GlobalStyles = () => (
       }
     }
 
+    /* ── 900px: difficulty goes 2-col ───────────────────────────────── */
+    @media (max-width: 900px) {
+      .iv-difficulty-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+      }
+    }
+
+    /* ── 760px: mode grid 1-col, launch area stacks, hide strip right ─ */
     @media (max-width: 760px) {
       .iv-strip-r {
         display: none !important;
@@ -2274,13 +2650,15 @@ const GlobalStyles = () => (
         grid-template-columns: 1fr !important;
       }
 
-      .iv-difficulty-grid {
-        grid-template-columns: repeat(2, 1fr) !important;
-      }
-
       .iv-launch-area {
         flex-direction: column !important;
         align-items: stretch !important;
+        gap: 12px !important;
+      }
+
+      .iv-launch-area button {
+        width: 100% !important;
+        min-width: unset !important;
       }
 
       .iv-feedback-grid {
@@ -2292,6 +2670,7 @@ const GlobalStyles = () => (
       }
     }
 
+    /* ── 620px: room top wraps, trail wraps ─────────────────────────── */
     @media (max-width: 620px) {
       .iv-room-top {
         flex-wrap: wrap;
@@ -2303,19 +2682,131 @@ const GlobalStyles = () => (
       }
     }
 
+    /* ── 480px: the main mobile breakpoint (360–480px Android) ─────── */
     @media (max-width: 480px) {
+      /* Page */
       .iv-page {
-        padding: 12px 10px 56px !important;
+        padding: 12px 10px 72px !important;
       }
 
+      /* Hero */
+      .iv-hero {
+        padding: 20px 16px !important;
+        border-radius: 16px !important;
+      }
+
+      /* Builder card */
       .iv-builder-card {
-        padding: 14px !important;
+        border-radius: 16px !important;
       }
 
+      .iv-group-block {
+        padding: 14px 16px !important;
+      }
+
+      /* Mode cards — full width, bigger tap targets */
+      .iv-mode-card {
+        min-height: 72px !important;
+        padding: 12px 14px !important;
+        gap: 12px !important;
+      }
+
+      .iv-mode-label {
+        font-size: 14px !important;
+      }
+
+      .iv-mode-desc {
+        font-size: 12.5px !important;
+      }
+
+      /* Difficulty cards — 2-col with bigger text */
+      .iv-difficulty-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
+      }
+
+      .iv-difficulty-card {
+        min-height: 68px !important;
+        padding: 11px 12px !important;
+      }
+
+      .iv-difficulty-label {
+        font-size: 13.5px !important;
+      }
+
+      .iv-difficulty-desc {
+        font-size: 12px !important;
+      }
+
+      /* Select dropdowns — 48px tap target */
+      .iv-builder-select {
+        height: 52px !important;
+        font-size: 14px !important;
+      }
+
+      /* Launch area */
+      .iv-launch-area {
+        padding: 16px !important;
+      }
+
+      /* Session panels */
       .iv-question-panel,
       .iv-answer-panel {
         padding: 16px !important;
         min-height: unset !important;
+        border-radius: 14px !important;
+      }
+
+      /* Console card */
+      .iv-console-card {
+        padding: 12px 14px !important;
+        position: relative !important;
+        top: unset !important;
+      }
+
+      /* Next button — sticky bottom on mobile so user doesn't have to scroll */
+      .iv-next-btn-wrap {
+        position: sticky !important;
+        bottom: 16px !important;
+        background: ${C.card} !important;
+        padding: 12px !important;
+        margin: 16px -16px -16px !important;
+        border-radius: 0 0 14px 14px !important;
+        box-shadow: 0 -4px 16px rgba(10,22,40,0.08) !important;
+        border-top: 1px solid ${C.border} !important;
+      }
+
+      /* Score number — slightly smaller on tiny screens */
+      .iv-fb-score-num {
+        font-size: 36px !important;
+        letter-spacing: -1.5px !important;
+      }
+
+      /* Footnote */
+      .iv-footnote {
+        font-size: 11.5px !important;
+        padding: 12px 16px 20px !important;
+        line-height: 1.8 !important;
+      }
+
+      /* Exit modal */
+      .iv-exit-modal {
+        margin: 0 10px !important;
+      }
+    }
+
+    /* ── 360px: absolute minimum Android ────────────────────────────── */
+    @media (max-width: 360px) {
+      .iv-hero {
+        padding: 16px 14px !important;
+      }
+
+      .iv-group-block {
+        padding: 12px 14px !important;
+      }
+
+      .iv-difficulty-grid {
+        gap: 6px !important;
       }
     }
   `}</style>
@@ -2402,8 +2893,9 @@ const S = {
     height: '100%',
     background:
       'linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent)',
-    animation:
-      'ivScan 9s linear infinite',
+    animation: 'ivScan 9s linear infinite',
+    willChange: 'transform',
+    pointerEvents: 'none',
   },
 
   heroGrid: {
@@ -2414,15 +2906,22 @@ const S = {
     alignItems: 'center',
   },
 
-  previewBlock: {},
+  previewBlock: {
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.13)',
+    borderRadius: 18,
+    padding: '18px 20px',
+    backdropFilter: 'blur(6px)',
+  },
 
   irsLabel: {
     fontFamily: F.mono,
     fontSize: 9.5,
-    fontWeight: 600,
-    letterSpacing: '1.4px',
-    color: 'rgba(255,255,255,0.6)',
+    fontWeight: 700,
+    letterSpacing: '1.2px',
+    color: 'rgba(255,255,255,0.55)',
     marginBottom: 12,
+    textTransform: 'uppercase',
   },
 
   previewModeRow: {
@@ -2483,11 +2982,12 @@ const S = {
     alignItems: 'center',
     gap: 7,
     fontFamily: F.mono,
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: 700,
-    letterSpacing: '1.6px',
+    letterSpacing: '1.2px',
     color: 'rgba(255,255,255,0.7)',
-    marginBottom: 10,
+    marginBottom: 12,
+    textTransform: 'uppercase',
   },
 
   eyebrowDot: {
@@ -2495,25 +2995,26 @@ const S = {
     height: 6,
     borderRadius: '50%',
     background: C.cyan400,
+    flexShrink: 0,
   },
 
   heroH1: {
     margin: 0,
     fontFamily: F.display,
-    fontSize: 27,
+    fontSize: 'clamp(26px, 4vw, 42px)',
     fontWeight: 900,
     color: '#fff',
-    lineHeight: 1.15,
-    letterSpacing: '-0.5px',
+    lineHeight: 1.1,
+    letterSpacing: '-0.8px',
     maxWidth: 600,
   },
 
   heroSub: {
-    margin: '12px 0 0',
-    fontSize: 13,
-    lineHeight: 1.68,
-    color: 'rgba(255,255,255,0.78)',
-    maxWidth: 540,
+    margin: '14px 0 0',
+    fontSize: 'clamp(13px, 1.4vw, 15px)',
+    lineHeight: 1.7,
+    color: 'rgba(255,255,255,0.80)',
+    maxWidth: 520,
   },
 
   card: {
@@ -2541,13 +3042,25 @@ const S = {
     fontFamily: F.display,
     fontSize: 13.5,
     fontWeight: 800,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  groupTitleAccent: {
+    width: 3,
+    height: 14,
+    borderRadius: 2,
+    background: C.blue500,
+    flexShrink: 0,
+    display: 'inline-block',
   },
 
   groupTag: {
     color: C.faint,
     fontFamily: F.mono,
-    fontSize: 9,
-    letterSpacing: '0.6px',
+    fontSize: 9.5,
+    letterSpacing: '0.5px',
   },
 
   divider: {
@@ -2565,31 +3078,32 @@ const S = {
   modeCard: {
     display: 'flex',
     alignItems: 'center',
-    gap: 11,
-    minHeight: 68,
-    border: `1px solid ${C.border}`,
+    gap: 12,
+    minHeight: 78,
+    border: `1.5px solid ${C.border}`,
     background: C.card,
     borderRadius: 14,
-    padding: 11,
+    padding: '12px 13px',
     cursor: 'pointer',
     textAlign: 'left',
+    transition: 'border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease',
   },
 
   modeCardActive: {
-    background:
-      `linear-gradient(135deg, ${C.cardAlt}, #fff)`,
-    boxShadow: C.shadow,
+    background: `linear-gradient(135deg, ${C.cardAlt}, #fff)`,
+    boxShadow: `0 0 0 2px ${C.blue500}30, ${C.shadow}`,
+    borderColor: `${C.blue500}60`,
   },
 
   modeIcon: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
     borderRadius: 11,
     flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 17,
+    fontSize: 18,
   },
 
   modeCopy: {
@@ -2602,15 +3116,16 @@ const S = {
   modeLabel: {
     color: C.text,
     fontFamily: F.display,
-    fontSize: 12.5,
+    fontSize: 13.5,
     fontWeight: 800,
+    lineHeight: 1.2,
   },
 
   modeDesc: {
-    marginTop: 2,
+    marginTop: 3,
     color: C.muted,
-    fontSize: 11,
-    lineHeight: 1.35,
+    fontSize: 12,
+    lineHeight: 1.4,
   },
 
   modeCheck: {
@@ -2625,13 +3140,12 @@ const S = {
     fontSize: 9,
     flexShrink: 0,
     transition:
-      'transform 0.18s cubic-bezier(.34,1.56,.64,1), background 0.14s ease, border-color 0.14s ease',
+      'transform 0.22s cubic-bezier(.34,1.56,.64,1), background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease',
   },
 
   difficultyGrid: {
     display: 'grid',
-    gridTemplateColumns:
-      'repeat(4, 1fr)',
+    gridTemplateColumns: 'repeat(4, 1fr)',
     gap: 8,
   },
 
@@ -2639,28 +3153,31 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     gap: 9,
-    minHeight: 60,
-    border: `1px solid ${C.border}`,
+    minHeight: 64,
+    border: `1.5px solid ${C.border}`,
     background: C.card,
     borderRadius: 13,
-    padding: 10,
+    padding: '10px 11px',
     cursor: 'pointer',
     textAlign: 'left',
+    transition: 'border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease',
   },
 
   difficultyCardActive: {
     background: C.cardAlt,
+    borderColor: `${C.blue500}50`,
+    boxShadow: `0 0 0 2px ${C.blue500}20`,
   },
 
   difficultyIcon: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
     borderRadius: 9,
     flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 900,
   },
 
@@ -2668,16 +3185,17 @@ const S = {
     display: 'block',
     color: C.text,
     fontFamily: F.display,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 800,
+    lineHeight: 1.2,
   },
 
   difficultyDesc: {
     display: 'block',
-    marginTop: 1,
+    marginTop: 2,
     color: C.muted,
-    fontSize: 10,
-    lineHeight: 1.3,
+    fontSize: 11.5,
+    lineHeight: 1.35,
   },
 
   difficultyRadio: {
@@ -2691,19 +3209,27 @@ const S = {
     color: '#fff',
     fontSize: 8,
     flexShrink: 0,
+    transition: 'background 0.16s ease, border-color 0.16s ease',
   },
 
   builderSelect: {
     width: '100%',
-    height: 44,
-    border: `1px solid ${C.borderMd}`,
+    height: 48,
+    border: `1.5px solid ${C.borderMd}`,
     borderRadius: 11,
     background: C.cardAlt,
-    padding: '0 13px',
+    padding: '0 36px 0 13px',
     color: C.text,
     fontFamily: F.body,
-    fontSize: 13,
+    fontSize: 13.5,
     outline: 'none',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237C8CAD' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 13px center',
+    cursor: 'pointer',
+    transition: 'border-color 0.18s ease, box-shadow 0.18s ease',
   },
 
   launchArea: {
@@ -2711,41 +3237,42 @@ const S = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 14,
-    padding: '16px 22px',
+    padding: '18px 22px',
     background: C.cardAlt,
+    borderTop: `1px solid ${C.border}`,
   },
 
   sessionSummary: {
     display: 'flex',
     alignItems: 'center',
-    gap: 11,
+    gap: 12,
     minWidth: 0,
   },
 
   summaryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 11,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 16,
+    fontSize: 17,
   },
 
   summaryTitle: {
     display: 'block',
     color: C.text,
     fontFamily: F.display,
-    fontSize: 12.5,
+    fontSize: 13.5,
     fontWeight: 800,
   },
 
   summarySub: {
     display: 'block',
-    marginTop: 2,
+    marginTop: 3,
     color: C.muted,
-    fontSize: 11,
+    fontSize: 12,
   },
 
   btnLaunch: {
@@ -2753,19 +3280,20 @@ const S = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    minWidth: 190,
+    minWidth: 200,
     border: 'none',
-    borderRadius: 12,
-    padding: '13px 18px',
+    borderRadius: 13,
+    padding: '15px 24px',
     color: '#fff',
-    background:
-      `linear-gradient(135deg, ${C.blue700}, ${C.blue500})`,
-    boxShadow:
-      '0 8px 22px rgba(26,110,255,0.28)',
+    background: `linear-gradient(135deg, ${C.blue700}, ${C.blue500})`,
+    boxShadow: '0 10px 26px rgba(26,110,255,0.32)',
     cursor: 'pointer',
     fontFamily: F.body,
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: 800,
+    letterSpacing: '0.1px',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
   },
 
   btnDisabled: {
@@ -2787,23 +3315,27 @@ const S = {
   },
 
   footnote: {
-    padding: '11px 22px 16px',
+    padding: '12px 22px 18px',
     color: C.faint,
     fontFamily: F.mono,
-    fontSize: 10,
-    letterSpacing: '0.3px',
+    fontSize: 11,
+    letterSpacing: '0.2px',
+    lineHeight: 1.7,
   },
 
   kbd: {
     display: 'inline-block',
-    padding: '1px 6px',
+    padding: '2px 7px',
     borderRadius: 5,
     border: `1px solid ${C.borderMd}`,
+    borderBottomWidth: 2,
     background: C.cardAlt,
     color: C.sub,
     fontFamily: F.mono,
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: 700,
+    lineHeight: 1.4,
+    verticalAlign: 'middle',
   },
 
   roomTop: {
@@ -2972,10 +3504,11 @@ const S = {
 
   progressTrack: {
     marginTop: 10,
-    height: 6,
+    height: 7,
     borderRadius: 999,
-    background: '#EAF0F6',
+    background: '#E2EAF8',
     overflow: 'hidden',
+    boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06)',
   },
 
   trail: {
@@ -2988,20 +3521,20 @@ const S = {
     width: 8,
     height: 8,
     borderRadius: '50%',
-    transition: 'all 0.25s ease',
+    transition: 'background 0.35s ease, transform 0.25s cubic-bezier(.16,1,.3,1), opacity 0.25s ease',
     flexShrink: 0,
   },
 
   ringWrap: {
     position: 'relative',
-    width: 46,
-    height: 46,
+    width: 54,
+    height: 54,
     flexShrink: 0,
     borderRadius: '50%',
+    transition: 'width 0.3s ease, height 0.3s ease',
   },
 
-  // ── CHANGED: F.display → F.mono, fontWeight 800 → 700
-  // Timer countdown is a numeric instrument — mono face is correct here.
+  // Timer countdown: mono face, transitions on color/weight for urgency stages
   ringLabel: {
     position: 'absolute',
     inset: 0,
@@ -3011,6 +3544,8 @@ const S = {
     fontFamily: F.mono,
     fontSize: 10,
     fontWeight: 700,
+    transition: 'color 0.4s ease, font-size 0.2s ease, font-weight 0.2s ease',
+    userSelect: 'none',
   },
 
   roomGrid: {
@@ -3064,39 +3599,47 @@ const S = {
 
   questionBody: {
     margin: 'auto 0',
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    paddingTop: 6,
+    paddingBottom: 4,
   },
 
   questionType: {
-    marginBottom: 10,
+    marginBottom: 12,
     color: C.faint,
     fontSize: 10,
-    letterSpacing: '1.2px',
+    letterSpacing: '1.4px',
     fontWeight: 700,
     fontFamily: F.mono,
+    textTransform: 'uppercase',
   },
 
-  // ── CHANGED: F.display → F.body, clamp(21px,2.3vw,28px) → clamp(17px,1.8vw,22px),
-  // fontWeight 800 → 600, letterSpacing '-0.4px' removed (Inter doesn't need it).
-  // Question body copy: readable weight, not a billboard.
+  // Question body: generous lineHeight is critical for multi-line readability
+  // during a live session. 1.62 is the sweet spot — scannable, not loose.
   questionText: {
     margin: 0,
     color: C.text,
     fontFamily: F.body,
     fontSize: 'clamp(17px, 1.8vw, 22px)',
-    lineHeight: 1.4,
+    lineHeight: 1.62,
     fontWeight: 600,
+    letterSpacing: '-0.1px',
   },
 
   questionHelp: {
     display: 'flex',
     gap: 8,
     alignItems: 'flex-start',
-    marginTop: 18,
+    marginTop: 20,
     paddingTop: 14,
     borderTop: `1px solid ${C.border}`,
     color: C.sub,
-    fontSize: 12.5,
-    lineHeight: 1.55,
+    fontSize: 12,
+    lineHeight: 1.62,
+    fontStyle: 'italic',
   },
 
   kbdHint: {
@@ -3141,8 +3684,9 @@ const S = {
     marginTop: 3,
     color: C.text,
     fontFamily: F.display,
-    fontSize: 15,
+    fontSize: 14.5,
     fontWeight: 800,
+    letterSpacing: '-0.2px',
   },
 
   answerModeTag: {
@@ -3160,15 +3704,16 @@ const S = {
     width: '100%',
     minHeight: 220,
     resize: 'vertical',
-    border: `1px solid ${C.borderMd}`,
+    border: `1.5px solid ${C.border}`,
     borderRadius: 14,
     background: C.cardAlt,
     color: C.text,
-    padding: 13,
+    padding: '14px 15px',
     outline: 'none',
     fontFamily: F.body,
     fontSize: 13.5,
-    lineHeight: 1.7,
+    lineHeight: 1.72,
+    letterSpacing: '0.01em',
   },
 
   options: {
@@ -3246,9 +3791,10 @@ const S = {
   },
 
   answerFooterHint: {
-    color: C.faint,
+    color: C.muted,
     fontFamily: F.mono,
-    fontSize: 10,
+    fontSize: 10.5,
+    letterSpacing: '0.2px',
   },
 
   answerActions: {
@@ -3257,30 +3803,33 @@ const S = {
   },
 
   skipBtn: {
-    border: `1px solid ${C.borderMd}`,
+    border: `1.5px solid ${C.border}`,
     background: C.card,
     borderRadius: 10,
-    padding: '10px 15px',
-    color: C.sub,
+    padding: '10px 16px',
+    color: C.muted,
     cursor: 'pointer',
     fontFamily: F.body,
     fontSize: 12,
-    fontWeight: 800,
+    fontWeight: 700,
+    letterSpacing: '0.1px',
   },
 
   submitBtn: {
     border: 'none',
     borderRadius: 10,
-    padding: '10px 17px',
+    padding: '10px 20px',
     background:
       `linear-gradient(135deg, ${C.blue700}, ${C.blue500})`,
     color: '#fff',
     boxShadow:
-      '0 7px 18px rgba(26,110,255,0.22)',
+      '0 7px 20px rgba(26,110,255,0.26)',
     cursor: 'pointer',
     fontFamily: F.body,
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: 800,
+    letterSpacing: '0.15px',
+    whiteSpace: 'nowrap',
   },
 
   feedback: {
@@ -3295,32 +3844,35 @@ const S = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    padding: '13px 16px',
+    padding: '14px 16px',
     borderRadius: 14,
     border: '1px solid',
     marginBottom: 10,
+    flexWrap: 'wrap',
   },
   fbScoreLeft: {
     display: 'flex',
     alignItems: 'center',
-    gap: 11,
+    gap: 12,
+    flex: 1,
+    minWidth: 0,
   },
   fbScoreEmoji: {
-    fontSize: 24,
+    fontSize: 26,
     lineHeight: 1,
     flexShrink: 0,
   },
   fbScoreLabel: {
     fontFamily: F.display,
-    fontSize: 14,
+    fontSize: 14.5,
     fontWeight: 800,
     lineHeight: 1.2,
   },
   fbScoreVibe: {
-    fontSize: 11.5,
+    fontSize: 12,
     color: C.sub,
-    marginTop: 2,
-    lineHeight: 1.4,
+    marginTop: 3,
+    lineHeight: 1.45,
   },
   fbScoreRight: {
     display: 'flex',
@@ -3330,15 +3882,16 @@ const S = {
   },
   fbScoreNum: {
     fontFamily: F.display,
-    fontSize: 32,
+    fontSize: 'clamp(36px, 5vw, 52px)',
     fontWeight: 900,
     lineHeight: 1,
-    letterSpacing: '-1px',
+    letterSpacing: '-2px',
   },
   fbScoreOutOf: {
-    fontSize: 11,
+    fontSize: 12,
     color: C.muted,
     fontFamily: F.mono,
+    letterSpacing: '-0.5px',
   },
 
   // ── Score bar ──
@@ -3662,25 +4215,25 @@ const S = {
     width: '100%',
     marginTop: 'auto',
     border: 'none',
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 13,
+    padding: '15px 20px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     color: '#fff',
     fontFamily: F.body,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 800,
     cursor: 'pointer',
-    boxShadow:
-      '0 9px 22px rgba(26,110,255,0.24)',
+    boxShadow: '0 10px 26px rgba(26,110,255,0.26)',
+    letterSpacing: '0.1px',
   },
 
   nextBtnHint: {
-    marginTop: 8,
+    marginTop: 9,
     textAlign: 'center',
-    fontSize: 10.5,
+    fontSize: 11,
     color: C.faint,
     fontFamily: F.mono,
   },

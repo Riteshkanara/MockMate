@@ -1,24 +1,10 @@
-/**
- * MockMate Design Tokens — single source of truth
- * ─────────────────────────────────────────────────────────────────────────
- * Import ONCE, in src/index.css, above your Tailwind import:
- *
- *   @import "./styles/tokens.css";
- *   @import "tailwindcss";
- *
- * Tailwind v4 reads every --color-*, --font-*, --shadow-*, --radius-* and
- * --ease-*/--duration-* variable below and turns it into a real utility
- * class automatically. That means:
- *
- *   --color-brand-500  →  bg-brand-500, text-brand-500, border-brand-500, ring-brand-500
- *   --font-display      →  font-display
- *   --shadow-md          →  shadow-md   (overrides Tailwind's default)
- *   --radius-xl          →  rounded-xl  (overrides Tailwind's default)
- *
- * Stop writing style={{ color: '#1A6EFF' }}. Write className="text-brand-500".
- * No page ever redeclares a color, a font import, or a shadow again — if a
- * value needs to change, it changes here, once, and every page updates.
- */
+/* MockMate Design Tokens — single source of truth.
+   Import once in index.css above the tailwindcss import.
+   Tailwind v4 auto-generates utility classes from every
+   color, font, shadow, radius, and motion token below. */
+
+/* Font loading — must precede @theme */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 @theme {
   /* ── Fonts ────────────────────────────────────────────────────────────
@@ -27,9 +13,9 @@
      or fifth typeface sneaking into one page is what reads as "student
      project." Swap the family names here if you land on a different
      typographic direction — nowhere else. */
-  --font-display: 'Plus Jakarta Sans', 'Lexend', sans-serif;
-  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono:    'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  --font-display: Plus Jakarta Sans, Lexend, sans-serif;
+  --font-body:    Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:    JetBrains Mono, Fira Code, SF Mono, monospace;
 
   /* ── Base surfaces ────────────────────────────────────────────────── */
   --color-bg:          #F0F4FF;
@@ -95,7 +81,7 @@
   --color-platinum-tint: #EEF0FE;
 
   /* ── Elevation — three steps only. If a fourth shadow feels needed,
-     that's usually a sign two elements should share a level instead. ── */
+     that is usually a sign two elements should share a level instead. ── */
   --shadow-sm: 0 1px 12px rgba(26,110,255,0.07);
   --shadow-md: 0 6px 28px rgba(26,110,255,0.12);
   --shadow-lg: 0 16px 56px rgba(0,31,107,0.18);
@@ -116,11 +102,7 @@
   --duration-slow:   360ms;
 }
 
-/* ── Global resets & font loading — declared ONCE, here ────────────────
-   Every page currently re-imports these Google Fonts in its own <style>
-   tag (13+ duplicate requests). Delete every one of those and rely on
-   this single import instead. */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+/* Global resets and base styles */
 
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -132,8 +114,8 @@ code, pre, .font-mono-data { font-family: var(--font-mono); }
 ::-webkit-scrollbar-track { background: var(--color-bg); }
 ::-webkit-scrollbar-thumb { background: var(--color-border-md); border-radius: 99px; }
 
-/* Visible keyboard focus everywhere — don't remove this to "clean up" a
-   component; it's a deployment-blocker accessibility requirement. */
+/* Visible keyboard focus everywhere — dont remove this to "clean up" a
+   component; its a deployment-blocker accessibility requirement. */
 :focus-visible {
   outline: 2px solid var(--color-brand-500);
   outline-offset: 2px;

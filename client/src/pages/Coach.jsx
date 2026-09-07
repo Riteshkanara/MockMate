@@ -2,6 +2,7 @@ import {
   useEffect, useState, useRef, useMemo, useCallback, memo, Component,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import useAuth from "../hooks/useAuth";
 import {
   getAIFreeform,
   getAnalytics,
@@ -66,11 +67,25 @@ const TIER_META = {
 };
 
 // ─── Cache TTL ────────────────────────────────────────────────────────────────
+// All Coach cache keys are namespaced with a prefix so that (a) they can be
+// found/wiped in bulk, and (b) every key is scoped to the logged-in user —
+// see buildCacheKeys() below. Never read/write a bare "mm_coach_*" key
+// without the user id in it, or one user's cached AI output can leak into
+// another user's session (this previously caused the coach page to "freeze"
+// showing a different user's cached tip/plan/debrief).
+const CACHE_PREFIX = "mm_coach_";
 const CACHE_TTL = 30 * 60 * 1000;
-const CACHE_KEYS = {
-  today:   "mm_coach_today_v1",
-  weekly:  "mm_coach_weekly_v1",
-  debrief: "mm_coach_debrief_v1",
+
+// Builds cache keys scoped to a specific user. `userId` should be a stable,
+// unique identifier for the logged-in user (e.g. user._id from auth).
+const buildCacheKeys = (userId) => {
+  const uid = userId ?? "anon";
+  return {
+    today:   `${CACHE_PREFIX}today_${uid}_v1`,
+    weekly:  `${CACHE_PREFIX}weekly_${uid}_v1`,
+    debrief: `${CACHE_PREFIX}debrief_${uid}_v1`,
+    company: (companyId) => `${CACHE_PREFIX}company_${companyId}_${uid}_v1`,
+  };
 };
 
 // ─── Cache helpers ────────────────────────────────────────────────────────────
@@ -87,6 +102,25 @@ const readCache = (key) => {
 const writeCache = (key, data) => {
   try { sessionStorage.setItem(key, JSON.stringify({ ...data, ts: Date.now() })); }
   catch { /* non-fatal */ }
+};
+
+// Removes any Coach cache entries that do NOT belong to the current user.
+// Runs once per Coach mount as a safety net, so leftover cache from a
+// previous user in the same browser tab/session can never be read — even
+// if a future code change accidentally reintroduces an unscoped key.
+const purgeOtherUsersCoachCache = (userId) => {
+  try {
+    const uid = userId ?? "anon";
+    const keep = `_${uid}_v1`;
+    const toRemove = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith(CACHE_PREFIX) && !key.endsWith(keep)) {
+        toRemove.push(key);
+      }
+    }
+    toRemove.forEach((key) => sessionStorage.removeItem(key));
+  } catch { /* non-fatal */ }
 };
 
 const cacheAgeMinutes = (ts) => Math.round((Date.now() - ts) / 60000);
@@ -388,7 +422,7 @@ const TODAY_BEATS = [
   { icon: "📋", label: "HOW TO DO IT"     },
 ];
 
-const TodayCard = memo(({ analyticsData, breakdownData, blindSpots, navigate }) => {
+const TodayCard = memo(({ analyticsData, breakdownData, blindSpots, navigate, cacheKeys }) => {
   const [todayPlan, setTodayPlan] = useState("");
   const [loading, setLoading]     = useState(false);
   const [done, setDone]           = useState(false);
@@ -396,9 +430,10 @@ const TodayCard = memo(({ analyticsData, breakdownData, blindSpots, navigate }) 
   const inFlight = useRef(false);
 
   useEffect(() => {
-    const cached = readCache(CACHE_KEYS.today);
+    const cached = readCache(cacheKeys.today);
     if (cached) { setTodayPlan(cached.text); setDone(true); setCacheTs(cached.ts); }
-  }, []);
+    else { setTodayPlan(""); setDone(false); setCacheTs(null); }
+  }, [cacheKeys.today]);
 
   const generate = useCallback(async () => {
     if (!analyticsData || inFlight.current) return;
@@ -437,7 +472,7 @@ Plain text. No headers. No markdown. Speak directly to the student. Under 80 wor
       const text   = await getAIFreeform(prompt, 300);
       const result = text || "Focus on your weakest dimension with a dedicated topic session today.";
       const now    = Date.now();
-      writeCache(CACHE_KEYS.today, { text: result, ts: now });
+      writeCache(cacheKeys.today, { text: result, ts: now });
       setTodayPlan(result);
       setCacheTs(now);
     } catch {
@@ -445,7 +480,7 @@ Plain text. No headers. No markdown. Speak directly to the student. Under 80 wor
     } finally {
       setLoading(false); setDone(true); inFlight.current = false;
     }
-  }, [analyticsData, breakdownData, blindSpots]);
+  }, [analyticsData, breakdownData, blindSpots, cacheKeys.today]);
 
   const topWeakDim = useMemo(() => {
     const dims = analyticsData?.dimensionProfile ?? [];
@@ -509,7 +544,7 @@ Plain text. No headers. No markdown. Speak directly to the student. Under 80 wor
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION 3 — WEEKLY FOCUS PLAN
 // ═══════════════════════════════════════════════════════════════════════════
-const WeeklyPlan = memo(({ analyticsData, navigate }) => {
+const WeeklyPlan = memo(({ analyticsData, navigate, cacheKeys }) => {
   const [plan, setPlan]       = useState(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone]       = useState(false);
@@ -531,9 +566,10 @@ const WeeklyPlan = memo(({ analyticsData, navigate }) => {
   };
 
   useEffect(() => {
-    const cached = readCache(CACHE_KEYS.weekly);
+    const cached = readCache(cacheKeys.weekly);
     if (cached?.plan) { setPlan(cached.plan); setDone(true); setCacheTs(cached.ts); }
-  }, []);
+    else { setPlan(null); setDone(false); setCacheTs(null); }
+  }, [cacheKeys.weekly]);
 
   const generate = useCallback(async () => {
     if (!analyticsData || inFlight.current) return;
@@ -581,14 +617,14 @@ Rules: No markdown, no asterisks. Mention specific dimension names. Sound like a
         ? sections
         : [{ heading: "THIS WEEK", body: text, accent: C.cyan400 }];
       const now = Date.now();
-      writeCache(CACHE_KEYS.weekly, { plan: result, ts: now });
+      writeCache(cacheKeys.weekly, { plan: result, ts: now });
       setPlan(result); setCacheTs(now);
     } catch {
       setPlan([{ heading: "THIS WEEK", body: "Focus on your two weakest dimensions first — 2 sessions each. Save day 7 for a full mock.", accent: C.cyan400 }]);
     } finally {
       setLoading(false); setDone(true); inFlight.current = false;
     }
-  }, [analyticsData, DAY_ACCENTS]);
+  }, [analyticsData, DAY_ACCENTS, cacheKeys.weekly]);
 
   return (
     <LightCard style={{ marginBottom: 18 }}>
@@ -753,14 +789,14 @@ const VERDICT_BEATS = [
   { icon: "🔧", label: "FIX THIS FIRST" },
 ];
 
-const CompanyReadiness = memo(({ analyticsData }) => {
+const CompanyReadiness = memo(({ analyticsData, cacheKeys }) => {
   const [selected, setSelected] = useState(null);
   const [result, setResult]     = useState(null);
   const [loading, setLoading]   = useState(false);
   const [cacheTs, setCacheTs]   = useState(null);
   const inFlight = useRef(false);
 
-  const companyCacheKey = (id) => `mm_coach_company_${id}_v1`;
+  const companyCacheKey = cacheKeys.company;
 
   const dimProfile = useMemo(() => {
     const apiProfile = analyticsData?.dimensionProfile ?? [];
@@ -817,7 +853,7 @@ No headers. No markdown. Direct mentor voice. Under 100 words.`;
     } finally {
       setLoading(false); inFlight.current = false;
     }
-  }, [dimProfile]);
+  }, [dimProfile, companyCacheKey]);
 
   const verdictLevel = (pct) => {
     if (pct >= 85) return { label: "READY",      color: C.green,   bg: `${C.green}18`   };
@@ -1214,7 +1250,7 @@ Respond as coach directly to this student. Use their actual data if relevant. Be
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION 7 — SESSION DEBRIEF
 // ═══════════════════════════════════════════════════════════════════════════
-const SessionDebrief = memo(({ breakdownData, analyticsData }) => {
+const SessionDebrief = memo(({ breakdownData, analyticsData, cacheKeys }) => {
   const [debrief, setDebrief]   = useState(null);
   const [loading, setLoading]   = useState(false);
   const [done, setDone]         = useState(false);
@@ -1235,9 +1271,10 @@ const SessionDebrief = memo(({ breakdownData, analyticsData }) => {
   };
 
   useEffect(() => {
-    const cached = readCache(CACHE_KEYS.debrief);
+    const cached = readCache(cacheKeys.debrief);
     if (cached?.debrief) { setDebrief(cached.debrief); setDone(true); setCacheTs(cached.ts); }
-  }, []);
+    else { setDebrief(null); setDone(false); setCacheTs(null); }
+  }, [cacheKeys.debrief]);
 
   const generate = useCallback(async () => {
     if (!breakdownData?.questions?.length || inFlight.current) return;
@@ -1287,14 +1324,14 @@ No markdown. No asterisks. Coach talking after a session. Under 200 words.`;
       const sections = parseSections(text, DEBRIEF_ACCENTS);
       const result   = sections.length > 0 ? { sections } : { raw: text };
       const now      = Date.now();
-      writeCache(CACHE_KEYS.debrief, { debrief: result, ts: now });
+      writeCache(cacheKeys.debrief, { debrief: result, ts: now });
       setDebrief(result); setCacheTs(now);
     } catch {
       setDebrief({ raw: "Could not generate debrief. Check your connection." });
     } finally {
       setLoading(false); setDone(true); inFlight.current = false;
     }
-  }, [breakdownData, analyticsData, DEBRIEF_ACCENTS]);
+  }, [breakdownData, analyticsData, DEBRIEF_ACCENTS, cacheKeys.debrief]);
 
   if (!breakdownData?.questions?.length) return null;
 
@@ -1461,12 +1498,28 @@ const DimensionHealth = memo(({ analyticsData, navigate }) => {
 // ═══════════════════════════════════════════════════════════════════════════
 const Coach = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const userId = user?._id ?? user?.id ?? null;
+
   const [analyticsData,  setAnalyticsData]  = useState(null);
   const [breakdownData,  setBreakdownData]  = useState(null);
   const [blindSpotsData, setBlindSpotsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
   const hasFetched = useRef(false);
+
+  // All Coach AI-tip caching is scoped to the logged-in user. This must be
+  // recomputed whenever userId changes (e.g. logout → login as someone
+  // else in the same tab) so every section re-reads/writes under the new
+  // user's keys instead of the previous user's cached AI output.
+  const cacheKeys = useMemo(() => buildCacheKeys(userId), [userId]);
+
+  // Safety net: on mount (and whenever the user changes), drop any leftover
+  // Coach cache entries belonging to a different user in this browser
+  // session, so stale cross-user data can never be read.
+  useEffect(() => {
+    purgeOtherUsersCoachCache(userId);
+  }, [userId]);
 
   // ── CRITICAL: Scroll to top immediately on mount, before any child
   //    effects can fire (including CoachChat's greeting which previously
@@ -1623,10 +1676,10 @@ const Coach = () => {
         <AnimatedSection delay={80}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }} className="coach-two-col">
             <SectionErrorBoundary>
-              <TodayCard analyticsData={analyticsData} breakdownData={breakdownData} blindSpots={blindSpotsData} navigate={navigate} />
+              <TodayCard analyticsData={analyticsData} breakdownData={breakdownData} blindSpots={blindSpotsData} navigate={navigate} cacheKeys={cacheKeys} />
             </SectionErrorBoundary>
             <SectionErrorBoundary>
-              <WeeklyPlan analyticsData={analyticsData} navigate={navigate} />
+              <WeeklyPlan analyticsData={analyticsData} navigate={navigate} cacheKeys={cacheKeys} />
             </SectionErrorBoundary>
           </div>
         </AnimatedSection>
@@ -1648,14 +1701,14 @@ const Coach = () => {
         {/* Company Readiness */}
         <AnimatedSection delay={0}>
           <SectionErrorBoundary>
-            <CompanyReadiness analyticsData={analyticsData} />
+            <CompanyReadiness analyticsData={analyticsData} cacheKeys={cacheKeys} />
           </SectionErrorBoundary>
         </AnimatedSection>
 
         {/* Session Debrief */}
         <AnimatedSection delay={0}>
           <SectionErrorBoundary>
-            <SessionDebrief breakdownData={breakdownData} analyticsData={analyticsData} />
+            <SessionDebrief breakdownData={breakdownData} analyticsData={analyticsData} cacheKeys={cacheKeys} />
           </SectionErrorBoundary>
         </AnimatedSection>
 

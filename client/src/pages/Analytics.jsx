@@ -954,6 +954,10 @@ const TopicIntelligenceGrid = ({ topicData, onDrill }) => {
         @media (prefers-reduced-motion: reduce) {
           * { animation: none !important; transition: none !important; }
         }
+        @media (max-width: 640px) {
+          .tig-grid { grid-template-columns: 1fr !important; }
+          .tig-panel { position: static !important; top: auto !important; }
+        }
       `}</style>
 
       <div style={{
@@ -999,7 +1003,7 @@ const TopicIntelligenceGrid = ({ topicData, onDrill }) => {
         </div>
 
         {/* Two-column layout: grid + panel */}
-        <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 240px' : '1fr', gap: 20, alignItems: 'start' }}>
+        <div className="tig-grid" style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 240px' : '1fr', gap: 20, alignItems: 'start' }}>
 
           {/* Hex terrain */}
           <div style={{ minWidth: 0 }}>
@@ -1025,7 +1029,7 @@ const TopicIntelligenceGrid = ({ topicData, onDrill }) => {
 
           {/* Detail panel */}
           {selected && (
-            <div ref={panelRef} style={{ position: 'sticky', top: 100 }}>
+            <div ref={panelRef} className="tig-panel" style={{ position: 'sticky', top: 100 }}>
               <DetailPanel
                 data={selected}
                 onClose={() => setSelected(null)}
@@ -2242,6 +2246,7 @@ if (loading) return (
         @media (max-width: 480px) {
           .an-page  { padding: 16px 12px 60px !important; }
           .an-stats { grid-template-columns: 1fr !important; }
+          .an-tiers { grid-template-columns: 1fr !important; }
           .an-dims  { grid-template-columns: 1fr !important; }
           .an-milestone-grid { grid-template-columns: 1fr !important; }
         }

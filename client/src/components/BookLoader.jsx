@@ -1,136 +1,44 @@
 import React from 'react';
+import styled from 'styled-components';
 
 const BookLoader = () => {
   return (
-    <>
-      <style>{`
-        .mm-loader {
-          --background: linear-gradient(135deg, #23C4F8, #275EFE);
-          --shadow: rgba(39, 94, 254, 0.28);
-          --text: #6C7486;
-          --page: rgba(255, 255, 255, 0.36);
-          --page-fold: rgba(255, 255, 255, 0.52);
-          --duration: 3s;
-          width: 200px;
-          height: 140px;
-          position: relative;
-        }
-        .mm-loader:before, .mm-loader:after {
-          --r: -6deg;
-          content: "";
-          position: absolute;
-          bottom: 8px;
-          width: 120px;
-          top: 80%;
-          box-shadow: 0 16px 12px var(--shadow);
-          transform: rotate(var(--r));
-        }
-        .mm-loader:before { left: 4px; }
-        .mm-loader:after { --r: 6deg; right: 4px; }
-        .mm-loader-inner {
-          width: 100%;
-          height: 100%;
-          border-radius: 13px;
-          position: relative;
-          z-index: 1;
-          perspective: 600px;
-          box-shadow: 0 4px 6px var(--shadow);
-          background-image: var(--background);
-        }
-        .mm-loader-inner ul {
-          margin: 0;
-          padding: 0;
-          list-style: none;
-          position: relative;
-        }
-        .mm-loader-inner ul li {
-          position: absolute;
-          top: 10px;
-          left: 10px;
-          transform-origin: 100% 50%;
-          color: var(--page);
-          opacity: 0;
-          transform: rotateY(180deg);
-          animation: var(--duration) ease infinite;
-        }
-        .mm-loader-inner ul li svg {
-          width: 90px;
-          height: 120px;
-          display: block;
-        }
-        .mm-loader-inner ul li:first-child {
-          transform: rotateY(0deg);
-          opacity: 1;
-        }
-        .mm-loader-inner ul li:last-child {
-          opacity: 1;
-        }
-        .mm-loader-inner ul li:nth-child(2) {
-          color: var(--page-fold);
-          animation-name: mm-page-2;
-        }
-        .mm-loader-inner ul li:nth-child(3) {
-          color: var(--page-fold);
-          animation-name: mm-page-3;
-        }
-        .mm-loader-inner ul li:nth-child(4) {
-          color: var(--page-fold);
-          animation-name: mm-page-4;
-        }
-        .mm-loader-inner ul li:nth-child(5) {
-          color: var(--page-fold);
-          animation-name: mm-page-5;
-        }
-        .mm-loader-text {
-          display: block;
-          text-align: center;
-          margin-top: 28px;
-          color: var(--text);
-          font-family: 'Inter', sans-serif;
-          font-size: 13px;
-        }
-        @keyframes mm-page-2 {
-          0%   { transform: rotateY(180deg); opacity: 0; }
-          20%  { opacity: 1; }
-          35%, 100% { opacity: 0; }
-          50%, 100% { transform: rotateY(0deg); }
-        }
-        @keyframes mm-page-3 {
-          15%  { transform: rotateY(180deg); opacity: 0; }
-          35%  { opacity: 1; }
-          50%, 100% { opacity: 0; }
-          65%, 100% { transform: rotateY(0deg); }
-        }
-        @keyframes mm-page-4 {
-          30%  { transform: rotateY(180deg); opacity: 0; }
-          50%  { opacity: 1; }
-          65%, 100% { opacity: 0; }
-          80%, 100% { transform: rotateY(0deg); }
-        }
-        @keyframes mm-page-5 {
-          45%  { transform: rotateY(180deg); opacity: 0; }
-          65%  { opacity: 1; }
-          80%, 100% { opacity: 0; }
-          95%, 100% { transform: rotateY(0deg); }
-        }
-      `}</style>
-
-      <div className="mm-loader">
-        <div className="mm-loader-inner">
-          <ul>
-            {[...Array(6)].map((_, i) => (
-              <li key={i}>
-                <svg fill="currentColor" viewBox="0 0 90 120">
-                  <path d="M90,0 L90,120 L11,120 C4.92486775,120 0,115.075132 0,109 L0,11 C0,4.92486775 4.92486775,0 11,0 L90,0 Z M71.5,81 L18.5,81 C17.1192881,81 16,82.1192881 16,83.5 C16,84.8254834 17.0315359,85.9100387 18.3356243,85.9946823 L18.5,86 L71.5,86 C72.8807119,86 74,84.8807119 74,83.5 C74,82.1745166 72.9684641,81.0899613 71.6643757,81.0053177 L71.5,81 Z M71.5,57 L18.5,57 C17.1192881,57 16,58.1192881 16,59.5 C16,60.8254834 17.0315359,61.9100387 18.3356243,61.9946823 L18.5,62 L71.5,62 C72.8807119,62 74,60.8807119 74,59.5 C74,58.1192881 72.8807119,57 71.5,57 Z M71.5,33 L18.5,33 C17.1192881,33 16,34.1192881 16,35.5 C16,36.8254834 17.0315359,37.9100387 18.3356243,37.9946823 L18.5,38 L71.5,38 C72.8807119,38 74,36.8807119 74,35.5 C74,34.1192881 72.8807119,33 71.5,33 Z" />
-                </svg>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <span className="mm-loader-text">Building your readiness profile…</span>
-      </div>
-    </>
+    <StyledWrapper>
+      <div className="loader" />
+    </StyledWrapper>
   );
-};
+}
+
+const StyledWrapper = styled.div`
+  .loader {
+    border: 4px solid rgba(0, 0, 0, .1);
+    border-left-color: transparent;
+    border-radius: 50%;
+  }
+
+  .loader {
+    border: 4px solid rgba(0, 0, 0, .1);
+    border-left-color: transparent;
+    width: 36px;
+    height: 36px;
+  }
+
+  .loader {
+    border: 4px solid rgba(0, 0, 0, .1);
+    border-left-color: transparent;
+    width: 36px;
+    height: 36px;
+    animation: spin89345 1s linear infinite;
+  }
+
+  @keyframes spin89345 {
+    0% {
+      transform: rotate(0deg);
+    }
+
+    100% {
+      transform: rotate(360deg);
+    }
+  }`;
 
 export default BookLoader;

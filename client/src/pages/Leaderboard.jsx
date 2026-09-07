@@ -1,13 +1,30 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import API_BASE from '../config/api.js';
+import { AuthContext, authFetch } from '../context/AuthContext.jsx';
+import { getAnalytics, getPerformanceAnalytics } from '../Services/interviewService.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE — LEADERBOARD v3 (Readiness Terminal v6 design language, premium pass)
-// Hero updated to match Coach's CommandHeader — brighter cyan/blue gradient,
-// glow orbs, uppercase mono eyebrow, glowing progress bar, gradient CTA.
+// Hero rebuilt to share Coach's CommandHeader grammar exactly (dark panel,
+// glow orbs, mono eyebrow, chip row, F.display headline) while keeping
+// leaderboard-native content: rank, rival gap, and weakest-skill callout.
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Best-effort bridge from the 6 scoring dimensions (server-side,
+// scoringModel.js DIMENSIONS) to the 8 fixed topics Interview.jsx's
+// topic-mode dropdown accepts (Interview.jsx TOPICS). These are NOT a 1:1
+// mapping — only 'design' has an exact match — so this is a heuristic
+// "closest available practice topic," not an authoritative one.
+const DIMENSION_TO_TOPIC = {
+  technical: 'DSA',
+  problemSolving: 'DSA',
+  communication: 'HR',
+  behavioral: 'HR',
+  design: 'System Design',
+  fundamentals: 'OS',
+};
 
 const C = {
   paper:        '#F6F8FD',
@@ -114,6 +131,84 @@ const percentileOf = (rank, total) => {
 const isPlatinumBand = (rank, total) => {
   const pct = percentileOf(rank, total);
   return pct !== null && pct >= 95;
+};
+
+// ─── Shared with Coach's CommandHeader — same markup, same values ───────────
+// (Coach.jsx doesn't export these, so they're mirrored here exactly rather
+// than cross-importing a component from another page module.)
+
+const Eyebrow = ({ children, color = C.cyanBright }) => (
+  <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: '1.8px', color, marginBottom: 6, textTransform: 'uppercase' }}>{children}</div>
+);
+
+const HeroChip = ({ label, value, color }) => (
+  <div style={S.heroChip}>
+    <div style={S.heroChipLabel}>{label}</div>
+    <div style={{ ...S.heroChipVal, color }}>{value}</div>
+  </div>
+);
+
+// ─── Climb track — the hero's centerpiece ───────────────────────────────────
+// A leaderboard's one honest question is "where do I stand, and against whom."
+// Instead of a stat card, this renders an actual track: your position, your
+// next rival, and the leader, placed by score along a line. Real data only —
+// no decorative markers.
+
+const ClimbTrack = ({ you, rival, leader, mounted, maxScore }) => {
+  const scale = Math.max(maxScore, you?.score ?? 0, 1);
+  const pos = (s) => Math.min(96, Math.max(4, (s / scale) * 100));
+
+  // Adjacent leaderboard entries are often close in score (that's what makes
+  // them adjacent), so raw positions collide constantly. Sort by position and
+  // push overlapping labels apart while keeping their left-to-right order.
+  const MIN_GAP = 13;
+  const nodes = [
+    you && { key: 'you', ...you, pos: pos(you.score) },
+    rival && { key: 'rival', ...rival, pos: pos(rival.score) },
+    leader && { key: 'leader', ...leader, pos: pos(leader.score) },
+  ]
+    .filter(Boolean)
+    .sort((a, b) => a.pos - b.pos);
+
+  for (let i = 1; i < nodes.length; i++) {
+    if (nodes[i].pos - nodes[i - 1].pos < MIN_GAP) {
+      nodes[i].pos = nodes[i - 1].pos + MIN_GAP;
+    }
+  }
+  // If pushing right ran past the track edge, pull the whole cluster back.
+  const overflow = nodes.length ? Math.max(0, nodes[nodes.length - 1].pos - 96) : 0;
+  if (overflow > 0) nodes.forEach((n) => { n.pos -= overflow; });
+
+  const youRawPos = pos(you?.score ?? 0);
+
+  return (
+    <div style={S.track}>
+      <div style={S.trackLine}>
+        <div style={{ ...S.trackFill, width: mounted ? `${youRawPos}%` : '0%' }} />
+        {nodes.map((n) => (
+          <div
+            key={n.key}
+            className={n.key === 'you' ? 'mm-track-you' : undefined}
+            style={{
+              ...S.trackNode,
+              left: `${n.pos}%`,
+              opacity: mounted ? 1 : 0,
+              transform: `translate(-50%, -50%) scale(${mounted ? 1 : 0.4})`,
+              transitionDelay: n.key === 'you' ? '0.5s' : n.key === 'rival' ? '0.62s' : '0.74s',
+            }}
+          >
+            <div style={{ ...S.trackDot, ...(n.key === 'you' ? S.trackDotYou : n.key === 'leader' ? S.trackDotLeader : S.trackDotRival) }} />
+            <div style={S.trackTag}>
+              <div style={{ ...S.trackTagLabel, color: n.key === 'you' ? C.cyanBright : 'rgba(255,255,255,0.55)' }}>
+                {n.key === 'you' ? 'you' : n.label}
+              </div>
+              <div style={S.trackTagScore}>{n.score}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 // ─── Animated counter ───────────────────────────────────────────────────────
@@ -417,11 +512,226 @@ const PodiumBlock = ({ entry, place, delay, isPlatinum, mounted }) => {
   );
 };
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Rival card — the one person between you and moving up ──────────────────
+// Uses the same DarkCard grammar as Coach's section cards (dark panel,
+// accent border-left, mono eyebrow). Data comes from aheadOfUser which the
+// leaderboard API already returns — no extra fetch needed.
+
+const RivalCard = ({ rival, gapToNext, userRank, navigate, weakestDim, weakestPracticeTopic, mounted }) => {
+  if (!rival || gapToNext == null) return null;
+  const rivalScore = Number(rival.avgScore) || 0;
+  const urgency = gapToNext <= 2 ? 'critical' : gapToNext <= 5 ? 'close' : 'chase';
+  const urgencyMeta = {
+    critical: { label: '🔴 SO CLOSE',   color: C.red,       msg: `Just ${gapToNext} pt${gapToNext !== 1 ? 's' : ''} — one good session takes this.` },
+    close:    { label: '🟠 WITHIN REACH', color: C.amber,    msg: `${gapToNext} points. A focused topic session will do it.` },
+    chase:    { label: '🔵 THE HUNT',    color: C.blueBright, msg: `${gapToNext} points back. Fix ${weakestDim?.label || 'your weakest skill'} first.` },
+  }[urgency];
+
+  return (
+    <div style={S.rivalCard}>
+      <div style={{ ...S.rivalAccentBar, background: urgencyMeta.color }} />
+      <div style={S.rivalInner}>
+        <div style={S.rivalLeft}>
+          <Eyebrow color={urgencyMeta.color}>{urgencyMeta.label}</Eyebrow>
+          <div style={S.rivalName}>
+            <div style={{ ...S.rivalAvatar, background: `linear-gradient(135deg, ${urgencyMeta.color}33, ${urgencyMeta.color}99)` }}>
+              {rival.name?.charAt(0).toUpperCase() || '?'}
+            </div>
+            <div>
+              <div style={S.rivalNameText}>{rival.name || `Rank #${userRank - 1}`}</div>
+              <div style={S.rivalNameSub}>{rival.college || 'ranked just above you'}</div>
+            </div>
+          </div>
+          <p style={S.rivalMsg}>{urgencyMeta.msg}</p>
+        </div>
+        <div style={S.rivalRight}>
+          <div style={S.rivalScoreBlock}>
+            <div style={S.rivalScoreLabel}>THEIR SCORE</div>
+            <div style={{ ...S.rivalScoreVal, color: urgencyMeta.color }}>{rivalScore}/100</div>
+          </div>
+          <div style={S.rivalGapBlock}>
+            <div style={S.rivalScoreLabel}>GAP</div>
+            <div style={{ ...S.rivalScoreVal, color: '#fff', fontSize: 20 }}>−{gapToNext}</div>
+          </div>
+          <button
+            style={{ ...S.btnPrimary, fontSize: 12, padding: '9px 16px', marginTop: 8, background: `linear-gradient(135deg, ${urgencyMeta.color}, ${urgencyMeta.color}CC)` }}
+            onClick={() => weakestPracticeTopic
+              ? navigate('/interview', { state: { mode: 'topic', topic: weakestPracticeTopic } })
+              : navigate('/interview')}
+          >
+            🎯 Close the gap
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Dimension radar (SVG hexagon) ──────────────────────────────────────────
+// The one visualisation Coach doesn't have. Shows all 6 scored dimensions as
+// a filled polygon so you can see your shape at a glance — where you're
+// round vs where you have a dent. Pure SVG, no library needed.
+
+const RADAR_DIMS = [
+  { key: 'technical',      label: 'Technical',    short: 'Tech'   },
+  { key: 'problemSolving', label: 'Problem Solv.', short: 'PS'    },
+  { key: 'communication',  label: 'Comm.',         short: 'Comm'  },
+  { key: 'behavioral',     label: 'Behavioral',    short: 'Beh'   },
+  { key: 'design',         label: 'System Design', short: 'Design'},
+  { key: 'fundamentals',   label: 'Fundamentals',  short: 'Fund'  },
+];
+
+const DimensionRadar = ({ dimensionProfile, mounted }) => {
+  if (!dimensionProfile || dimensionProfile.length === 0) return null;
+
+  const cx = 130, cy = 130, r = 90;
+  const n = RADAR_DIMS.length;
+  const angleStep = (2 * Math.PI) / n;
+  const startAngle = -Math.PI / 2;
+
+  const getPoint = (i, pct) => {
+    const angle = startAngle + i * angleStep;
+    return {
+      x: cx + pct * r * Math.cos(angle),
+      y: cy + pct * r * Math.sin(angle),
+    };
+  };
+
+  const getLabelPoint = (i) => {
+    const angle = startAngle + i * angleStep;
+    const dist = r + 22;
+    return { x: cx + dist * Math.cos(angle), y: cy + dist * Math.sin(angle) };
+  };
+
+  // Map fetched profile onto our fixed dim order so missing dims default to 0
+  const scores = RADAR_DIMS.map(d => {
+    const found = dimensionProfile.find(p => p.key === d.key);
+    return found?.hasData ? ((found.score || 0) / 100) : 0;
+  });
+
+  const polygon = scores
+    .map((s, i) => {
+      const pt = getPoint(i, mounted ? s : 0);
+      return `${pt.x},${pt.y}`;
+    })
+    .join(' ');
+
+  // Grid rings at 25 / 50 / 75 / 100%
+  const rings = [0.25, 0.5, 0.75, 1.0];
+
+  return (
+    <div style={S.radarCard}>
+      <div style={S.radarHeader}>
+        <div>
+          <Eyebrow color={C.signal}>🕸 SKILL RADAR</Eyebrow>
+          <h2 style={S.cardH2Light}>Your dimension shape</h2>
+          <p style={S.radarSub}>Where you're round vs where you have a dent. Untested dimensions show as 0.</p>
+        </div>
+      </div>
+      <div style={S.radarBody}>
+        <svg width={260} height={260} viewBox="0 0 260 260" style={{ overflow: 'visible', flexShrink: 0 }}>
+          {/* Grid rings */}
+          {rings.map((ring, ri) => {
+            const pts = RADAR_DIMS.map((_, i) => {
+              const pt = getPoint(i, ring);
+              return `${pt.x},${pt.y}`;
+            }).join(' ');
+            return (
+              <polygon key={ri} points={pts}
+                fill="none"
+                stroke={ri === 3 ? 'rgba(0,87,232,0.25)' : 'rgba(0,87,232,0.1)'}
+                strokeWidth={ri === 3 ? 1.5 : 1}
+              />
+            );
+          })}
+
+          {/* Spokes */}
+          {RADAR_DIMS.map((_, i) => {
+            const outer = getPoint(i, 1);
+            return (
+              <line key={i} x1={cx} y1={cy} x2={outer.x} y2={outer.y}
+                stroke="rgba(0,87,232,0.12)" strokeWidth={1} />
+            );
+          })}
+
+          {/* Filled polygon — animates in via CSS transition on the points */}
+          <polygon
+            points={polygon}
+            fill="rgba(0,87,232,0.15)"
+            stroke={C.signal}
+            strokeWidth={2}
+            strokeLinejoin="round"
+            style={{ transition: 'all 1.1s cubic-bezier(.16,1,.3,1) 0.3s' }}
+          />
+
+          {/* Dots at each vertex */}
+          {scores.map((s, i) => {
+            const pt = getPoint(i, mounted ? s : 0);
+            const col = scoreColor(s * 100);
+            return (
+              <circle key={i} cx={pt.x} cy={pt.y} r={4}
+                fill={col} stroke="#fff" strokeWidth={1.5}
+                style={{ transition: `cx 1.1s cubic-bezier(.16,1,.3,1) 0.3s, cy 1.1s cubic-bezier(.16,1,.3,1) 0.3s` }}
+              />
+            );
+          })}
+
+          {/* Labels */}
+          {RADAR_DIMS.map((d, i) => {
+            const lp = getLabelPoint(i);
+            const score = dimensionProfile.find(p => p.key === d.key);
+            const hasData = score?.hasData;
+            return (
+              <text key={i} x={lp.x} y={lp.y}
+                textAnchor="middle" dominantBaseline="middle"
+                fontSize={9} fontFamily="'JetBrains Mono', monospace"
+                fontWeight={700}
+                fill={hasData ? C.ink : C.muted}
+              >
+                {d.short}
+              </text>
+            );
+          })}
+
+          {/* Ring labels */}
+          {[25, 50, 75].map(v => {
+            const pt = getPoint(0, v / 100);
+            return (
+              <text key={v} x={pt.x + 4} y={pt.y}
+                fontSize={7} fontFamily="'JetBrains Mono', monospace"
+                fill="rgba(65,84,123,0.5)" dominantBaseline="middle">
+                {v}
+              </text>
+            );
+          })}
+        </svg>
+
+        {/* Legend */}
+        <div style={S.radarLegend}>
+          {RADAR_DIMS.map((d) => {
+            const found = dimensionProfile.find(p => p.key === d.key);
+            const s = found?.hasData ? (found.score || 0) : null;
+            const col = s != null ? scoreColor(s) : C.muted;
+            return (
+              <div key={d.key} style={S.radarLegendRow}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0 }} />
+                <div style={{ flex: 1, fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.ink }}>{d.label}</div>
+                <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: col }}>
+                  {s != null ? `${s}/100` : '—'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const Leaderboard = () => {
   const navigate = useNavigate();
   const heroRef = useRef(null);
+  const { setUser } = useContext(AuthContext);
 
   const EMPTY_BOARD = useMemo(() => ({ global: [], college: [], globalTotal: 0, collegeTotal: 0 }), []);
 
@@ -442,6 +752,9 @@ const Leaderboard = () => {
   const [mounted, setMounted] = useState(false);
   const [podiumMounted, setPodiumMounted] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  const [weakestDim, setWeakestDim] = useState(null);
+  const [dimensionProfile, setDimensionProfile] = useState([]);
+  const [userIRS, setUserIRS] = useState(null);
 
   // ─── Load leaderboard ──────────────────────────────────────────────────────
 
@@ -452,12 +765,15 @@ const Leaderboard = () => {
 
     const load = async () => {
       try {
-        const res = await fetch(`${API_BASE}/leaderboard`, {
-          method: 'GET',
-          credentials: 'include',
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache' },
-        });
+        const res = await authFetch(
+          `${API_BASE}/leaderboard`,
+          {
+            method: 'GET',
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' },
+          },
+          () => setUser(null) // access token + refresh both expired → treat as logged out
+        );
         const data = await res.json();
 
         if (!res.ok) {
@@ -495,6 +811,40 @@ const Leaderboard = () => {
     const t = setTimeout(() => setPodiumMounted(true), 60);
     return () => clearTimeout(t);
   }, [activePeriod, activeTab]);
+
+  // ─── Weakest-dimension + IRS — parallel, non-blocking ──────────────────
+  // Both fire at mount. Either can fail silently; neither blocks the board.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [analyticsResult, perfResult] = await Promise.allSettled([
+        getAnalytics(),
+        getPerformanceAnalytics(),
+      ]);
+
+      if (cancelled) return;
+
+      if (analyticsResult.status === 'fulfilled') {
+        const dims = analyticsResult.value?.dimensionProfile || [];
+        setDimensionProfile(dims);
+        const tested = dims.filter((d) => d.hasData);
+        if (tested.length) {
+          const weakest = [...tested].sort((a, b) => (a.score ?? 0) - (b.score ?? 0))[0];
+          if (weakest) setWeakestDim(weakest);
+        }
+      } else {
+        console.error('Analytics fetch failed (non-blocking):', analyticsResult.reason);
+      }
+
+      if (perfResult.status === 'fulfilled') {
+        const irs = perfResult.value?.irs ?? null;
+        if (irs !== null) setUserIRS(Math.round(Number(irs)));
+      } else {
+        console.error('Performance fetch failed (non-blocking):', perfResult.reason);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // ─── Sticky rank bar on scroll ───────────────────────────────────────────
 
@@ -550,6 +900,12 @@ const Leaderboard = () => {
     ? Math.round((Number(aheadOfUser.avgScore) - Number(currentUserScore)) * 10) / 10
     : null;
 
+  // Streak lives on the ranked-list entry (rawData), not on the separate
+  // currentUser summary object returned by the API — that object only
+  // carries rank/score/aheadOfUser, no streak field.
+  const currentUserRow = rawData.find((e) => e.isCurrentUser) || null;
+  const currentUserStreak = Number(currentUserRow?.streak) || 0;
+
   const rankLabel = activeTab === 'global' ? 'global rank' : 'college rank';
   const periodLabel = activePeriod === 'weekly' ? 'this week' : 'overall';
 
@@ -563,15 +919,34 @@ const Leaderboard = () => {
           ? `you're #1 ${periodLabel} — defend it.`
           : `you're #${userRank} ${activeTab === 'global' ? 'globally' : 'in your college'} ${periodLabel}.`;
 
+  // Priority for what the hero pushes: 1) fix the weakest tested skill,
+  // 2) close the gap on the rival just ahead, 3) generic percentile line.
+  // Only overrides the sub-line for ranked users with real rank-climbing
+  // room — someone already #1 shouldn't be told to "fix" anything.
+  const weakestPracticeTopic = weakestDim ? (DIMENSION_TO_TOPIC[weakestDim.key] || null) : null;
+
+  // Progress toward catching the rival — shown as a narrow urgency bar
+  // below the CTAs. Capped at 99% so it never falsely reads "done".
+  // Uses the leader's score as the full-range ceiling so the bar is
+  // calibrated against the real top, not just the next rank.
+  const urgencyPct = (() => {
+    if (currentUserScore == null || !top3[0]?.avgScore) return null;
+    const leader = Number(top3[0].avgScore);
+    if (leader <= 0) return null;
+    return Math.min(99, Math.round((Number(currentUserScore) / leader) * 100));
+  })();
+
   const heroSub = !currentUser
     ? 'Complete an interview and MockMate ranks you against every student practicing right now.'
     : userRank == null
       ? (activePeriod === 'weekly'
           ? 'Complete an interview this week to appear on the board.'
           : 'Complete an interview to appear on the overall leaderboard.')
-      : gapToNext && gapToNext > 0
-        ? `${gapToNext} points from #${userRank - 1}${aheadOfUser?.name ? ` (${aheadOfUser.name.split(' ')[0]})` : ''}.`
-        : `Top ${100 - (userPercentile ?? 0)}% of ${totalCount} tracked students.`;
+      : weakestDim && userRank !== 1
+        ? `${weakestDim.label} is your lowest score (${weakestDim.score}/100)${gapToNext && gapToNext > 0 ? ` — closing it is worth more than the ${gapToNext} pts separating you from #${userRank - 1}` : ' — sharpen it to protect your rank'}.`
+        : gapToNext && gapToNext > 0
+          ? `${gapToNext} points from #${userRank - 1}${aheadOfUser?.name ? ` (${aheadOfUser.name.split(' ')[0]})` : ''}.`
+          : `Top ${100 - (userPercentile ?? 0)}% of ${totalCount} tracked students.`;
 
   const sessionId = useMemo(() => Math.random().toString(36).slice(2, 8).toUpperCase(), []);
   const clockNow = new Date();
@@ -624,23 +999,37 @@ const Leaderboard = () => {
     <>
       <GlobalStyles />
 
-      {/* ── Sticky condensed rank bar ── */}
+      {/* ── Sticky condensed rank bar — follows you through the table ── */}
       {showSticky && currentUser && (
         <div style={S.stickyBar} className="lb-sticky">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
             <span style={S.liveDot} />
-            <span style={{ ...S.mono, color: 'rgba(255,255,255,0.5)' }}>leaderboard</span>
-            <span style={{ color: 'rgba(255,255,255,0.25)' }}>·</span>
-            <span style={{ fontFamily: F.body, fontSize: 12.5, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {currentUser.name}
+            <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {currentUser.name?.split(' ')[0] || currentUser.name}
             </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-            {userRank ? (
+            {userRank && (
               <>
-                <span style={{ fontFamily: F.display, fontSize: 18, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>#{userRank}</span>
-                <span style={{ fontFamily: F.mono, fontSize: 10, color: C.pulse }}>{currentUserScore}/100</span>
+                <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
+                <span style={{ fontFamily: F.display, fontSize: 16, fontWeight: 900, color: '#fff' }}>#{userRank}</span>
+                <span style={{ fontFamily: F.mono, fontSize: 10, color: C.cyanBright }}>{currentUserScore}/100</span>
               </>
+            )}
+            {weakestDim && (
+              <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, color: C.orange, background: 'rgba(194,83,12,0.18)', border: '1px solid rgba(194,83,12,0.3)', padding: '2px 8px', borderRadius: 6, whiteSpace: 'nowrap' }} className="mm-sticky-weak">
+                ⚠ {weakestDim.label}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {userRank ? (
+              <button
+                style={{ border: 'none', borderRadius: 8, background: `linear-gradient(135deg, ${C.blueBright}, ${C.cyanBright})`, color: '#fff', padding: '7px 14px', fontSize: 11.5, fontWeight: 800, fontFamily: F.body, cursor: 'pointer' }}
+                onClick={() => weakestPracticeTopic
+                  ? navigate('/interview', { state: { mode: 'topic', topic: weakestPracticeTopic } })
+                  : navigate('/interview')}
+              >
+                🎯 {weakestDim ? `Sharpen ${weakestDim.label}` : 'Practice'}
+              </button>
             ) : (
               <span style={{ fontFamily: F.mono, fontSize: 10.5, color: 'rgba(255,255,255,0.5)' }}>unranked</span>
             )}
@@ -666,57 +1055,124 @@ const Leaderboard = () => {
             </div>
           </div>
 
-          {/* ── HERO ──────────────────────────────────────────────────── */}
+          {/* ═══════════════════════════════════════════════════════════════
+               HERO — mirrors Coach's CommandHeader pixel-for-pixel
+               (same gradient, glow orbs, border, chip row, F.display head,
+               button styles) with leaderboard-native content.
+               New: IRS chip from /performance, urgency bar, streak note.
+          ════════════════════════════════════════════════════════════════ */}
           <section ref={heroRef} style={S.hero} className="mm-hero">
+            {/* Glow orbs — exact positions from CommandHeader */}
             <div style={S.heroGlowTop} />
             <div style={S.heroGlowBottom} />
-            <div style={S.heroNoise} />
-            <div style={S.heroGrid} className="mm-hero-grid">
 
-              <div style={S.irsBlock}>
-                <div style={S.irsLabel}>{rankLabel}</div>
-                <div style={S.irsNum} className="mm-irs-num">
-                  {userRank ?? '—'}
-                  {userRank && <span style={S.irsMax}>#</span>}
-                </div>
-                {userRank && (
-                  <>
-                    <div style={{
-                      ...S.tierPill,
-                      background: userIsPlatinum ? 'rgba(140,150,240,0.16)' : 'rgba(255,255,255,0.08)',
-                      color: userIsPlatinum ? '#C7CDFB' : '#fff',
-                      border: `1px solid ${userIsPlatinum ? 'rgba(140,150,240,0.4)' : 'rgba(255,255,255,0.18)'}`,
-                    }}>
-                      {userIsPlatinum ? '♛ platinum band' : `top ${100 - (userPercentile ?? 0)}%`}
-                    </div>
-                    <div style={S.irsBar}>
-                      <div style={{ ...S.irsBarFill, width: mounted ? `${userPercentile ?? 0}%` : '0%' }} />
-                    </div>
-                    <div style={S.irsGapText}>{totalCount} tracked {activeTab === 'global' ? 'students' : 'in your college'}</div>
-                  </>
-                )}
-              </div>
-
-              <div style={S.verdictBlock}>
-                <div style={S.heroKicker}>{periodLabel} · {activeTab}</div>
+            {/* Top row: headline block + chip row */}
+            <div style={S.heroTopRow} className="mm-hero-top">
+              <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+                <Eyebrow>⚡ rank command center</Eyebrow>
                 <h1 style={S.heroH1}>
-                  {currentUser?.name?.split(' ')[0] ? `${currentUser.name.split(' ')[0]}, ` : ''}{heroVerdict}
+                  {currentUser?.name?.split(' ')[0]
+                    ? `${currentUser.name.split(' ')[0]}, ${heroVerdict}`
+                    : heroVerdict}
                 </h1>
                 <p style={S.heroSub}>{heroSub}</p>
+              </div>
 
-                <div style={S.heroActions}>
-                  <button style={S.btnPrimary} className="mm-btn-primary" onClick={() => navigate('/interview')}>
-                    Practice now
-                  </button>
-                  {userRank != null && (
-                    <button style={S.btnGhost} className="mm-btn-ghost" onClick={() => navigate('/analytics')}>
-                      Your analytics
-                    </button>
-                  )}
-                </div>
+              {/* Chip row — 5 chips matching Coach's IRS/Tier/Sessions/Last/Trend */}
+              <div style={S.heroChipRow} className="mm-irs-num mm-hero-chips">
+                {userRank != null ? (
+                  <HeroChip label="RANK" value={`#${userRank}`} color="#fff" />
+                ) : null}
+                {currentUserScore != null ? (
+                  <HeroChip label="AVG SCORE" value={`${currentUserScore}/100`} color={scoreColor(currentUserScore)} />
+                ) : null}
+                {userIRS != null ? (
+                  <div className="mm-hero-chip-irs">
+                    <HeroChip label="IRS" value={`${userIRS}/100`} color={scoreColor(userIRS)} />
+                  </div>
+                ) : null}
+                {gapToNext != null && gapToNext > 0 ? (
+                  <div className="mm-hero-chip-gap">
+                    <HeroChip label="GAP TO #1" value={`${gapToNext} pts`} color={C.cyanBright} />
+                  </div>
+                ) : null}
+                {weakestDim ? (
+                  <div className="mm-hero-chip-weakest">
+                    <HeroChip label="WEAKEST" value={`${weakestDim.icon || '⚠'} ${weakestDim.label}`} color={C.orange} />
+                  </div>
+                ) : null}
               </div>
             </div>
+
+            {/* Climb track — leaderboard-unique, sits between chips and CTAs */}
+            {userRank != null && currentUserScore != null && (
+              <div className="mm-track-wrap">
+                <ClimbTrack
+                  mounted={mounted}
+                  maxScore={maxScore}
+                  you={{ score: currentUserScore, label: currentUser?.name?.split(' ')[0] || 'You' }}
+                  rival={aheadOfUser
+                    ? { score: Number(aheadOfUser.avgScore), label: aheadOfUser.name?.split(' ')[0] || `#${userRank - 1}` }
+                    : null}
+                  leader={top3[0]?.avgScore != null
+                    ? { score: Number(top3[0].avgScore), label: top3[0].name?.split(' ')[0] || '#1' }
+                    : null}
+                />
+              </div>
+            )}
+
+            {/* Urgency bar — progress toward the leader's score */}
+            {urgencyPct != null && (
+              <div style={S.urgencyWrap}>
+                <div style={S.urgencyTrack}>
+                  <div style={{ ...S.urgencyFill, width: mounted ? `${urgencyPct}%` : '0%' }} />
+                  <div style={{ ...S.urgencyThumb, left: mounted ? `${urgencyPct}%` : '0%' }} />
+                </div>
+                <div style={S.urgencyLabels}>
+                  <span style={S.urgencyLabelL} className="mm-urgency-label">you · {currentUserScore}/100</span>
+                  <span style={S.urgencyLabelR} className="mm-urgency-label">🥇 leader · {top3[0]?.avgScore}/100</span>
+                </div>
+              </div>
+            )}
+
+            {/* CTAs — exact Coach button styling */}
+            <div style={S.heroActions} className="mm-hero-actions">
+              <button
+                style={S.btnPrimary}
+                className="mm-btn-primary"
+                onClick={() => weakestPracticeTopic
+                  ? navigate('/interview', { state: { mode: 'topic', topic: weakestPracticeTopic } })
+                  : navigate('/interview')}
+              >
+                🎯 {weakestDim ? `Sharpen ${weakestDim.label}` : 'Start Interview'}
+              </button>
+              <button
+                style={S.btnGhost}
+                className="mm-btn-ghost"
+                onClick={() => navigate('/analytics')}
+              >
+                📊 Full Analytics
+              </button>
+              {currentUserStreak >= 2 && (
+                <div style={S.heroStreakChip} className="mm-hero-streak">
+                  🔥 {currentUserStreak}-day streak
+                </div>
+              )}
+            </div>
           </section>
+
+          {/* ── RIVAL CARD — the one person between you and moving up ─── */}
+          {currentUser && aheadOfUser && userRank != null && userRank > 1 && (
+            <RivalCard
+              rival={aheadOfUser}
+              gapToNext={gapToNext}
+              userRank={userRank}
+              navigate={navigate}
+              weakestDim={weakestDim}
+              weakestPracticeTopic={weakestPracticeTopic}
+              mounted={mounted}
+            />
+          )}
 
           {/* ── DEDICATED TOGGLE SECTION ─────────────────────────────────── */}
           <section style={S.toggleCard} className="lb-toggle-card">
@@ -752,6 +1208,11 @@ const Leaderboard = () => {
               />
             </div>
           </section>
+
+          {/* ── DIMENSION RADAR — skill shape at a glance ─────────────── */}
+          {dimensionProfile.length > 0 && (
+            <DimensionRadar dimensionProfile={dimensionProfile} mounted={mounted} />
+          )}
 
           {/* ── PREMIUM PODIUM ─────────────────────────────────────────── */}
           {top3.length >= 1 && (
@@ -836,6 +1297,7 @@ const Leaderboard = () => {
                 <div style={{ flex: 1, ...S.colLabel }}>NAME</div>
                 <div style={{ width: 110, ...S.colLabel }} className="lb-college-col">COLLEGE</div>
                 <div style={{ width: 68, textAlign: 'center', ...S.colLabel }} className="lb-efficiency-col">EFF.</div>
+                <div style={{ width: 56, textAlign: 'center', ...S.colLabel }} className="lb-trend-col">TREND</div>
                 <div style={{ width: 90, textAlign: 'right', ...S.colLabel }}>SCORE</div>
                 <div style={{ width: 18 }} />
               </div>
@@ -936,6 +1398,22 @@ const Leaderboard = () => {
                         <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, color: eff >= 70 ? C.green : eff >= 50 ? C.signal : C.muted }}>
                           {eff}
                         </span>
+                      </div>
+
+                      {/* Inline sparkline — last 5 scores as tiny bars */}
+                      <div style={{ width: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="lb-trend-col">
+                        {trendPoints && trendPoints.length > 1 ? (
+                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 22 }}>
+                            {trendPoints.slice(-5).map((p, i) => {
+                              const h = Math.max(3, Math.round((p / 100) * 22));
+                              return (
+                                <div key={i} style={{ width: 5, height: h, borderRadius: 2, background: scoreColor(p), opacity: 0.7 + i * 0.06 }} />
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <span style={{ fontFamily: F.mono, fontSize: 9, color: C.faint }}>—</span>
+                        )}
                       </div>
 
                       <div style={{ width: 90, textAlign: 'right', flexShrink: 0 }}>
@@ -1085,6 +1563,8 @@ const GlobalStyles = () => (
     @keyframes livePulse    { 0%,100% { opacity:1; } 50% { opacity:0.28; } }
     @keyframes heroSweep    { 0% { transform:translateX(-30%); } 100% { transform:translateX(130%); } }
     @keyframes scaleIn      { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:scale(1); } }
+    @keyframes trackPulse   { 0%, 100% { box-shadow: 0 0 0 4px rgba(0,200,240,0.18); } 50% { box-shadow: 0 0 0 7px rgba(0,200,240,0.08); } }
+    .mm-track-you > div:first-child { animation: trackPulse 2.4s ease-in-out infinite 1.4s; }
     @keyframes lbAvatarFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
     @keyframes lbPlinthSweep { 0% { left: -40%; } 100% { left: 130%; } }
     @keyframes lbGlowPulse  { 0%,100% { opacity: 0.5; } 50% { opacity: 0.9; } }
@@ -1138,19 +1618,40 @@ const GlobalStyles = () => (
     }
 
     @media (max-width: 1020px) {
-      .mm-hero-grid { grid-template-columns: 1fr !important; gap: 32px !important; }
       .mm-stat-rail { grid-template-columns: repeat(2, 1fr) !important; }
       .lb-toggle-grid { grid-template-columns: 1fr !important; }
     }
+    @media (max-width: 640px) {
+      .mm-hero-top   { flex-direction: column !important; align-items: flex-start !important; }
+      .mm-hero-chips { margin-top: 16px !important; }
+    }
     @media (max-width: 700px) {
-      .lb-college-col, .lb-efficiency-col { display: none !important; }
+      .lb-college-col, .lb-efficiency-col, .lb-trend-col { display: none !important; }
     }
     @media (max-width: 760px) {
       .mm-strip-r { display: none !important; }
     }
     @media (max-width: 480px) {
+      /* Page */
       .mm-page { padding: 14px 12px 60px !important; }
       .mm-stat-rail { grid-template-columns: 1fr !important; }
+
+      /* Hero panel — tighter padding on small screens */
+      .mm-hero { padding: 20px 18px 20px !important; border-radius: 18px !important; }
+
+      /* Chip row — hide IRS and GAP on very small screens (3 chips is enough).
+         RANK + AVG SCORE + WEAKEST are highest signal, IRS and GAP are secondary. */
+      .mm-hero-chip-irs   { display: none !important; }
+      .mm-hero-chip-gap   { display: none !important; }
+
+      /* Weakest chip value — long labels like "System Design" need to truncate */
+      .mm-hero-chip-weakest .chip-val { font-size: 11px !important; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      /* Actions — stack buttons full-width */
+      .mm-hero-actions { flex-direction: column !important; align-items: stretch !important; }
+      .mm-hero-actions > button { text-align: center !important; justify-content: center !important; }
+      .mm-hero-streak { width: 100% !important; justify-content: center !important; }
+      .mm-sticky-weak { display: none !important; }
     }
   `}</style>
 );
@@ -1181,36 +1682,61 @@ const S = {
     boxShadow: '0 6px 20px rgba(4,12,34,0.28)', animation: 'lbFadeUp 0.22s ease',
   },
 
-  // ── HERO — aligned to Coach's CommandHeader (dark panel, glow orbs, display type) ──
+  // ── HERO — matches Coach's CommandHeader panel exactly (same gradient
+  // stops, same glow orbs, same border/shadow) so the two "welcome back"
+  // surfaces read as one product. Content below is leaderboard-native. ──
   hero: {
     position: 'relative', overflow: 'hidden',
-    padding: '36px 32px', marginBottom: 18, borderRadius: 24,
+    padding: '28px 32px', marginBottom: 18, borderRadius: 24,
     background: `linear-gradient(135deg, ${C.heroDark0} 0%, ${C.heroBlue900} 40%, #001A3A 70%, ${C.heroDark0} 100%)`,
     border: '1px solid rgba(0,200,240,0.18)',
     boxShadow: '0 24px 72px rgba(0,20,80,0.55)',
   },
-  heroNoise: { position: 'absolute', top: 0, left: 0, width: '30%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.025), transparent)', animation: 'heroSweep 11s linear infinite' },
-  heroGlowTop: { position: 'absolute', top: -60, right: -60, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,200,240,0.08) 0%, transparent 70%)', pointerEvents: 'none' },
+  heroGlowTop:    { position: 'absolute', top: -60, right: -60, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,200,240,0.08) 0%, transparent 70%)', pointerEvents: 'none' },
   heroGlowBottom: { position: 'absolute', bottom: -40, left: 80, width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(26,110,255,0.07) 0%, transparent 70%)', pointerEvents: 'none' },
-  heroGrid: { position: 'relative', display: 'grid', gridTemplateColumns: '280px 1fr', gap: 44, alignItems: 'center' },
+  heroTopRow:     { position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' },
+  heroH1:         { margin: '8px 0 6px', fontFamily: F.display, fontSize: 'clamp(22px, 3.5vw, 34px)', fontWeight: 900, color: '#fff', lineHeight: 1.1, letterSpacing: '-0.5px', maxWidth: 560 },
+  heroSub:        { margin: 0, fontFamily: F.body, fontSize: 13, lineHeight: 1.65, color: 'rgba(255,255,255,0.52)', maxWidth: 480 },
+  heroActions:    { position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 22 },
 
-  irsBlock: {},
-  irsLabel: { fontFamily: F.mono, fontSize: 10, fontWeight: 500, letterSpacing: '1px', color: 'rgba(255,255,255,0.42)', marginBottom: 12, textTransform: 'lowercase' },
-  irsNum: { fontFamily: F.display, fontSize: 78, fontWeight: 800, lineHeight: 0.95, color: '#fff', letterSpacing: '-2px' },
-  irsMax: { fontSize: 22, fontWeight: 500, color: 'rgba(255,255,255,0.36)', letterSpacing: 0, fontFamily: F.body },
-  tierPill: { display: 'inline-flex', alignItems: 'center', marginTop: 16, padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700, letterSpacing: '0.1px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' },
-  irsBar: { position: 'relative', height: 4, marginTop: 18, borderRadius: 999, background: 'rgba(255,255,255,0.1)', overflow: 'visible' },
-  irsBarFill: { height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${C.blueBright}, ${C.cyanBright})`, transition: 'width 1.3s cubic-bezier(.16,1,.3,1)', boxShadow: `0 0 12px ${C.cyanBright}80` },
-  irsGapText: { marginTop: 10, fontFamily: F.mono, fontSize: 10.5, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.2px' },
+  // Chip row — exact pixel values from Coach CommandHeader .map() block
+  heroChipRow:   { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' },
+  heroChip:      { padding: '10px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'center', minWidth: 78 },
+  heroChipLabel: { fontFamily: F.mono, fontSize: 7.5, letterSpacing: '0.8px', color: 'rgba(255,255,255,0.3)', marginBottom: 4 },
+  heroChipVal:   { fontFamily: F.display, fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap' },
 
-  verdictBlock: {},
+  // Streak chip beside CTAs — subdued so it doesn't compete with primary action
+  heroStreakChip: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 13px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', fontFamily: F.body, fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.65)' },
+
+  // Urgency bar — single glance answer to "how far am I from the leader?"
+  urgencyWrap:   { position: 'relative', marginTop: 26 },
+  urgencyTrack:  { position: 'relative', height: 3, borderRadius: 3, background: 'rgba(255,255,255,0.10)', overflow: 'visible' },
+  urgencyFill:   { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 3, background: `linear-gradient(90deg, ${C.blueBright}, ${C.cyanBright})`, transition: 'width 1.4s cubic-bezier(.16,1,.3,1) 0.4s', boxShadow: `0 0 8px ${C.cyanBright}55` },
+  urgencyThumb:  { position: 'absolute', top: '50%', width: 8, height: 8, borderRadius: '50%', background: C.cyanBright, border: '2px solid rgba(10,22,40,0.9)', transform: 'translate(-50%,-50%)', transition: 'left 1.4s cubic-bezier(.16,1,.3,1) 0.4s', boxShadow: `0 0 6px ${C.cyanBright}` },
+  urgencyLabels: { display: 'flex', justifyContent: 'space-between', marginTop: 8 },
+  urgencyLabelL: { fontFamily: F.mono, fontSize: 9.5, color: C.cyanBright, fontWeight: 700 },
+  urgencyLabelR: { fontFamily: F.mono, fontSize: 9.5, color: 'rgba(255,255,255,0.35)', fontWeight: 600 },
+
+  // Climb track — leaderboard-specific (not in Coach), between chips and CTAs
+  track:          { position: 'relative', marginTop: 28 },
+  trackLine:      { position: 'relative', height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.12)' },
+  trackFill:      { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 2, background: `linear-gradient(90deg, rgba(0,200,240,0.5), ${C.cyanBright})`, transition: 'width 1.1s cubic-bezier(.16,1,.3,1) 0.3s' },
+  trackNode:      { position: 'absolute', top: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, transition: 'opacity 0.5s ease, transform 0.5s cubic-bezier(.34,1.4,.64,1)' },
+  trackDot:       { width: 12, height: 12, borderRadius: '50%', border: '2px solid', boxSizing: 'border-box' },
+  trackDotYou:    { background: C.cyanBright, borderColor: C.cyanBright, boxShadow: `0 0 0 4px rgba(0,200,240,0.18)` },
+  trackDotRival:  { background: '#0A1F3E', borderColor: 'rgba(255,255,255,0.55)' },
+  trackDotLeader: { background: C.gold, borderColor: C.gold },
+  trackTag:       { textAlign: 'center', whiteSpace: 'nowrap' },
+  trackTagLabel:  { fontFamily: F.body, fontSize: 11, fontWeight: 700, marginBottom: 2 },
+  trackTagScore:  { fontFamily: F.mono, fontSize: 10, color: 'rgba(255,255,255,0.45)' },
+
+  // Bottom CTA banner only — not the hero
+  heroNoise:  { position: 'absolute', top: 0, left: 0, width: '30%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.025), transparent)', animation: 'heroSweep 11s linear infinite' },
   heroKicker: { fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: '1.8px', color: C.cyanBright, textTransform: 'uppercase' },
-  heroH1: { margin: '10px 0 0', fontFamily: F.display, fontSize: 'clamp(22px, 3vw, 30px)', fontWeight: 900, color: '#fff', lineHeight: 1.18, letterSpacing: '-0.5px', maxWidth: 620 },
-  heroSub: { margin: '15px 0 0', fontSize: 13.5, lineHeight: 1.75, color: 'rgba(255,255,255,0.62)', maxWidth: 560, fontWeight: 400 },
-  heroActions: { display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 26 },
 
-  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 11, background: `linear-gradient(135deg, ${C.blueBright}, ${C.cyanBright})`, color: '#fff', padding: '13px 22px', fontSize: 13.5, fontWeight: 800, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 4px 18px rgba(0,173,224,0.35)`, letterSpacing: '-0.1px' },
-  btnGhost: { border: '1px solid rgba(255,255,255,0.16)', borderRadius: 11, background: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(8px)', color: '#fff', padding: '13px 20px', fontSize: 13, fontWeight: 500, fontFamily: F.body, cursor: 'pointer' },
+  // Buttons — exact Coach CommandHeader values
+  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 8, border: 'none', borderRadius: 12, background: `linear-gradient(135deg, ${C.blueBright}, ${C.cyanBright})`, color: '#fff', padding: '11px 22px', fontSize: 13, fontWeight: 800, fontFamily: F.body, cursor: 'pointer', boxShadow: '0 4px 18px rgba(0,173,224,0.35)' },
+  btnGhost: { border: '1px solid rgba(255,255,255,0.18)', borderRadius: 12, background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.8)', padding: '11px 22px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer' },
   btnGhostLight: { border: `1px solid ${C.lineMd}`, borderRadius: 11, background: C.surface, color: C.signalDeep, padding: '11px 20px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', marginTop: 6 },
   btnBlue: { border: 'none', borderRadius: 11, background: `linear-gradient(135deg, ${C.signalDeep}, ${C.signal})`, color: '#fff', padding: '12px 24px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 4px 14px rgba(0,87,232,0.28)`, textAlign: 'center', letterSpacing: '-0.1px', marginTop: 8 },
   btnBannerCta: { flexShrink: 0, border: 'none', borderRadius: 12, background: '#fff', color: C.signalDeep, padding: '14px 24px', fontSize: 13.5, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.18)', position: 'relative' },
@@ -1256,6 +1782,31 @@ const S = {
   railValRow: { display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 8 },
   railVal: { fontFamily: F.display, fontWeight: 800, lineHeight: 1, letterSpacing: '-0.4px' },
   railSub: { marginTop: 6, fontSize: 10.5, color: C.muted },
+
+  // ── Rival card — DarkCard grammar, accent border-left ──────────────────
+  rivalCard: { position: 'relative', marginBottom: 18, borderRadius: 18, background: `linear-gradient(145deg, ${C.heroDark2} 0%, ${C.heroDark1} 100%)`, border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 32px rgba(0,20,80,0.28)', overflow: 'hidden' },
+  rivalAccentBar: { position: 'absolute', top: 0, left: 0, width: 4, height: '100%', borderRadius: '18px 0 0 18px' },
+  rivalInner: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, padding: '22px 24px 22px 28px', flexWrap: 'wrap' },
+  rivalLeft: { flex: '1 1 220px', minWidth: 0 },
+  rivalRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 },
+  rivalName: { display: 'flex', alignItems: 'center', gap: 12, margin: '8px 0 6px' },
+  rivalAvatar: { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: F.serif, fontSize: 16, fontWeight: 600, color: '#fff', flexShrink: 0 },
+  rivalNameText: { fontFamily: F.display, fontSize: 15, fontWeight: 800, color: '#fff' },
+  rivalNameSub: { fontFamily: F.mono, fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 },
+  rivalMsg: { margin: 0, fontFamily: F.body, fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 },
+  rivalScoreBlock: { textAlign: 'right' },
+  rivalGapBlock: { textAlign: 'right' },
+  rivalScoreLabel: { fontFamily: F.mono, fontSize: 7.5, letterSpacing: '0.8px', color: 'rgba(255,255,255,0.3)', marginBottom: 2 },
+  rivalScoreVal: { fontFamily: F.display, fontSize: 24, fontWeight: 900, lineHeight: 1, letterSpacing: '-0.5px' },
+
+  // ── Dimension radar ─────────────────────────────────────────────────────
+  radarCard: { background: C.surface, border: `1px solid ${C.line}`, borderRadius: 20, padding: '22px 24px', boxShadow: C.shadow, marginBottom: 18 },
+  radarHeader: { marginBottom: 18 },
+  cardH2Light: { margin: '0 0 2px', fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.ink, letterSpacing: '-0.2px' },
+  radarSub: { margin: 0, fontFamily: F.body, fontSize: 12, color: C.muted, lineHeight: 1.5 },
+  radarBody: { display: 'flex', alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' },
+  radarLegend: { flex: '1 1 160px', display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 },
+  radarLegendRow: { display: 'flex', alignItems: 'center', gap: 10 },
 
   ctaBanner: {
     position: 'relative', overflow: 'hidden',

@@ -1030,7 +1030,7 @@ No headers. No markdown. Direct mentor voice. Under 100 words.`;
 // ═══════════════════════════════════════════════════════════════════════════
 const CHAT_COOLDOWN_MS = 4000;
 
-const CoachChat = memo(({ analyticsData, breakdownData, blindSpots }) => {
+const CoachChat = memo(({ analyticsData, breakdownData, blindSpots, userId }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput]       = useState("");
   const [loading, setLoading]   = useState(false);
@@ -1044,6 +1044,20 @@ const CoachChat = memo(({ analyticsData, breakdownData, blindSpots }) => {
   const greetingDone   = useRef(false);
   // ── NEW: track whether a user message triggered the latest scroll
   const shouldScroll   = useRef(false);
+  // Tracks which user the chat state (messages/greeting) currently belongs
+  // to, so switching accounts without unmounting Coach clears the previous
+  // user's conversation instead of leaving it on screen under a new user.
+  const chatForUserId  = useRef(userId);
+
+  useEffect(() => {
+    if (chatForUserId.current === userId) return;
+    chatForUserId.current = userId;
+    setMessages([]);
+    setContextReady(false);
+    greetingDone.current = false;
+    shouldScroll.current = false;
+    inFlight.current = false;
+  }, [userId]);
 
   const coachContext = useMemo(() => {
     if (!analyticsData) return "";
@@ -1506,7 +1520,12 @@ const Coach = () => {
   const [blindSpotsData, setBlindSpotsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
-  const hasFetched = useRef(false);
+  // Tracks the userId this data was last fetched for (not just "has
+  // fetched at all"), so switching accounts without unmounting Coach
+  // (e.g. logout → login as someone else in the same tab/session)
+  // triggers a re-fetch instead of leaving the previous user's
+  // analytics/breakdown/blind-spots data on screen.
+  const fetchedForUserId = useRef(undefined);
 
   // All Coach AI-tip caching is scoped to the logged-in user. This must be
   // recomputed whenever userId changes (e.g. logout → login as someone
@@ -1527,8 +1546,16 @@ const Coach = () => {
  
 
   useEffect(() => {
-    if (hasFetched.current) return;
-    hasFetched.current = true;
+    if (fetchedForUserId.current === userId) return;
+    fetchedForUserId.current = userId;
+
+    // Reset previous user's data immediately so nothing stale renders
+    // while the new user's data is loading.
+    setAnalyticsData(null);
+    setBreakdownData(null);
+    setBlindSpotsData(null);
+    setError("");
+    setLoading(true);
 
     (async () => {
       try {
@@ -1548,7 +1575,7 @@ const Coach = () => {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [userId]);
 
   const { irs, tier, totalSessions, scoreTrend, lastScore, slope } = useMemo(() => {
     const st = analyticsData?.scoreTrend ?? [];
@@ -1715,7 +1742,7 @@ const Coach = () => {
         {/* Coach Chat */}
         <AnimatedSection delay={0}>
           <SectionErrorBoundary>
-            <CoachChat analyticsData={analyticsData} breakdownData={breakdownData} blindSpots={blindSpotsData} />
+            <CoachChat analyticsData={analyticsData} breakdownData={breakdownData} blindSpots={blindSpotsData} userId={userId} />
           </SectionErrorBoundary>
         </AnimatedSection>
 

@@ -1,5 +1,6 @@
 /**
  * MockMate Design Tokens — JS mirror
+ * Single source of truth for all color/font/shadow tokens across the app.
  * Use ONLY where CSS variables can't reach: recharts, <canvas>, dynamic SVG fills.
  * Everywhere else, use Tailwind classes from token.css.
  * Keep in sync with token.css — same names, same values.
@@ -84,30 +85,46 @@ export const RADIUS = { sm: 8, md: 12, lg: 16, xl: 24 };
 
 export const CHART_SERIES = [C.brand500, C.accent400, C.success, C.warning, C.platinum, C.danger];
 
-// Legacy aliases — so existing code importing C.blue500 etc. doesn't break
+// ─── Aliases ──────────────────────────────────────────────────────────────────
+// Legacy names used across pages/components — all resolve to canonical values
+// above so there is exactly one place to change any color in the whole app.
 Object.assign(C, {
-  card:  C.surface,
+  // Surface aliases
+  card:      C.surface,
+  cardAlt:   C.surfaceAlt,
+  bgSubtle:  C.surfaceAlt,
+  bgSection: C.bg,
+
+  // Text aliases
   sub:   C.textSub,
   muted: C.textMuted,
   faint: C.textFaint,
 
+  // Border aliases
+  borderStr: C.borderStrong,  // shorthand used by several pages
+
+  // Brand blue aliases (legacy "blue" naming)
   blue50:  C.brand50,  blue100: C.brand100, blue200: C.brand200,
   blue300: C.brand300, blue400: C.brand400, blue500: C.brand500,
   blue600: C.brand600, blue700: C.brand700, blue800: '#002E96', blue900: C.brand900,
 
+  // Accent cyan aliases
   cyan300: C.accent300, cyan400: C.accent400, cyan500: C.accent500, cyan600: C.accent600,
+  cyanTint: C.accentTint,
 
+  // Semantic color aliases
   green:  C.success,
   amber:  C.warning,
   orange: C.caution,
   red:    C.danger,
-  redTint: C.dangerTint,
 
   greenTint:  C.successTint,
+  greenGlow:  C.successGlow,
   amberTint:  C.warningTint,
   orangeTint: C.cautionTint,
-  cyanTint:   C.accentTint,
+  redTint:    C.dangerTint,
 
+  // Shadow shortcuts (string form, for inline styles)
   shadow:   '0 1px 12px rgba(26,110,255,0.07)',
   shadowMd: '0 6px 28px rgba(26,110,255,0.12)',
   shadowLg: '0 16px 56px rgba(0,31,107,0.18)',

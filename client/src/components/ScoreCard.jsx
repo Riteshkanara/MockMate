@@ -27,6 +27,7 @@ import { toPng } from 'html-to-image';
 import toast from 'react-hot-toast';
 import useAuth from '../hooks/useAuth';
 import { getMyProfile } from '../Services/profileServices';
+import { C as TOKENS, F as TOKENS_F } from '../styles/token';
 
 // ─── Font injection (runs once) ──────────────────────────────────────────────
 // Same three families Result.jsx already loads for this exact page —
@@ -42,45 +43,45 @@ if (typeof document !== 'undefined' && !document.getElementById('mm9-fonts')) {
   document.head.appendChild(link);
 }
 
-// ─── Design tokens — Result.jsx's own "v5 instrument-panel palette" ─────────
-// Copied verbatim from Result.jsx's local C/F objects (not tokens.js — that
-// file is a separate, lighter-blue system that this specific page doesn't
-// actually use). Keeping this card on Result.jsx's real values means the
-// two can never drift out of sync with each other again.
+// ─── Design tokens — mapped onto the shared token file ──────────────────────
+// This card keeps its own "instrument-panel" names (ink/signal/pulse/navy)
+// because they read better in this file's dense inline styles, but every
+// value below is pulled from styles/token.js instead of a separate hardcoded
+// copy — so this card can't quietly drift from the rest of the app again.
 const C = {
-  paper:        '#F6F8FD',
-  surface:      '#FFFFFF',
-  surfaceSunk:  '#F3F6FD',
-  ink:          '#0A1628',
-  ink2:         '#111F38',
-  sub:          '#41547B',
-  muted:        '#7C8CAD',
-  faint:        '#AFBCDA',
-  line:         '#DEE6F7',
-  lineMd:       '#C4D2F0',
-  signal:       '#0057E8',
-  signalDeep:   '#0041B8',
-  signalTint:   '#EAF1FF',
-  signalSoft:   '#4D8FFF',
-  pulse:        '#00C2E8',
-  pulseDeep:    '#0093C4',
-  pulseTint:    '#E6FAFF',
-  green:        '#0E8F63',
-  greenTint:    '#E9F9F1',
-  amber:        '#B4790A',
-  amberTint:    '#FFF6E5',
-  red:          '#C22626',
-  redTint:      '#FDECEC',
-  navy1: '#060E20', navy2: '#0A1A38', navy3: '#0C2242', navy4: '#0E3358',
-  shadow:   '0 1px 2px rgba(10,22,40,0.04), 0 8px 24px rgba(15,45,120,0.06)',
+  paper:        TOKENS.surfaceAlt,
+  surface:      TOKENS.surface,
+  surfaceSunk:  TOKENS.surfaceAlt,
+  ink:          TOKENS.text,
+  ink2:         TOKENS.text,
+  sub:          TOKENS.textSub,
+  muted:        TOKENS.textMuted,
+  faint:        TOKENS.textFaint,
+  line:         TOKENS.border,
+  lineMd:       TOKENS.borderMd,
+  signal:       TOKENS.brand600,
+  signalDeep:   TOKENS.brand700,
+  signalTint:   TOKENS.brand50,
+  signalSoft:   TOKENS.brand400,
+  pulse:        TOKENS.accent400,
+  pulseDeep:    TOKENS.accent600,
+  pulseTint:    TOKENS.accentTint,
+  green:        TOKENS.success,
+  greenTint:    TOKENS.successTint,
+  amber:        TOKENS.warning,
+  amberTint:    TOKENS.warningTint,
+  red:          TOKENS.danger,
+  redTint:      TOKENS.dangerTint,
+  navy1: '#060E20', navy2: '#0A1A38', navy3: '#0C2242', navy4: '#0E3358', // dark gradient stops unique to this card
+  shadow:   TOKENS.shadow,
   shadowMd: '0 4px 14px rgba(15,45,120,0.08)',
-  shadowLg: '0 24px 64px rgba(6,16,50,0.28)',
+  shadowLg: TOKENS.shadowLg,
 };
 
 const F = {
-  serif: "'Fraunces', 'Georgia', serif",
-  body:  "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono:  "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+  serif: "'Fraunces', 'Georgia', serif", // unique to this card's report look
+  body:  TOKENS_F.body,
+  mono:  TOKENS_F.mono,
 };
 
 const CARD_W = 420;

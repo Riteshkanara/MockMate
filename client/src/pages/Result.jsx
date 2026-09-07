@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef, Component } from "re
 import { useLocation, useNavigate } from "react-router-dom";
 import ScoreCard from "../components/ScoreCard";
 import { retryQuestion } from "../Services/interviewService";
-import { C, F } from "../styles/tokens";
+import { C, F } from "../styles/token";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE — RESULT PAGE v10
@@ -33,15 +33,13 @@ import { C, F } from "../styles/tokens";
 //    is a communication/structuring problem.
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ─── Local additions not in the shared token file ──────────────────────────
-// Note: Dashboard.jsx/Coach.jsx reference `cardAlt` throughout their local
-// styles, but it isn't actually defined in styles/tokens.js — that key
-// resolves to undefined there too. We alias it here to the real token
-// (surfaceAlt) rather than reproduce the gap; worth fixing at the source.
+// styles/token.js is now the single shared source (cardAlt included), so
+// this is just a short local alias — kept so the many `cardAlt` references
+// below don't need a mechanical rename.
 const X = {
   dark0: "#080F1E",
 };
-const cardAlt = C.surfaceAlt || C.card;
+const cardAlt = C.cardAlt;
 
 // ─── Pure helpers ───────────────────────────────────────────────────────────
 const clamp = (v, min = 0, max = 100) =>

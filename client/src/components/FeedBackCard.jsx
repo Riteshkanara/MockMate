@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { C, F } from '../styles/token';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FeedbackCard — Blueprint Blue diagnostic readout
@@ -10,58 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 // product is built around.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const C = {
-  bg:        '#FFFFFF',
-  bgSubtle:  '#F8FAFF',
-  bgSection: '#F0F4FF',
-  card:      '#FFFFFF',
-  cardAlt:   '#F8FAFF',
 
-  text:      '#0A1628',
-  sub:       '#3D5280',
-  muted:     '#7A8BAF',
-  faint:     '#A8B8D4',
-
-  border:    '#DDE5F7',
-  borderMd:  '#B8CAF0',
-  borderStr: '#7FA3E8',
-
-  blue50:    '#EBF2FF',
-  blue100:   '#C7DAFF',
-  blue200:   '#9DBFFF',
-  blue400:   '#4D8FFF',
-  blue500:   '#1A6EFF',
-  blue600:   '#0057E8',
-  blue700:   '#0044C4',
-  blue900:   '#001F6B',
-
-  cyan400:   '#00C8F0',
-  cyan500:   '#00ADE0',
-  cyan600:   '#0093C4',
-  cyanTint:  '#E6F9FF',
-
-  green:     '#059669',
-  greenTint: '#ECFDF5',
-  greenGlow: 'rgba(5,150,105,0.18)',
-
-  amber:     '#D97706',
-  amberTint: '#FFFBEB',
-  orange:    '#EA580C',
-  orangeTint:'#FFF7ED',
-
-  red:       '#DC2626',
-  redTint:   '#FEF2F2',
-
-  shadow:    '0 1px 12px rgba(26,110,255,0.07)',
-  shadowMd:  '0 6px 28px rgba(26,110,255,0.12)',
-  shadowLg:  '0 16px 56px rgba(0,31,107,0.18)',
-};
-
-const F = {
-  display: "'Plus Jakarta Sans', 'Lexend', sans-serif",
-  body:    "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
-};
 
 const scoreColor = (s) =>
   s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.orange;

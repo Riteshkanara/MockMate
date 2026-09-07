@@ -13,7 +13,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import BookLoader from "../components/BookLoader";
 import { getAIFreeform, getAnalytics, getLastSessionBreakdown, getBlindSpots, getSessionWarmup } from "../Services/interviewService";
-import { C as CT, F } from '../styles/tokens';
+import { C as CT, F } from '../styles/token';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE ANALYTICS — READINESS INTELLIGENCE v5

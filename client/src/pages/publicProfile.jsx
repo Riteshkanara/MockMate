@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getPublicProfile } from '../Services/profileServices';
-import { C, F } from '../styles/tokens';
+import { C, F } from '../styles/token';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC PROFILE — /p/:slug

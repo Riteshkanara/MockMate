@@ -4,50 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import API_BASE from '../config/api.js';
 import Button from '../components/Button';
+import { C, F } from '../styles/token';
+
+
 
 const GOOGLE_AUTH_URL = `${API_BASE}/auth/google`;
-
-// ─── Design tokens — exact mirror of Dashboard v4 + Analytics ───────────────
-const C = {
-  bg:        '#F0F4FF',
-  bgDeep:    '#E8EEFF',
-  card:      '#FFFFFF',
-  cardAlt:   '#F8FAFF',
-  text:      '#0A1628',
-  sub:       '#3D5280',
-  muted:     '#7A8BAF',
-  faint:     '#A8B8D4',
-  border:    '#DDE5F7',
-  borderMd:  '#B8CAF0',
-  borderStr: '#7FA3E8',
-  blue50:    '#EBF2FF',
-  blue100:   '#C7DAFF',
-  blue200:   '#9DBFFF',
-  blue400:   '#4D8FFF',
-  blue500:   '#1A6EFF',
-  blue600:   '#0057E8',
-  blue700:   '#0044C4',
-  blue900:   '#001F6B',
-  cyan400:   '#00C8F0',
-  cyan500:   '#00ADE0',
-  cyan600:   '#0093C4',
-  cyanTint:  '#E6F9FF',
-  green:     '#059669',
-  greenTint: '#ECFDF5',
-  amber:     '#D97706',
-  amberTint: '#FFFBEB',
-  orange:    '#EA580C',
-  red:       '#DC2626',
-  shadow:    '0 1px 12px rgba(26,110,255,0.07)',
-  shadowMd:  '0 6px 28px rgba(26,110,255,0.12)',
-  shadowLg:  '0 16px 56px rgba(0,31,107,0.20)',
-};
-
-const F = {
-  display: "'Plus Jakarta Sans', sans-serif",
-  body:    "'Inter', -apple-system, sans-serif",
-  mono:    "'JetBrains Mono', 'SF Mono', monospace",
-};
 
 // ─── Package tiers ────────────────────────────────────────────────────────────
 const TIERS = [

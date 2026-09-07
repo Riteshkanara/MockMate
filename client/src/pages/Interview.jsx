@@ -15,7 +15,7 @@ import {
 import useAuth from '../hooks/useAuth';
 import { useInterview } from '../hooks/useInterview';
 import InterviewLoader from '../components/InterviewLoader';
-import { C as CT, F } from '../styles/tokens';
+import { C as CT, F } from '../styles/token';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE — INTERVIEW v5

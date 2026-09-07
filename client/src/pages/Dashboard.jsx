@@ -6,7 +6,7 @@ import { getAICoach, getAIFreeform, getPerformanceAnalytics, startInterview, fix
 import { getShareLink } from '../Services/profileServices';
 import PageLoader from '../components/PageLoader';
 import Button from '../components/Button';
-import { C, F } from '../styles/tokens';
+import { C, F } from '../styles/token';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOCKMATE — READINESS TERMINAL v7

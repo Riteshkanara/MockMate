@@ -133,3 +133,59 @@ code, pre, .font-mono-data { font-family: var(--font-mono); }
 
 @keyframes mm-live-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.8); } }
 @keyframes mm-fade-up    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── UX upgrade additions (v9-final) ─────────────────────────────────────── */
+
+/* Card hover lift — GPU composited, no layout thrash */
+.mm-card-hover {
+  transition:
+    transform 0.22s cubic-bezier(0.22,1,0.36,1),
+    box-shadow 0.22s cubic-bezier(0.22,1,0.36,1),
+    border-color 0.22s cubic-bezier(0.22,1,0.36,1);
+  will-change: transform;
+}
+.mm-card-hover:hover  { transform: translateY(-3px); }
+.mm-card-hover:active { transform: translateY(-1px) scale(.996); transition-duration: 0.08s; }
+
+/* Score pop (used by ConfettiScore + Result page) */
+@keyframes mm-score-pop {
+  0%   { transform: scale(0.8); opacity: 0; }
+  60%  { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.mm-score-pop { animation: mm-score-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+/* Ripple keyframe */
+@keyframes mm-ripple { from{transform:scale(0);opacity:.55} to{transform:scale(1);opacity:0} }
+
+/* Skeleton shimmer */
+@keyframes mm-shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+.mm-skeleton {
+  background: linear-gradient(90deg,
+    var(--color-bg-deep) 25%,
+    var(--color-border)  50%,
+    var(--color-bg-deep) 75%
+  );
+  background-size: 400px 100%;
+  animation: mm-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Stagger fade-up list */
+@keyframes mm-fade-up { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+.mm-stagger > * { animation: mm-fade-up 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.mm-stagger > *:nth-child(1) { animation-delay:  0ms; }
+.mm-stagger > *:nth-child(2) { animation-delay: 55ms; }
+.mm-stagger > *:nth-child(3) { animation-delay:110ms; }
+.mm-stagger > *:nth-child(4) { animation-delay:165ms; }
+.mm-stagger > *:nth-child(5) { animation-delay:220ms; }
+.mm-stagger > *:nth-child(6) { animation-delay:275ms; }
+
+/* GPU hint */
+.mm-animated { will-change:transform,opacity; backface-visibility:hidden; transform:translateZ(0); }
+
+/* Better scroll offset for sticky navbar */
+html { scroll-padding-top: 100px; }
+
+/* Custom scrollbar refinement */
+* { scrollbar-width: thin; scrollbar-color: var(--color-border-md) transparent; }

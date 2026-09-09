@@ -1,12 +1,10 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import API_BASE from '../config/api.js';
 import Button from '../components/Button';
 import { C, F } from '../styles/token';
-
-
 
 const GOOGLE_AUTH_URL = `${API_BASE}/auth/google`;
 
@@ -64,66 +62,12 @@ const SESSIONS = [
 
 // ─── AI Evaluation pipeline steps ────────────────────────────────────────────
 const EVAL_PIPELINE = [
-  {
-    step: '01',
-    title: 'Question Generation',
-    icon: '⚡',
-    color: C.blue500,
-    bg: C.blue50,
-    border: C.borderMd,
-    detail: 'Questions are generated from your resume, target role, and selected mode. A Technical round for a MERN fresher gets different questions than one for a data engineering hire.',
-    tags: ['Resume-aware', 'Mode-specific', 'Difficulty-adaptive'],
-  },
-  {
-    step: '02',
-    title: 'Answer Capture',
-    icon: '🎙️',
-    color: C.cyan500,
-    bg: C.cyanTint,
-    border: '#7DE8FF',
-    detail: 'Type or speak your answer. Voice input is transcribed in real time. The full answer — including hesitations and self-corrections — is passed to the evaluator.',
-    tags: ['Voice + Text', 'Real-time transcript', 'No edits after submit'],
-  },
-  {
-    step: '03',
-    title: 'Multi-Axis Evaluation',
-    icon: '🧠',
-    color: C.amber,
-    bg: C.amberTint,
-    border: '#FDE68A',
-    detail: 'The AI evaluates your answer independently across all 6 dimensions — not one score then sub-divided. Each axis gets its own reasoning pass before a score is assigned.',
-    tags: ['6 independent passes', 'Weighted scoring', 'No ceiling-smoothing'],
-  },
-  {
-    step: '04',
-    title: 'Follow-up Generation',
-    icon: '🔁',
-    color: C.green,
-    bg: C.greenTint,
-    border: '#BBF7D0',
-    detail: 'Based on gaps detected in your answer, the AI generates 1–2 targeted follow-up questions. Miss a concept → it drills that concept, not a random next question.',
-    tags: ['Gap-targeted', 'Pressure simulation', 'Mirrors real interviews'],
-  },
-  {
-    step: '05',
-    title: 'Structured Feedback',
-    icon: '📋',
-    color: C.blue500,
-    bg: C.blue50,
-    border: C.borderMd,
-    detail: 'Each session ends with a feedback card: what was strong, what was weak, what a senior engineer would have expected you to say, and the exact IRS delta from this session.',
-    tags: ['What you missed', 'Model answer hint', 'IRS delta shown'],
-  },
-  {
-    step: '06',
-    title: 'Cross-session Pattern Analysis',
-    icon: '📈',
-    color: C.cyan500,
-    bg: C.cyanTint,
-    border: '#7DE8FF',
-    detail: 'After 3+ sessions, MockMate builds a weakness map. If you consistently lose points on system design trade-offs, your next session automatically weights that area higher.',
-    tags: ['Weakness map', 'Auto-reweight', 'Tracks across all modes'],
-  },
+  { step: '01', title: 'Question Generation',       icon: '⚡', color: C.blue500, bg: C.blue50,    border: C.borderMd, detail: 'Questions are generated from your resume, target role, and selected mode. A Technical round for a MERN fresher gets different questions than one for a data engineering hire.', tags: ['Resume-aware', 'Mode-specific', 'Difficulty-adaptive'] },
+  { step: '02', title: 'Answer Capture',             icon: '🎙️', color: C.cyan500, bg: C.cyanTint,  border: '#7DE8FF',  detail: 'Type or speak your answer. Voice input is transcribed in real time. The full answer — including hesitations and self-corrections — is passed to the evaluator.',    tags: ['Voice + Text', 'Real-time transcript', 'No edits after submit'] },
+  { step: '03', title: 'Multi-Axis Evaluation',      icon: '🧠', color: C.amber,   bg: C.amberTint, border: '#FDE68A',  detail: 'The AI evaluates your answer independently across all 6 dimensions — not one score then sub-divided. Each axis gets its own reasoning pass before a score is assigned.', tags: ['6 independent passes', 'Weighted scoring', 'No ceiling-smoothing'] },
+  { step: '04', title: 'Follow-up Generation',       icon: '🔁', color: C.green,   bg: C.greenTint, border: '#BBF7D0',  detail: 'Based on gaps detected in your answer, the AI generates 1–2 targeted follow-up questions. Miss a concept → it drills that concept, not a random next question.',          tags: ['Gap-targeted', 'Pressure simulation', 'Mirrors real interviews'] },
+  { step: '05', title: 'Structured Feedback',        icon: '📋', color: C.blue500, bg: C.blue50,    border: C.borderMd, detail: 'Each session ends with a feedback card: what was strong, what was weak, what a senior engineer would have expected you to say, and the exact IRS delta from this session.', tags: ['What you missed', 'Model answer hint', 'IRS delta shown'] },
+  { step: '06', title: 'Cross-session Pattern Analysis', icon: '📈', color: C.cyan500, bg: C.cyanTint, border: '#7DE8FF', detail: 'After 3+ sessions, MockMate builds a weakness map. If you consistently lose points on system design trade-offs, your next session automatically weights that area higher.', tags: ['Weakness map', 'Auto-reweight', 'Tracks across all modes'] },
 ];
 
 // ─── Feedback anatomy ─────────────────────────────────────────────────────────
@@ -164,7 +108,7 @@ const PRICING = [
   { name: 'College', price: '₹2,999', period: '/semester',  highlight: false, cta: 'Contact Us',  action: 'contact', features: ['Everything in Pro', 'Admin analytics panel', 'Batch performance reports', 'Custom question sets', 'Placement cell dashboard'] },
 ];
 
-// ─── Comparison: MockMate vs practising alone ─────────────────────────────────
+// ─── Comparison rows ──────────────────────────────────────────────────────────
 const COMPARE_ROWS = [
   { aspect: 'Feedback quality',        alone: 'None — you guess what you missed',           mockmate: 'Per-axis breakdown with exact gaps named' },
   { aspect: 'Question relevance',      alone: 'Generic YouTube / book questions',            mockmate: 'Generated from your resume + target JD' },
@@ -174,14 +118,163 @@ const COMPARE_ROWS = [
   { aspect: 'Peer benchmarking',       alone: 'No idea where you stand vs classmates',       mockmate: 'College leaderboard, weekly reset, real ranks' },
 ];
 
+// ─── useCountUp hook ──────────────────────────────────────────────────────────
+const useCountUp = (target, duration = 1600, start = false) => {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (!start) return;
+    let startTs = null;
+    const num = typeof target === 'number' ? target : parseFloat(target) || 0;
+    const raf = requestAnimationFrame(function tick(ts) {
+      if (!startTs) startTs = ts;
+      const p = Math.min((ts - startTs) / duration, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(ease * num));
+      if (p < 1) requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration, start]);
+  return val;
+};
+
+// ─── useScrollReveal hook ─────────────────────────────────────────────────────
+const useScrollReveal = () => {
+  useEffect(() => {
+    const els = document.querySelectorAll('[data-reveal]');
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('mm-revealed');
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    els.forEach(el => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+};
+
+// ─── Aurora Particle Canvas ───────────────────────────────────────────────────
+const AuroraCanvas = () => {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let animId;
+    let W, H;
+
+    const resize = () => {
+      W = canvas.width  = canvas.offsetWidth;
+      H = canvas.height = canvas.offsetHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Floating particles
+    const PARTICLE_COUNT = 55;
+    const particles = Array.from({ length: PARTICLE_COUNT }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.6 + 0.4,
+      vx: (Math.random() - 0.5) * 0.22,
+      vy: (Math.random() - 0.5) * 0.18,
+      opacity: Math.random() * 0.5 + 0.15,
+    }));
+
+    // Aurora blobs — 3 slow-moving radial gradients
+    const blobs = [
+      { x: 0.18, y: 0.3,  r: 0.38, color: [26, 110, 255],   speed: 0.00012 },
+      { x: 0.78, y: 0.55, r: 0.34, color: [0, 200, 240],    speed: 0.00009 },
+      { x: 0.50, y: 0.80, r: 0.28, color: [100, 60, 255],   speed: 0.00015 },
+    ];
+    let t = 0;
+
+    const draw = (ts) => {
+      t = ts * 0.001;
+      ctx.clearRect(0, 0, W, H);
+
+      // Draw aurora blobs
+      blobs.forEach((b, i) => {
+        const bx = (b.x + Math.sin(t * b.speed * 1000 + i * 2.1) * 0.12) * W;
+        const by = (b.y + Math.cos(t * b.speed * 800  + i * 1.7) * 0.09) * H;
+        const br = b.r * Math.max(W, H);
+        const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+        grad.addColorStop(0,   `rgba(${b.color.join(',')}, 0.13)`);
+        grad.addColorStop(0.5, `rgba(${b.color.join(',')}, 0.05)`);
+        grad.addColorStop(1,   `rgba(${b.color.join(',')}, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(bx, by, br, br * 0.65, t * 0.05 + i, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Draw + update particles
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < -4) p.x = W + 4;
+        if (p.x > W + 4) p.x = -4;
+        if (p.y < -4) p.y = H + 4;
+        if (p.y > H + 4) p.y = -4;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(160, 210, 255, ${p.opacity})`;
+        ctx.fill();
+      });
+
+      // Faint connecting lines between nearby particles
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 90) {
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.strokeStyle = `rgba(100, 180, 255, ${0.09 * (1 - dist / 90)})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+
+      animId = requestAnimationFrame(draw);
+    };
+
+    animId = requestAnimationFrame(draw);
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 0,
+      }}
+    />
+  );
+};
+
 // ─── Animated IRS Demo Ring ───────────────────────────────────────────────────
-const DemoIRSRing = ({ score = 74, size = 190, strokeWidth = 14 }) => {
+const DemoIRSRing = ({ score = 74, size = 190, strokeWidth = 14, animate = false }) => {
   const [displayed, setDisplayed] = useState(0);
   const r    = size / 2 - strokeWidth / 2;
   const circ = 2 * Math.PI * r;
   const off  = circ - (displayed / 100) * circ;
 
   useEffect(() => {
+    if (!animate) return;
     let start = null;
     const dur = 1800;
     const raf = requestAnimationFrame(function tick(ts) {
@@ -192,7 +285,7 @@ const DemoIRSRing = ({ score = 74, size = 190, strokeWidth = 14 }) => {
       if (p < 1) requestAnimationFrame(tick);
     });
     return () => cancelAnimationFrame(raf);
-  }, [score]);
+  }, [score, animate]);
 
   const col  = score >= 80 ? C.green : score >= 60 ? C.blue500 : C.amber;
   const col2 = score >= 80 ? C.cyan400 : score >= 60 ? C.cyan400 : '#FBBF24';
@@ -234,6 +327,7 @@ const DemoIRSRing = ({ score = 74, size = 190, strokeWidth = 14 }) => {
           strokeDasharray={circ} strokeDashoffset={off}
           transform={`rotate(-90 ${size/2} ${size/2})`}
           filter="url(#irsGlowHome)"
+          style={{ transition: 'stroke-dashoffset 0.05s linear' }}
         />
         {displayed > 2 && (() => {
           const ang = (displayed / 100) * 2 * Math.PI - Math.PI / 2;
@@ -255,22 +349,71 @@ const DemoIRSRing = ({ score = 74, size = 190, strokeWidth = 14 }) => {
   );
 };
 
+// ─── IRS Ring with scroll trigger ────────────────────────────────────────────
+const ScrollIRSRing = ({ score, size, strokeWidth }) => {
+  const [shouldAnimate, setShouldAnimate] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { setShouldAnimate(true); io.disconnect(); }
+    }, { threshold: 0.3 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return <div ref={ref}><DemoIRSRing score={score} size={size} strokeWidth={strokeWidth} animate={shouldAnimate} /></div>;
+};
+
+// ─── Typewriter hook ──────────────────────────────────────────────────────────
+const useTypewriter = (text, speed = 28, active = true) => {
+  const [displayed, setDisplayed] = useState('');
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (!active) return;
+    setDisplayed('');
+    setDone(false);
+    let i = 0;
+    const id = setInterval(() => {
+      i++;
+      setDisplayed(text.slice(0, i));
+      if (i >= text.length) { clearInterval(id); setDone(true); }
+    }, speed);
+    return () => clearInterval(id);
+  }, [text, speed, active]);
+  return { displayed, done };
+};
+
 // ─── Dark glassmorphism session card (hero) ───────────────────────────────────
 const DemoSessionCard = ({ onStart }) => {
   const [idx,  setIdx]  = useState(0);
-  const [fade, setFade] = useState(true);
+  const [phase, setPhase] = useState('typing'); // 'typing' | 'showing' | 'fading'
 
   useEffect(() => {
-    const t = setInterval(() => {
-      setFade(false);
-      setTimeout(() => { setIdx(i => (i + 1) % SESSIONS.length); setFade(true); }, 320);
-    }, 4200);
-    return () => clearInterval(t);
-  }, []);
+    // After question is shown, wait 3s then fade out -> switch -> type next
+    if (phase === 'showing') {
+      const t = setTimeout(() => setPhase('fading'), 3200);
+      return () => clearTimeout(t);
+    }
+    if (phase === 'fading') {
+      const t = setTimeout(() => {
+        setIdx(i => (i + 1) % SESSIONS.length);
+        setPhase('typing');
+      }, 380);
+      return () => clearTimeout(t);
+    }
+  }, [phase]);
 
   const s    = SESSIONS[idx];
   const mode = MODES.find(m => m.label === s.mode);
   const scoreColor = s.score >= 90 ? C.green : s.score >= 80 ? C.blue400 : C.cyan400;
+  const isVisible  = phase !== 'fading';
+
+  const { displayed: typedQ, done: qDone } = useTypewriter(s.question, 22, phase === 'typing');
+
+  useEffect(() => {
+    if (qDone) setPhase('showing');
+  }, [qDone]);
 
   return (
     <div style={{
@@ -299,12 +442,24 @@ const DemoSessionCard = ({ onStart }) => {
         </div>
       </div>
 
-      <div style={{ background: 'rgba(26,110,255,0.12)', border: '1px solid rgba(26,110,255,0.26)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, opacity: fade ? 1 : 0, transition: 'opacity 0.3s ease' }}>
+      {/* Question with typewriter */}
+      <div style={{
+        background: 'rgba(26,110,255,0.12)',
+        border: '1px solid rgba(26,110,255,0.26)',
+        borderRadius: 10, padding: '12px 14px', marginBottom: 16,
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? 'translateY(0)' : 'translateY(6px)',
+        transition: 'opacity 0.35s ease, transform 0.35s ease',
+        minHeight: 72,
+      }}>
         <div style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 700, color: C.cyan400, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 5 }}>Question</div>
-        <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 600, color: '#fff', lineHeight: 1.5 }}>{s.question}</div>
+        <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 600, color: '#fff', lineHeight: 1.5 }}>
+          {typedQ}
+          {phase === 'typing' && <span style={{ display: 'inline-block', width: 2, height: 14, background: C.cyan400, marginLeft: 2, verticalAlign: 'middle', animation: 'mmCaret 0.7s ease-in-out infinite' }} />}
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 16, opacity: fade ? 1 : 0, transition: 'opacity 0.3s ease 0.05s' }}>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 16, opacity: isVisible ? 1 : 0, transform: isVisible ? 'translateY(0)' : 'translateY(6px)', transition: 'opacity 0.35s ease 0.05s, transform 0.35s ease 0.05s' }}>
         <div style={{ position: 'relative', width: 68, height: 68, flexShrink: 0 }}>
           <svg width={68} height={68} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
             <circle cx={34} cy={34} r={27} fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth={7} />
@@ -331,7 +486,7 @@ const DemoSessionCard = ({ onStart }) => {
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: fade ? 1 : 0, transition: 'opacity 0.3s ease 0.1s' }}>
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isVisible ? 1 : 0, transition: 'opacity 0.35s ease 0.1s' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,173,224,0.15)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '4px 11px' }}>
           <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.cyan400 }}>IRS {s.irs}/100</span>
           <span style={{ width: 1, height: 8, background: 'rgba(0,200,240,0.3)', display: 'inline-block' }} />
@@ -366,15 +521,12 @@ const FeedbackCardDemo = () => {
       maxWidth: 440,
       width: '100%',
     }}>
-      {/* Question header */}
       <div style={{ background: C.bgDeep, borderBottom: `1px solid ${C.border}`, padding: '14px 18px' }}>
         <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginBottom: 6 }}>QUESTION · Technical · 2m 47s</div>
         <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 700, color: C.text, lineHeight: 1.45 }}>
           Explain how indexing works in MongoDB and when you would avoid it.
         </div>
       </div>
-
-      {/* Score bar */}
       <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 14 }}>
         <div style={{ position: 'relative', width: 52, height: 52, flexShrink: 0 }}>
           <svg width={52} height={52} style={{ transform: 'rotate(-90deg)' }}>
@@ -392,8 +544,6 @@ const FeedbackCardDemo = () => {
           <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>Technical ↑3 · Problem Solving ↓1 · +0.8 IRS pts</div>
         </div>
       </div>
-
-      {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
@@ -407,8 +557,6 @@ const FeedbackCardDemo = () => {
           }}>{t.label}</button>
         ))}
       </div>
-
-      {/* Tab content */}
       <div style={{ padding: '16px 18px', minHeight: 180 }}>
         {activeTab === 'feedback' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -491,13 +639,78 @@ const FeedbackCardDemo = () => {
   );
 };
 
+// ─── Hero stat counter ────────────────────────────────────────────────────────
+const HeroStat = ({ value, label, started }) => {
+  // parse numeric part and suffix
+  const match = String(value).match(/^([₹]?)(\d+)([^0-9]*)$/);
+  const prefix = match ? match[1] : '';
+  const num    = match ? parseInt(match[2]) : 0;
+  const suffix = match ? match[3] : '';
+  const counted = useCountUp(num, 1400, started);
+  return (
+    <div>
+      <div style={{ fontFamily: F.display, fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
+        {prefix}{counted}{suffix}
+      </div>
+      <div style={{ fontFamily: F.mono, fontSize: 9, color: 'rgba(255,255,255,0.40)', marginTop: 3, letterSpacing: '0.3px' }}>{label}</div>
+    </div>
+  );
+};
+
+// ─── Scroll reveal wrapper ────────────────────────────────────────────────────
+const Reveal = ({ children, delay = 0, style: extraStyle = {} }) => {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { setVisible(true); io.disconnect(); }
+    }, { threshold: 0.1 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <div ref={ref} style={{
+      opacity: visible ? 1 : 0,
+      transform: visible ? 'translateY(0)' : 'translateY(24px)',
+      transition: `opacity 0.6s ease ${delay}ms, transform 0.6s cubic-bezier(.16,1,.3,1) ${delay}ms`,
+      ...extraStyle,
+    }}>
+      {children}
+    </div>
+  );
+};
+
+// ─── IRS progress bars (scroll-triggered width) ───────────────────────────────
+const ScrollBar = ({ width, color, duration = 1.2, delay = 0 }) => {
+  const ref = useRef(null);
+  const [started, setStarted] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { setStarted(true); io.disconnect(); }
+    }, { threshold: 0.5 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <div ref={ref} style={{ height: '100%', width: started ? `${width}%` : '0%', borderRadius: 99, background: color, transition: `width ${duration}s cubic-bezier(.16,1,.3,1) ${delay}s`, boxShadow: `0 0 8px ${color}55` }} />
+  );
+};
+
 // ─── Home Page ────────────────────────────────────────────────────────────────
 const Home = () => {
   const { user, isLoading } = useAuth();
   const navigate = useNavigate();
-  const [mounted, setMounted] = useState(false);
+  const [heroVisible, setHeroVisible] = useState(false);
 
-  useEffect(() => { setTimeout(() => setMounted(true), 400); }, []);
+  // Fire hero entrance after a single short frame — no jitter
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setHeroVisible(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   const goToAuth      = () => { window.location.href = GOOGLE_AUTH_URL; };
   const goToInterview = () => { if (user) navigate('/interview'); else window.location.href = GOOGLE_AUTH_URL; };
@@ -509,28 +722,23 @@ const Home = () => {
       <style>{GLOBAL_CSS}</style>
       <div style={{ background: C.bg, fontFamily: F.body }}>
 
-        {/* ── STATUS STRIP ──────────────────────────────────────────────────── */}
-        <div style={S.strip}>
-          <div style={S.stripInner}>
-            <div style={S.stripLeft}>
-              <span style={S.liveDot} />
-              <span style={S.monoText}>MOCKMATE READINESS SYSTEM</span>
-              <span style={{ color: C.borderMd, fontSize: 10 }}>·</span>
-              <span style={{ ...S.monoText, color: C.green }}>LIVE</span>
-            </div>
-            <div style={S.stripRight} className="mm-strip-right">
-              <span style={S.monoText}>Built for Indian CS placements · PDU · CHARUSAT · NIRMA · GU</span>
-            </div>
-          </div>
-        </div>
-
         {/* ── HERO ─────────────────────────────────────────────────────────── */}
         <section style={S.hero}>
+          {/* Scan line */}
           <div style={S.heroScan} />
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
+          {/* Aurora canvas — particles + glows */}
+          <AuroraCanvas />
+          {/* Static dot grid overlay */}
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1, backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.045) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
 
-          <div style={S.heroInner} className="mm-hero-inner">
-            <div style={S.heroLeft}>
+          <div style={{ ...S.heroInner, position: 'relative', zIndex: 2 }} className="mm-hero-inner">
+            {/* Left — text, fades in cleanly */}
+            <div style={{
+              ...S.heroLeft,
+              opacity: heroVisible ? 1 : 0,
+              transform: heroVisible ? 'translateY(0)' : 'translateY(20px)',
+              transition: 'opacity 0.75s ease 0.05s, transform 0.75s cubic-bezier(.16,1,.3,1) 0.05s',
+            }}>
               <div style={S.heroBadge}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green, display: 'inline-block', animation: 'mmLivePulse 1.6s ease-in-out infinite', boxShadow: '0 0 8px rgba(5,150,105,0.6)' }} />
                 <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>
@@ -540,7 +748,7 @@ const Home = () => {
 
               <h1 style={S.heroH1}>
                 Practice interviews.<br />
-                <span style={{ color: C.cyan400 }}>Get the offer.</span>
+                <span style={{ color: C.cyan400, textShadow: '0 0 40px rgba(0,200,240,0.45)' }}>Get the offer.</span>
               </h1>
 
               <p style={S.heroSub}>
@@ -548,7 +756,7 @@ const Home = () => {
               </p>
 
               <div style={S.heroActions}>
-                <Button surface="dark" size="lg" onClick={goToInterview}>
+                <Button surface="dark" size="lg"  style={{ fontWeight: 'bold' }} onClick={goToInterview}>
                   Start your first interview →
                 </Button>
                 <a href="#how-it-works" style={S.btnHeroGhost}>
@@ -557,16 +765,19 @@ const Home = () => {
               </div>
 
               <div style={S.heroStats}>
-                {[['₹199/mo', 'Pro plan'], ['6 dimensions', 'tracked per session'], ['4 tiers', 'salary readiness mapped']].map(([n, l]) => (
-                  <div key={l}>
-                    <div style={{ fontFamily: F.display, fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>{n}</div>
-                    <div style={{ fontFamily: F.mono, fontSize: 9, color: 'rgba(255,255,255,0.40)', marginTop: 3, letterSpacing: '0.3px' }}>{l}</div>
-                  </div>
+                {[['₹199', '/mo Pro plan'], ['6', 'dimensions tracked per session'], ['4', 'salary tiers mapped']].map(([n, l]) => (
+                  <HeroStat key={l} value={n} label={l} started={heroVisible} />
                 ))}
               </div>
             </div>
 
-            <div style={S.heroRight}>
+            {/* Right — card, slightly delayed entrance */}
+            <div style={{
+              ...S.heroRight,
+              opacity: heroVisible ? 1 : 0,
+              transform: heroVisible ? 'translateY(0)' : 'translateY(28px)',
+              transition: 'opacity 0.75s ease 0.2s, transform 0.75s cubic-bezier(.16,1,.3,1) 0.2s',
+            }}>
               <DemoSessionCard />
             </div>
           </div>
@@ -575,63 +786,63 @@ const Home = () => {
         {/* ── INTERVIEW MODES ───────────────────────────────────────────────── */}
         <section style={S.modesSection}>
           <div style={S.sectionInner}>
-            <p style={S.eyebrow}>5 interview modes</p>
-            <div style={S.modeRow}>
-              {MODES.map(m => (
-                <button key={m.label} onClick={goToInterview}
-                  style={{ ...S.modeChip, background: m.bg, border: `1.5px solid ${m.border}` }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 6px 18px ${m.border}`; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
-                >
-                  <span style={{ fontSize: 15 }}>{m.icon}</span>
-                  <span style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 700, color: m.color }}>{m.label}</span>
-                </button>
-              ))}
-            </div>
+            <Reveal>
+              <p style={S.eyebrow}>5 interview modes</p>
+              <div style={S.modeRow}>
+                {MODES.map(m => (
+                  <button key={m.label} onClick={goToInterview}
+                    style={{ ...S.modeChip, background: m.bg, border: `1.5px solid ${m.border}` }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 6px 18px ${m.border}`; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                  >
+                    <span style={{ fontSize: 15 }}>{m.icon}</span>
+                    <span style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 700, color: m.color }}>{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            </Reveal>
           </div>
         </section>
 
         {/* ── HOW THE AI WORKS — PIPELINE ───────────────────────────────────── */}
         <section id="how-it-works" style={{ padding: '96px 32px', background: C.card }}>
           <div style={S.sectionInner}>
-            <p style={S.eyebrow}>Under the hood</p>
-            <h2 style={S.sectionH2}>What actually happens<br />inside every session.</h2>
-            <p style={{ ...S.sectionSub, marginBottom: 48 }}>
-              Not a quiz tool with a score at the end. A six-stage evaluation pipeline that mirrors how a real interviewer thinks — question selection, live pressure, gap detection, and structured remediation.
-            </p>
+            <Reveal>
+              <p style={S.eyebrow}>Under the hood</p>
+              <h2 style={S.sectionH2}>What actually happens<br />inside every session.</h2>
+              <p style={{ ...S.sectionSub, marginBottom: 48 }}>
+                Not a quiz tool with a score at the end. A six-stage evaluation pipeline that mirrors how a real interviewer thinks — question selection, live pressure, gap detection, and structured remediation.
+              </p>
+            </Reveal>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }} className="mm-pipeline-grid">
               {EVAL_PIPELINE.map((step, i) => (
-                <div key={i} style={{
-                  padding: '22px 20px',
-                  borderRadius: 16,
-                  background: step.bg,
-                  border: `1.5px solid ${step.border}`,
-                  boxShadow: C.shadow,
-                  transition: 'all 0.2s',
-                  cursor: 'default',
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; }}
-                >
-                  {/* Step number watermark */}
-                  <div style={{ position: 'absolute', top: 10, right: 14, fontFamily: F.display, fontSize: 48, fontWeight: 900, color: step.color, opacity: 0.07, lineHeight: 1, pointerEvents: 'none' }}>{step.step}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.6)', border: `1px solid ${step.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17 }}>{step.icon}</div>
-                    <div>
-                      <div style={{ fontFamily: F.mono, fontSize: 8.5, color: step.color, fontWeight: 700, letterSpacing: '0.5px', marginBottom: 2 }}>STEP {step.step}</div>
-                      <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: C.text }}>{step.title}</div>
+                <Reveal key={i} delay={i * 60}>
+                  <div style={{
+                    padding: '22px 20px', borderRadius: 16,
+                    background: step.bg, border: `1.5px solid ${step.border}`,
+                    boxShadow: C.shadow, transition: 'all 0.2s',
+                    cursor: 'default', position: 'relative', overflow: 'hidden', height: '100%',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; }}
+                  >
+                    <div style={{ position: 'absolute', top: 10, right: 14, fontFamily: F.display, fontSize: 48, fontWeight: 900, color: step.color, opacity: 0.07, lineHeight: 1, pointerEvents: 'none' }}>{step.step}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.6)', border: `1px solid ${step.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17 }}>{step.icon}</div>
+                      <div>
+                        <div style={{ fontFamily: F.mono, fontSize: 8.5, color: step.color, fontWeight: 700, letterSpacing: '0.5px', marginBottom: 2 }}>STEP {step.step}</div>
+                        <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: C.text }}>{step.title}</div>
+                      </div>
+                    </div>
+                    <p style={{ fontFamily: F.body, fontSize: 13, color: C.sub, lineHeight: 1.65, margin: '0 0 14px' }}>{step.detail}</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {step.tags.map(tag => (
+                        <span key={tag} style={{ fontFamily: F.mono, fontSize: 9, color: step.color, background: 'rgba(255,255,255,0.55)', border: `1px solid ${step.border}`, borderRadius: 99, padding: '3px 8px' }}>{tag}</span>
+                      ))}
                     </div>
                   </div>
-                  <p style={{ fontFamily: F.body, fontSize: 13, color: C.sub, lineHeight: 1.65, margin: '0 0 14px' }}>{step.detail}</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                    {step.tags.map(tag => (
-                      <span key={tag} style={{ fontFamily: F.mono, fontSize: 9, color: step.color, background: 'rgba(255,255,255,0.55)', border: `1px solid ${step.border}`, borderRadius: 99, padding: '3px 8px' }}>{tag}</span>
-                    ))}
-                  </div>
-                </div>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -641,39 +852,39 @@ const Home = () => {
         <section style={{ padding: '96px 32px', background: C.bg }}>
           <div style={S.sectionInner}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 72, alignItems: 'center' }} className="mm-irs-grid">
-
-              {/* Left: live interactive demo card */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-                <p style={{ ...S.eyebrow, alignSelf: 'flex-start' }}>Live feedback preview</p>
-                <FeedbackCardDemo />
-                <div style={{ alignSelf: 'stretch', padding: '12px 16px', borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 16 }}>💡</span>
-                  <span style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.5 }}>Click the tabs — Feedback, Dimensions, IRS Impact — to see what each session surfaces.</span>
+              <Reveal>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                  <p style={{ ...S.eyebrow, alignSelf: 'flex-start' }}>Live feedback preview</p>
+                  <FeedbackCardDemo />
+                  <div style={{ alignSelf: 'stretch', padding: '12px 16px', borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 16 }}>💡</span>
+                    <span style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.5 }}>Click the tabs — Feedback, Dimensions, IRS Impact — to see what each session surfaces.</span>
+                  </div>
                 </div>
-              </div>
-
-              {/* Right: anatomy breakdown */}
-              <div>
-                <h2 style={{ ...S.sectionH2, marginBottom: 10 }}>Feedback that tells you<br />what to fix, not how you did.</h2>
-                <p style={{ ...S.sectionSub, marginBottom: 28 }}>
-                  Generic scores don't change behaviour. Every MockMate session ends with a feedback card built from five distinct components — each one answering a question a generic AI tool never asks.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {FEEDBACK_ANATOMY.map((item, i) => (
-                    <div key={i} style={{
-                      padding: '14px 16px', borderRadius: 13,
-                      background: item.bg, border: `1.5px solid ${item.border}`,
-                      display: 'flex', gap: 13, alignItems: 'flex-start',
-                    }}>
-                      <div style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(255,255,255,0.6)', border: `1px solid ${item.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: F.mono, fontSize: 14, fontWeight: 700, color: item.color, flexShrink: 0 }}>{item.icon}</div>
-                      <div>
-                        <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: item.color, marginBottom: 5 }}>{item.label}</div>
-                        <div style={{ fontFamily: F.body, fontSize: 12, color: C.sub, lineHeight: 1.6 }}>{item.desc}</div>
+              </Reveal>
+              <Reveal delay={120}>
+                <div>
+                  <h2 style={{ ...S.sectionH2, marginBottom: 10 }}>Feedback that tells you<br />what to fix, not how you did.</h2>
+                  <p style={{ ...S.sectionSub, marginBottom: 28 }}>
+                    Generic scores don't change behaviour. Every MockMate session ends with a feedback card built from five distinct components — each one answering a question a generic AI tool never asks.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {FEEDBACK_ANATOMY.map((item, i) => (
+                      <div key={i} style={{
+                        padding: '14px 16px', borderRadius: 13,
+                        background: item.bg, border: `1.5px solid ${item.border}`,
+                        display: 'flex', gap: 13, alignItems: 'flex-start',
+                      }}>
+                        <div style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(255,255,255,0.6)', border: `1px solid ${item.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: F.mono, fontSize: 14, fontWeight: 700, color: item.color, flexShrink: 0 }}>{item.icon}</div>
+                        <div>
+                          <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: item.color, marginBottom: 5 }}>{item.label}</div>
+                          <div style={{ fontFamily: F.body, fontSize: 12, color: C.sub, lineHeight: 1.6 }}>{item.desc}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </Reveal>
             </div>
           </div>
         </section>
@@ -681,56 +892,61 @@ const Home = () => {
         {/* ── QUESTION INTELLIGENCE ─────────────────────────────────────────── */}
         <section style={{ padding: '96px 32px', background: C.card }}>
           <div style={S.sectionInner}>
-            <p style={S.eyebrow}>Question generation</p>
-            <h2 style={S.sectionH2}>Questions built for you.<br />Not built for everyone.</h2>
-            <p style={{ ...S.sectionSub, marginBottom: 48 }}>
-              Every question is generated at session start from six factors about you — not pulled from a bank of 500 generic questions that every other prep platform recycles.
-            </p>
+            <Reveal>
+              <p style={S.eyebrow}>Question generation</p>
+              <h2 style={S.sectionH2}>Questions built for you.<br />Not built for everyone.</h2>
+              <p style={{ ...S.sectionSub, marginBottom: 48 }}>
+                Every question is generated at session start from six factors about you — not pulled from a bank of 500 generic questions that every other prep platform recycles.
+              </p>
+            </Reveal>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }} className="mm-irs-grid">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {QUESTION_LOGIC.map((row, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 14, padding: '16px 16px', borderRadius: 13, background: C.cardAlt, border: `1px solid ${C.border}`, alignItems: 'flex-start', transition: 'all 0.2s' }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = C.borderStr; e.currentTarget.style.boxShadow = C.shadowMd; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = 'none'; }}
-                  >
-                    <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{row.icon}</span>
-                    <div>
-                      <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 5 }}>{row.factor}</div>
-                      <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.6 }}>{row.effect}</div>
+                  <Reveal key={i} delay={i * 50}>
+                    <div style={{ display: 'flex', gap: 14, padding: '16px 16px', borderRadius: 13, background: C.cardAlt, border: `1px solid ${C.border}`, alignItems: 'flex-start', transition: 'all 0.2s' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = C.borderStr; e.currentTarget.style.boxShadow = C.shadowMd; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = 'none'; }}
+                    >
+                      <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{row.icon}</span>
+                      <div>
+                        <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 5 }}>{row.factor}</div>
+                        <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.6 }}>{row.effect}</div>
+                      </div>
                     </div>
-                  </div>
+                  </Reveal>
                 ))}
               </div>
 
-              {/* Visual: simulated question generation context */}
-              <div style={{ background: `linear-gradient(140deg, ${C.blue900} 0%, ${C.blue700} 60%, ${C.cyan600} 100%)`, borderRadius: 20, padding: '28px 24px', boxShadow: C.shadowLg, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div style={{ fontFamily: F.mono, fontSize: 10, color: 'rgba(255,255,255,0.45)', letterSpacing: '1px' }}>SESSION CONTEXT PASSED TO AI</div>
-                {[
-                  { label: 'Resume stack',   value: 'React, Node, MongoDB, Express' },
-                  { label: 'Target role',    value: 'Full-stack Dev · Ahmedabad' },
-                  { label: 'Mode',           value: 'Technical — 20 mins' },
-                  { label: 'IRS',            value: '68 → difficulty: medium-hard' },
-                  { label: 'Weak dims',      value: 'System Design (55), Problem Solving (68)' },
-                ].map((row, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                    <div style={{ fontFamily: F.mono, fontSize: 10, color: 'rgba(255,255,255,0.35)', width: 100, flexShrink: 0, paddingTop: 2 }}>{row.label}</div>
-                    <div style={{ fontFamily: F.display, fontSize: 12.5, fontWeight: 700, color: 'rgba(255,255,255,0.85)', lineHeight: 1.4 }}>{row.value}</div>
-                  </div>
-                ))}
-                <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
-                <div>
-                  <div style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan400, marginBottom: 8 }}>→ GENERATED QUESTION</div>
-                  <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 700, color: '#fff', lineHeight: 1.5 }}>
-                    "You're building a real-time notification system for a social app with 100k users. Walk me through your architecture choices — specifically how you'd handle WebSocket connections at that scale."
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {['Targets System Design weakness', 'Anchored to Node.js stack', 'Difficulty: hard'].map(t => (
-                    <span key={t} style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan400, background: 'rgba(0,200,240,0.12)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '3px 9px' }}>{t}</span>
+              <Reveal delay={80}>
+                <div style={{ background: `linear-gradient(140deg, ${C.blue900} 0%, ${C.blue700} 60%, ${C.cyan600} 100%)`, borderRadius: 20, padding: '28px 24px', boxShadow: C.shadowLg, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 10, color: 'rgba(255,255,255,0.45)', letterSpacing: '1px' }}>SESSION CONTEXT PASSED TO AI</div>
+                  {[
+                    { label: 'Resume stack',   value: 'React, Node, MongoDB, Express' },
+                    { label: 'Target role',    value: 'Full-stack Dev · Ahmedabad' },
+                    { label: 'Mode',           value: 'Technical — 20 mins' },
+                    { label: 'IRS',            value: '68 → difficulty: medium-hard' },
+                    { label: 'Weak dims',      value: 'System Design (55), Problem Solving (68)' },
+                  ].map((row, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <div style={{ fontFamily: F.mono, fontSize: 10, color: 'rgba(255,255,255,0.35)', width: 100, flexShrink: 0, paddingTop: 2 }}>{row.label}</div>
+                      <div style={{ fontFamily: F.display, fontSize: 12.5, fontWeight: 700, color: 'rgba(255,255,255,0.85)', lineHeight: 1.4 }}>{row.value}</div>
+                    </div>
                   ))}
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
+                  <div>
+                    <div style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan400, marginBottom: 8 }}>→ GENERATED QUESTION</div>
+                    <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 700, color: '#fff', lineHeight: 1.5 }}>
+                      "You're building a real-time notification system for a social app with 100k users. Walk me through your architecture choices — specifically how you'd handle WebSocket connections at that scale."
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {['Targets System Design weakness', 'Anchored to Node.js stack', 'Difficulty: hard'].map(t => (
+                      <span key={t} style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan400, background: 'rgba(0,200,240,0.12)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '3px 9px' }}>{t}</span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </Reveal>
             </div>
           </div>
         </section>
@@ -739,56 +955,60 @@ const Home = () => {
         <section id="irs" style={S.irsSection}>
           <div style={S.sectionInner}>
             <div style={S.irsGrid} className="mm-irs-grid">
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
-                <div>
-                  <p style={{ ...S.eyebrow, textAlign: 'center' }}>Interview Readiness Score</p>
-                  <h2 style={{ ...S.sectionH2, textAlign: 'center', marginBottom: 8 }}>One number.<br />Every dimension counted.</h2>
-                  <p style={{ ...S.sectionSub, textAlign: 'center', maxWidth: 340, margin: '0 auto' }}>
-                    Not a single average you can game by drilling one topic. A real weighted composite from six interview dimensions.
-                  </p>
-                </div>
-                <DemoIRSRing score={74} size={190} strokeWidth={14} />
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '14px 20px', background: C.blue50, border: `1.5px solid ${C.borderMd}`, borderRadius: 14, width: '100%', maxWidth: 280 }}>
-                  <div style={{ fontFamily: F.display, fontSize: 17, fontWeight: 900, color: C.blue500 }}>₹12–20 LPA</div>
-                  <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>eligible at IRS ≥ 60</div>
-                  <div style={{ width: '100%', height: 6, borderRadius: 99, background: C.border, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: mounted ? '74%' : '0%', borderRadius: 99, background: `linear-gradient(90deg, ${C.blue500}, ${C.cyan500})`, transition: 'width 2s cubic-bezier(.16,1,.3,1)' }} />
+              <Reveal>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
+                  <div>
+                    <p style={{ ...S.eyebrow, textAlign: 'center' }}>Interview Readiness Score</p>
+                    <h2 style={{ ...S.sectionH2, textAlign: 'center', marginBottom: 8 }}>One number.<br />Every dimension counted.</h2>
+                    <p style={{ ...S.sectionSub, textAlign: 'center', maxWidth: 340, margin: '0 auto' }}>
+                      Not a single average you can game by drilling one topic. A real weighted composite from six interview dimensions.
+                    </p>
                   </div>
-                  <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>74/100 — 6 IRS pts to ₹20 LPA+</div>
-                </div>
-              </div>
-
-              <div>
-                <p style={S.eyebrow}>How IRS is computed</p>
-                <h2 style={{ ...S.sectionH2, fontSize: 24, marginBottom: 10 }}>4 real statistical components</h2>
-                <p style={S.sectionSub}>
-                  A student who always scores 70 ranks higher than one who swings between 50 and 90. Consistency is built into the formula — not optional.
-                </p>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 22 }}>
-                  {IRS_COMPONENTS.map((c, i) => (
-                    <div key={i} style={{ padding: '14px 15px', borderRadius: 13, background: C.cardAlt, border: `1px solid ${C.border}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <div>
-                          <span style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: C.text }}>{c.label}</span>
-                          <span style={{ marginLeft: 8, fontFamily: F.mono, fontSize: 9, color: C.muted }}>weight {c.pct}%</span>
-                        </div>
-                        <span style={{ fontFamily: F.display, fontSize: 16, fontWeight: 900, color: c.color }}>{c.demo}</span>
-                      </div>
-                      <div style={{ height: 7, borderRadius: 99, background: C.border, overflow: 'hidden', marginBottom: 6 }}>
-                        <div style={{ height: '100%', width: mounted ? `${c.demo}%` : '0%', borderRadius: 99, background: c.color, transition: `width ${1.2 + i * 0.15}s cubic-bezier(.16,1,.3,1)`, boxShadow: `0 0 8px ${c.color}55` }} />
-                      </div>
-                      <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>{c.note}</div>
+                  <ScrollIRSRing score={74} size={190} strokeWidth={14} />
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '14px 20px', background: C.blue50, border: `1.5px solid ${C.borderMd}`, borderRadius: 14, width: '100%', maxWidth: 280 }}>
+                    <div style={{ fontFamily: F.display, fontSize: 17, fontWeight: 900, color: C.blue500 }}>₹12–20 LPA</div>
+                    <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>eligible at IRS ≥ 60</div>
+                    <div style={{ width: '100%', height: 6, borderRadius: 99, background: C.border, overflow: 'hidden' }}>
+                      <ScrollBar width={74} color={`linear-gradient(90deg, ${C.blue500}, ${C.cyan500})`} duration={2} />
                     </div>
-                  ))}
+                    <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>74/100 — 6 IRS pts to ₹20 LPA+</div>
+                  </div>
                 </div>
+              </Reveal>
 
-                <div style={{ marginTop: 16, padding: '12px 15px', borderRadius: 12, background: C.blue50, border: `1px solid ${C.borderMd}` }}>
-                  <span style={{ fontFamily: F.mono, fontSize: 10, color: C.sub }}>
-                    IRS = dim·avg×0.40 + EWMA×0.25 + breadth×0.15 + (1−CV)×0.20
-                  </span>
+              <Reveal delay={100}>
+                <div>
+                  <p style={S.eyebrow}>How IRS is computed</p>
+                  <h2 style={{ ...S.sectionH2, fontSize: 24, marginBottom: 10 }}>4 real statistical components</h2>
+                  <p style={S.sectionSub}>
+                    A student who always scores 70 ranks higher than one who swings between 50 and 90. Consistency is built into the formula — not optional.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 22 }}>
+                    {IRS_COMPONENTS.map((c, i) => (
+                      <div key={i} style={{ padding: '14px 15px', borderRadius: 13, background: C.cardAlt, border: `1px solid ${C.border}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <div>
+                            <span style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: C.text }}>{c.label}</span>
+                            <span style={{ marginLeft: 8, fontFamily: F.mono, fontSize: 9, color: C.muted }}>weight {c.pct}%</span>
+                          </div>
+                          <span style={{ fontFamily: F.display, fontSize: 16, fontWeight: 900, color: c.color }}>{c.demo}</span>
+                        </div>
+                        <div style={{ height: 7, borderRadius: 99, background: C.border, overflow: 'hidden', marginBottom: 6 }}>
+                          <ScrollBar width={c.demo} color={c.color} duration={1.2 + i * 0.15} delay={0.1 * i} />
+                        </div>
+                        <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>{c.note}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: 16, padding: '12px 15px', borderRadius: 12, background: C.blue50, border: `1px solid ${C.borderMd}` }}>
+                    <span style={{ fontFamily: F.mono, fontSize: 10, color: C.sub }}>
+                      IRS = dim·avg×0.40 + EWMA×0.25 + breadth×0.15 + (1−CV)×0.20
+                    </span>
+                  </div>
                 </div>
-              </div>
+              </Reveal>
             </div>
           </div>
         </section>
@@ -796,26 +1016,30 @@ const Home = () => {
         {/* ── PACKAGE TIERS ─────────────────────────────────────────────────── */}
         <section style={S.tiersSection}>
           <div style={S.sectionInner}>
-            <p style={S.eyebrow}>Package tier readiness</p>
-            <h2 style={S.sectionH2}>Your IRS maps directly<br />to a real salary tier.</h2>
-            <p style={S.sectionSub}>Every threshold was calibrated against real Indian placement market data from 2024–25. Not estimates.</p>
+            <Reveal>
+              <p style={S.eyebrow}>Package tier readiness</p>
+              <h2 style={S.sectionH2}>Your IRS maps directly<br />to a real salary tier.</h2>
+              <p style={S.sectionSub}>Every threshold was calibrated against real Indian placement market data from 2024–25. Not estimates.</p>
+            </Reveal>
             <div style={S.tiersGrid} className="mm-tiers-grid">
               {TIERS.map((tier, i) => (
-                <div key={tier.label}
-                  style={{ ...S.tierCard, background: tier.bg, border: `2px solid ${tier.border}` }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; }}
-                >
-                  <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: tier.color, letterSpacing: '1px', marginBottom: 6, opacity: 0.7 }}>
-                    IRS ≥ {i === 0 ? 'any score' : tier.minScore}
+                <Reveal key={tier.label} delay={i * 70}>
+                  <div
+                    style={{ ...S.tierCard, background: tier.bg, border: `2px solid ${tier.border}`, height: '100%' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; }}
+                  >
+                    <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: tier.color, letterSpacing: '1px', marginBottom: 6, opacity: 0.7 }}>
+                      IRS ≥ {i === 0 ? 'any score' : tier.minScore}
+                    </div>
+                    <div style={{ fontFamily: F.display, fontSize: 20, fontWeight: 900, color: tier.color, marginBottom: 8 }}>{tier.label}</div>
+                    <div style={{ height: 1, background: tier.border, marginBottom: 12 }} />
+                    <div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.55, marginBottom: 12 }}>{tier.desc}</div>
+                    <div style={{ padding: '9px 12px', borderRadius: 9, background: 'rgba(255,255,255,0.55)', fontSize: 11, color: C.muted, lineHeight: 1.5 }}>
+                      {tier.advice}
+                    </div>
                   </div>
-                  <div style={{ fontFamily: F.display, fontSize: 20, fontWeight: 900, color: tier.color, marginBottom: 8 }}>{tier.label}</div>
-                  <div style={{ height: 1, background: tier.border, marginBottom: 12 }} />
-                  <div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.55, marginBottom: 12 }}>{tier.desc}</div>
-                  <div style={{ padding: '9px 12px', borderRadius: 9, background: 'rgba(255,255,255,0.55)', fontSize: 11, color: C.muted, lineHeight: 1.5 }}>
-                    {tier.advice}
-                  </div>
-                </div>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -824,42 +1048,46 @@ const Home = () => {
         {/* ── SIX DIMENSIONS ────────────────────────────────────────────────── */}
         <section style={S.dimsSection}>
           <div style={S.sectionInner}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16, marginBottom: 28 }}>
-              <div>
-                <p style={S.eyebrow}>6 skill dimensions</p>
-                <h2 style={{ ...S.sectionH2, marginBottom: 8 }}>Every interview dissected<br />across six weighted axes.</h2>
-                <p style={S.sectionSub}>You can't fake overall readiness by drilling one topic. Each dimension has a real weight in the IRS formula.</p>
+            <Reveal>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16, marginBottom: 28 }}>
+                <div>
+                  <p style={S.eyebrow}>6 skill dimensions</p>
+                  <h2 style={{ ...S.sectionH2, marginBottom: 8 }}>Every interview dissected<br />across six weighted axes.</h2>
+                  <p style={S.sectionSub}>You can't fake overall readiness by drilling one topic. Each dimension has a real weight in the IRS formula.</p>
+                </div>
+                <Button variant="secondary" onClick={goToInterview}>
+                  See your real dimensions →
+                </Button>
               </div>
-              <Button variant="secondary" onClick={goToInterview}>
-                See your real dimensions →
-              </Button>
-            </div>
+            </Reveal>
             <div style={S.dimsGrid} className="mm-dims-grid">
               {DIMENSIONS.map((dim, i) => {
                 const col = dim.demo >= 80 ? C.green : dim.demo >= 60 ? C.blue500 : C.amber;
                 return (
-                  <div key={dim.key} title={dim.tip}
-                    style={{ ...S.dimCard, border: `1.5px solid ${dim.demo >= 80 ? col + '55' : C.border}`, background: dim.demo >= 80 ? `${col}07` : C.card }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = C.borderStr; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = dim.demo >= 80 ? col + '55' : C.border; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 16 }}>{dim.icon}</span>
-                        <span style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: C.text }}>{dim.label}</span>
+                  <Reveal key={dim.key} delay={i * 55}>
+                    <div title={dim.tip}
+                      style={{ ...S.dimCard, border: `1.5px solid ${dim.demo >= 80 ? col + '55' : C.border}`, background: dim.demo >= 80 ? `${col}07` : C.card, height: '100%' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = C.borderStr; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = dim.demo >= 80 ? col + '55' : C.border; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 16 }}>{dim.icon}</span>
+                          <span style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: C.text }}>{dim.label}</span>
+                        </div>
+                        <span style={{ fontFamily: F.display, fontSize: 18, fontWeight: 900, color: col }}>{dim.demo}</span>
                       </div>
-                      <span style={{ fontFamily: F.display, fontSize: 18, fontWeight: 900, color: col }}>{dim.demo}</span>
+                      <div style={{ height: 6, borderRadius: 99, background: C.border, overflow: 'hidden', marginBottom: 8 }}>
+                        <ScrollBar width={dim.demo} color={col} duration={1.1 + i * 0.1} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>{dim.weight}% of IRS</span>
+                        <span style={{ fontFamily: F.mono, fontSize: 9, color: col, fontWeight: 700 }}>
+                          {dim.demo >= 80 ? '✓ Strong' : dim.demo >= 60 ? '→ Developing' : '↑ Focus needed'}
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ height: 6, borderRadius: 99, background: C.border, overflow: 'hidden', marginBottom: 8 }}>
-                      <div style={{ height: '100%', width: mounted ? `${dim.demo}%` : '0%', borderRadius: 99, background: col, transition: `width ${1.1 + i * 0.1}s cubic-bezier(.16,1,.3,1)` }} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>{dim.weight}% of IRS</span>
-                      <span style={{ fontFamily: F.mono, fontSize: 9, color: col, fontWeight: 700 }}>
-                        {dim.demo >= 80 ? '✓ Strong' : dim.demo >= 60 ? '→ Developing' : '↑ Focus needed'}
-                      </span>
-                    </div>
-                  </div>
+                  </Reveal>
                 );
               })}
             </div>
@@ -869,128 +1097,136 @@ const Home = () => {
         {/* ── COMPARISON: MOCKMATE VS ALONE ─────────────────────────────────── */}
         <section style={{ padding: '96px 32px', background: C.bg }}>
           <div style={S.sectionInner}>
-            <p style={S.eyebrow}>Why not just practice alone?</p>
-            <h2 style={S.sectionH2}>The gap between feeling ready<br />and being ready.</h2>
-            <p style={{ ...S.sectionSub, marginBottom: 40 }}>
-              Most students who fail placement rounds feel like they prepared. The problem isn't effort — it's feedback loops. Without real feedback, you just repeat the same gaps at increasing confidence.
-            </p>
+            <Reveal>
+              <p style={S.eyebrow}>Why not just practice alone?</p>
+              <h2 style={S.sectionH2}>The gap between feeling ready<br />and being ready.</h2>
+              <p style={{ ...S.sectionSub, marginBottom: 40 }}>
+                Most students who fail placement rounds feel like they prepared. The problem isn't effort — it's feedback loops. Without real feedback, you just repeat the same gaps at increasing confidence.
+              </p>
+            </Reveal>
 
-            <div style={{ borderRadius: 18, overflow: 'hidden', border: `1.5px solid ${C.borderMd}`, boxShadow: C.shadowMd }}>
-              {/* Table header */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', background: C.blue900 }}>
-                <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.5)' }}>Area</div>
-                <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.5)', borderLeft: '1px solid rgba(255,255,255,0.08)' }}>Practising alone</div>
-                <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 800, color: C.cyan400, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>With MockMate</div>
-              </div>
-              {/* Table rows */}
-              {COMPARE_ROWS.map((row, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', background: i % 2 === 0 ? C.card : C.cardAlt, borderTop: `1px solid ${C.border}` }}>
-                  <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 700, color: C.text }}>{row.aspect}</div>
-                  <div style={{ padding: '14px 20px', fontFamily: F.body, fontSize: 13, color: C.muted, lineHeight: 1.55, borderLeft: `1px solid ${C.border}` }}>
-                    <span style={{ color: C.red, marginRight: 5 }}>✗</span>{row.alone}
-                  </div>
-                  <div style={{ padding: '14px 20px', fontFamily: F.body, fontSize: 13, color: C.text, lineHeight: 1.55, borderLeft: `1px solid ${C.border}` }}>
-                    <span style={{ color: C.green, marginRight: 5 }}>✓</span>{row.mockmate}
-                  </div>
+            <Reveal delay={80}>
+              <div style={{ borderRadius: 18, overflow: 'hidden', border: `1.5px solid ${C.borderMd}`, boxShadow: C.shadowMd }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', background: C.blue900 }}>
+                  <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.5)' }}>Area</div>
+                  <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.5)', borderLeft: '1px solid rgba(255,255,255,0.08)' }}>Practising alone</div>
+                  <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 800, color: C.cyan400, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>With MockMate</div>
                 </div>
-              ))}
-            </div>
+                {COMPARE_ROWS.map((row, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', background: i % 2 === 0 ? C.card : C.cardAlt, borderTop: `1px solid ${C.border}` }}>
+                    <div style={{ padding: '14px 20px', fontFamily: F.display, fontSize: 13, fontWeight: 700, color: C.text }}>{row.aspect}</div>
+                    <div style={{ padding: '14px 20px', fontFamily: F.body, fontSize: 13, color: C.muted, lineHeight: 1.55, borderLeft: `1px solid ${C.border}` }}>
+                      <span style={{ color: C.red, marginRight: 5 }}>✗</span>{row.alone}
+                    </div>
+                    <div style={{ padding: '14px 20px', fontFamily: F.body, fontSize: 13, color: C.text, lineHeight: 1.55, borderLeft: `1px solid ${C.border}` }}>
+                      <span style={{ color: C.green, marginRight: 5 }}>✓</span>{row.mockmate}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Reveal>
           </div>
         </section>
 
         {/* ── FEATURES ──────────────────────────────────────────────────────── */}
         <section style={{ ...S.dimsSection, background: C.card }}>
           <div style={S.sectionInner}>
-            <p style={S.eyebrow}>What makes it different</p>
-            <h2 style={S.sectionH2}>Built for the gap between<br />knowing and performing.</h2>
+            <Reveal>
+              <p style={S.eyebrow}>What makes it different</p>
+              <h2 style={S.sectionH2}>Built for the gap between<br />knowing and performing.</h2>
+            </Reveal>
             <div style={S.featuresGrid} className="mm-features-grid">
               {FEATURES.map((f, i) => (
-                <div key={i} style={S.featureCard}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = C.borderStr; e.currentTarget.style.boxShadow = C.shadowMd; e.currentTarget.style.transform = 'translateY(-3px)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = C.shadow; e.currentTarget.style.transform = 'translateY(0)'; }}
-                >
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: C.blue50, border: `1px solid ${C.borderMd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, marginBottom: 14 }}>{f.icon}</div>
-                  <div style={{ display: 'inline-block', background: C.blue50, border: `1px solid ${C.borderMd}`, borderRadius: 99, padding: '3px 10px', marginBottom: 10, fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>{f.tag}</div>
-                  <h3 style={{ fontFamily: F.display, fontSize: 15, fontWeight: 800, color: C.text, margin: '0 0 8px', lineHeight: 1.3 }}>{f.title}</h3>
-                  <p style={{ fontFamily: F.body, fontSize: 13, color: C.sub, lineHeight: 1.65, margin: 0 }}>{f.desc}</p>
-                </div>
+                <Reveal key={i} delay={i * 60}>
+                  <div style={{ ...S.featureCard, height: '100%' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = C.borderStr; e.currentTarget.style.boxShadow = C.shadowMd; e.currentTarget.style.transform = 'translateY(-3px)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = C.shadow; e.currentTarget.style.transform = 'translateY(0)'; }}
+                  >
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: C.blue50, border: `1px solid ${C.borderMd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, marginBottom: 14 }}>{f.icon}</div>
+                    <div style={{ display: 'inline-block', background: C.blue50, border: `1px solid ${C.borderMd}`, borderRadius: 99, padding: '3px 10px', marginBottom: 10, fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>{f.tag}</div>
+                    <h3 style={{ fontFamily: F.display, fontSize: 15, fontWeight: 800, color: C.text, margin: '0 0 8px', lineHeight: 1.3 }}>{f.title}</h3>
+                    <p style={{ fontFamily: F.body, fontSize: 13, color: C.sub, lineHeight: 1.65, margin: 0 }}>{f.desc}</p>
+                  </div>
+                </Reveal>
               ))}
             </div>
           </div>
         </section>
 
-        {/* ── WEAK PATTERN DETECTOR DEEP DIVE ───────────────────────────────── */}
+        {/* ── WEAK PATTERN DETECTOR ─────────────────────────────────────────── */}
         <section style={{ padding: '96px 32px', background: C.bgDeep }}>
           <div style={S.sectionInner}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 72, alignItems: 'center' }} className="mm-irs-grid">
-              <div>
-                <p style={S.eyebrow}>Weak pattern detector</p>
-                <h2 style={{ ...S.sectionH2, marginBottom: 12 }}>It doesn't just score.<br />It remembers where you fail.</h2>
-                <p style={{ ...S.sectionSub, marginBottom: 24 }}>
-                  After three or more sessions, MockMate builds a cross-session weakness map. It tracks not just which questions you get wrong — but which reasoning patterns consistently break down, across different questions and different modes.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {[
-                    { icon: '🔁', title: 'Pattern detection', desc: 'If you lose points on scalability reasoning in 4 of 6 sessions — regardless of topic — that\'s a pattern, and your next session will probe it explicitly.' },
-                    { icon: '⚖', title: 'Auto question reweighting', desc: 'Questions in your weak dimensions appear 40% more often after week 1. You can\'t avoid the weak spot by picking different modes.' },
-                    { icon: '📉', title: 'Weakness map on dashboard', desc: 'Your dashboard shows a live heatmap of dimension trends across all sessions. You see the slope, not just the current number.' },
-                  ].map((item, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 13, padding: '14px 16px', borderRadius: 13, background: C.card, border: `1px solid ${C.border}`, alignItems: 'flex-start' }}>
-                      <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
-                      <div>
-                        <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 4 }}>{item.title}</div>
-                        <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.6 }}>{item.desc}</div>
+              <Reveal>
+                <div>
+                  <p style={S.eyebrow}>Weak pattern detector</p>
+                  <h2 style={{ ...S.sectionH2, marginBottom: 12 }}>It doesn't just score.<br />It remembers where you fail.</h2>
+                  <p style={{ ...S.sectionSub, marginBottom: 24 }}>
+                    After three or more sessions, MockMate builds a cross-session weakness map. It tracks not just which questions you get wrong — but which reasoning patterns consistently break down, across different questions and different modes.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {[
+                      { icon: '🔁', title: 'Pattern detection', desc: 'If you lose points on scalability reasoning in 4 of 6 sessions — regardless of topic — that\'s a pattern, and your next session will probe it explicitly.' },
+                      { icon: '⚖', title: 'Auto question reweighting', desc: 'Questions in your weak dimensions appear 40% more often after week 1. You can\'t avoid the weak spot by picking different modes.' },
+                      { icon: '📉', title: 'Weakness map on dashboard', desc: 'Your dashboard shows a live heatmap of dimension trends across all sessions. You see the slope, not just the current number.' },
+                    ].map((item, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 13, padding: '14px 16px', borderRadius: 13, background: C.card, border: `1px solid ${C.border}`, alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
+                        <div>
+                          <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 4 }}>{item.title}</div>
+                          <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.6 }}>{item.desc}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Simulated weakness heatmap */}
-              <div style={{ background: C.card, border: `1.5px solid ${C.borderMd}`, borderRadius: 18, overflow: 'hidden', boxShadow: C.shadowMd }}>
-                <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: C.text }}>Weakness Map</div>
-                    <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 2 }}>8 sessions · last 14 days</div>
+                    ))}
                   </div>
-                  <div style={{ fontFamily: F.mono, fontSize: 9, color: C.amber, background: C.amberTint, border: '1px solid #FDE68A', borderRadius: 99, padding: '3px 9px' }}>2 weak zones</div>
                 </div>
-                <div style={{ padding: '20px' }}>
-                  {[
-                    { label: 'Technical Depth',  scores: [71, 73, 75, 74, 78, 76, 79, 81], trend: 'up' },
-                    { label: 'Problem Solving',  scores: [60, 58, 64, 61, 59, 63, 60, 62], trend: 'flat', weak: true },
-                    { label: 'Communication',    scores: [80, 82, 79, 84, 83, 85, 87, 86], trend: 'up' },
-                    { label: 'System Design',    scores: [48, 51, 49, 53, 50, 54, 52, 55], trend: 'up', weak: true },
-                    { label: 'CS Fundamentals',  scores: [76, 75, 78, 80, 79, 82, 81, 83], trend: 'up' },
-                    { label: 'Behavioral',       scores: [70, 72, 71, 73, 74, 75, 76, 75], trend: 'up' },
-                  ].map((dim, i) => {
-                    const last = dim.scores[dim.scores.length - 1];
-                    const col = dim.weak ? C.amber : last >= 80 ? C.green : C.blue500;
-                    const min = Math.min(...dim.scores);
-                    const max = Math.max(...dim.scores);
-                    const range = max - min || 1;
-                    return (
-                      <div key={i} style={{ marginBottom: 14 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                          <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
-                            {dim.weak && <span style={{ fontFamily: F.mono, fontSize: 8, color: C.amber, background: C.amberTint, border: '1px solid #FDE68A', borderRadius: 99, padding: '1px 6px' }}>WEAK</span>}
-                            <span style={{ fontFamily: F.display, fontSize: 12, fontWeight: 700, color: C.text }}>{dim.label}</span>
+              </Reveal>
+
+              <Reveal delay={100}>
+                <div style={{ background: C.card, border: `1.5px solid ${C.borderMd}`, borderRadius: 18, overflow: 'hidden', boxShadow: C.shadowMd }}>
+                  <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, color: C.text }}>Weakness Map</div>
+                      <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 2 }}>8 sessions · last 14 days</div>
+                    </div>
+                    <div style={{ fontFamily: F.mono, fontSize: 9, color: C.amber, background: C.amberTint, border: '1px solid #FDE68A', borderRadius: 99, padding: '3px 9px' }}>2 weak zones</div>
+                  </div>
+                  <div style={{ padding: '20px' }}>
+                    {[
+                      { label: 'Technical Depth',  scores: [71, 73, 75, 74, 78, 76, 79, 81], trend: 'up' },
+                      { label: 'Problem Solving',  scores: [60, 58, 64, 61, 59, 63, 60, 62], trend: 'flat', weak: true },
+                      { label: 'Communication',    scores: [80, 82, 79, 84, 83, 85, 87, 86], trend: 'up' },
+                      { label: 'System Design',    scores: [48, 51, 49, 53, 50, 54, 52, 55], trend: 'up', weak: true },
+                      { label: 'CS Fundamentals',  scores: [76, 75, 78, 80, 79, 82, 81, 83], trend: 'up' },
+                      { label: 'Behavioral',       scores: [70, 72, 71, 73, 74, 75, 76, 75], trend: 'up' },
+                    ].map((dim, i) => {
+                      const last = dim.scores[dim.scores.length - 1];
+                      const col  = dim.weak ? C.amber : last >= 80 ? C.green : C.blue500;
+                      const min  = Math.min(...dim.scores);
+                      const max  = Math.max(...dim.scores);
+                      const range = max - min || 1;
+                      return (
+                        <div key={i} style={{ marginBottom: 14 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                            <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                              {dim.weak && <span style={{ fontFamily: F.mono, fontSize: 8, color: C.amber, background: C.amberTint, border: '1px solid #FDE68A', borderRadius: 99, padding: '1px 6px' }}>WEAK</span>}
+                              <span style={{ fontFamily: F.display, fontSize: 12, fontWeight: 700, color: C.text }}>{dim.label}</span>
+                            </div>
+                            <span style={{ fontFamily: F.display, fontSize: 14, fontWeight: 900, color: col }}>{last}</span>
                           </div>
-                          <span style={{ fontFamily: F.display, fontSize: 14, fontWeight: 900, color: col }}>{last}</span>
+                          <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 24 }}>
+                            {dim.scores.map((s, j) => {
+                              const h = Math.max(4, ((s - min) / range) * 20 + 4);
+                              const isLast = j === dim.scores.length - 1;
+                              return <div key={j} style={{ flex: 1, height: h, borderRadius: 2, background: isLast ? col : dim.weak ? '#FDE68A' : C.blue100, transition: 'height 0.4s' }} />;
+                            })}
+                          </div>
                         </div>
-                        {/* Mini sparkline */}
-                        <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 24 }}>
-                          {dim.scores.map((s, j) => {
-                            const h = Math.max(4, ((s - min) / range) * 20 + 4);
-                            const isLast = j === dim.scores.length - 1;
-                            return <div key={j} style={{ flex: 1, height: h, borderRadius: 2, background: isLast ? col : dim.weak ? '#FDE68A' : C.blue100, transition: 'height 0.4s' }} />;
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              </Reveal>
             </div>
           </div>
         </section>
@@ -998,129 +1234,132 @@ const Home = () => {
         {/* ── STREAK + BADGES ───────────────────────────────────────────────── */}
         <section style={S.streakSection}>
           <div style={S.sectionInner}>
-            <div style={S.streakBox} className="mm-streak-box">
-              <div style={{ flex: '1 1 320px' }}>
-                <p style={S.eyebrow}>Streak accountability</p>
-                <h2 style={{ fontFamily: F.display, fontSize: 'clamp(22px, 3vw, 34px)', fontWeight: 900, color: C.text, margin: '0 0 14px', letterSpacing: '-0.8px', lineHeight: 1.18 }}>
-                  Miss a day.<br />Break the chain.
-                </h2>
-                <p style={{ fontFamily: F.body, fontSize: 14, color: C.sub, lineHeight: 1.68, margin: '0 0 20px', maxWidth: 380 }}>
-                  The streak system replicates what daily placement prep actually demands. Each badge is earned through real behaviour — not gifted after a one-off session.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {[
-                    { label: '8 badges total', sub: 'Across volume, streaks, and performance' },
-                    { label: 'Badge resets are real', sub: 'Score 90+ badge requires maintaining it — not hitting it once' },
-                    { label: 'Placement Ready = 30 days', sub: 'The only badge that matters to placement cells' },
-                  ].map((item, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                      <span style={{ color: C.blue500, fontFamily: F.mono, fontSize: 14, marginTop: 1 }}>›</span>
-                      <div>
-                        <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: C.text }}>{item.label}</div>
-                        <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, marginTop: 2 }}>{item.sub}</div>
+            <Reveal>
+              <div style={S.streakBox} className="mm-streak-box">
+                <div style={{ flex: '1 1 320px' }}>
+                  <p style={S.eyebrow}>Streak accountability</p>
+                  <h2 style={{ fontFamily: F.display, fontSize: 'clamp(22px, 3vw, 34px)', fontWeight: 900, color: C.text, margin: '0 0 14px', letterSpacing: '-0.8px', lineHeight: 1.18 }}>
+                    Miss a day.<br />Break the chain.
+                  </h2>
+                  <p style={{ fontFamily: F.body, fontSize: 14, color: C.sub, lineHeight: 1.68, margin: '0 0 20px', maxWidth: 380 }}>
+                    The streak system replicates what daily placement prep actually demands. Each badge is earned through real behaviour — not gifted after a one-off session.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {[
+                      { label: '8 badges total', sub: 'Across volume, streaks, and performance' },
+                      { label: 'Badge resets are real', sub: 'Score 90+ badge requires maintaining it — not hitting it once' },
+                      { label: 'Placement Ready = 30 days', sub: 'The only badge that matters to placement cells' },
+                    ].map((item, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                        <span style={{ color: C.blue500, fontFamily: F.mono, fontSize: 14, marginTop: 1 }}>›</span>
+                        <div>
+                          <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 700, color: C.text }}>{item.label}</div>
+                          <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, marginTop: 2 }}>{item.sub}</div>
+                        </div>
                       </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ flex: '1 1 400px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }} className="mm-badge-grid-lg">
+                  {BADGES.map((b, i) => (
+                    <div key={i} style={{
+                      ...S.badgeCard,
+                      background: b.bg,
+                      border: `1.5px solid ${b.border}`,
+                      opacity: b.earned ? 1 : 0.55,
+                      position: 'relative',
+                      overflow: 'hidden',
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = C.shadowMd; e.currentTarget.style.opacity = '1'; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; e.currentTarget.style.opacity = b.earned ? '1' : '0.55'; }}
+                    >
+                      {b.earned && <div style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: C.green, boxShadow: '0 0 5px rgba(5,150,105,0.5)' }} />}
+                      <div style={{ fontSize: 24, marginBottom: 7 }}>{b.icon}</div>
+                      <div style={{ fontFamily: F.display, fontSize: 11.5, fontWeight: 800, color: b.color, marginBottom: 3 }}>{b.label}</div>
+                      <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted }}>{b.sub}</div>
                     </div>
                   ))}
                 </div>
               </div>
-
-              {/* Full 8-badge grid */}
-              <div style={{ flex: '1 1 400px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }} className="mm-badge-grid-lg">
-                {BADGES.map((b, i) => (
-                  <div key={i} style={{
-                    ...S.badgeCard,
-                    background: b.bg,
-                    border: `1.5px solid ${b.border}`,
-                    opacity: b.earned ? 1 : 0.55,
-                    position: 'relative',
-                    overflow: 'hidden',
-                  }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = C.shadowMd; e.currentTarget.style.opacity = '1'; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; e.currentTarget.style.opacity = b.earned ? '1' : '0.55'; }}
-                  >
-                    {b.earned && <div style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: C.green, boxShadow: '0 0 5px rgba(5,150,105,0.5)' }} />}
-                    <div style={{ fontSize: 24, marginBottom: 7 }}>{b.icon}</div>
-                    <div style={{ fontFamily: F.display, fontSize: 11.5, fontWeight: 800, color: b.color, marginBottom: 3 }}>{b.label}</div>
-                    <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted }}>{b.sub}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            </Reveal>
           </div>
         </section>
 
-        {/* ── LEADERBOARD SECTION ───────────────────────────────────────────── */}
+        {/* ── LEADERBOARD ───────────────────────────────────────────────────── */}
         <section style={{ padding: '96px 32px', background: C.card }}>
           <div style={S.sectionInner}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 72, alignItems: 'center' }} className="mm-irs-grid">
-
-              {/* Simulated leaderboard */}
-              <div style={{ background: C.card, border: `1.5px solid ${C.borderMd}`, borderRadius: 18, overflow: 'hidden', boxShadow: C.shadowMd }}>
-                <div style={{ background: C.blue900, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 800, color: '#fff' }}>CHARUSAT · CSE</div>
-                    <div style={{ fontFamily: F.mono, fontSize: 9, color: 'rgba(255,255,255,0.40)', marginTop: 2 }}>Week 32 · Resets in 4 days</div>
-                  </div>
-                  <div style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan400, background: 'rgba(0,200,240,0.15)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '3px 9px' }}>147 students</div>
-                </div>
-                {[
-                  { rank: 1,  name: 'Priya S.',    irs: 84, streak: 18, tier: '₹20 LPA+',  you: false },
-                  { rank: 2,  name: 'Arjun M.',    irs: 81, streak: 22, tier: '₹20 LPA+',  you: false },
-                  { rank: 3,  name: 'Riddhi P.',   irs: 79, streak: 14, tier: '₹12–20 LPA', you: false },
-                  { rank: 11, name: 'You',          irs: 68, streak: 7,  tier: '₹12–20 LPA', you: true  },
-                  { rank: 12, name: 'Nehal K.',    irs: 67, streak: 5,  tier: '₹6–12 LPA',  you: false },
-                ].map((row, i) => (
-                  <div key={i}>
-                    {i === 3 && <div style={{ padding: '7px 20px', background: C.bgDeep, borderTop: `1px solid ${C.border}`, fontFamily: F.mono, fontSize: 9, color: C.muted, textAlign: 'center', letterSpacing: '0.5px' }}>· · · · ·</div>}
-                    <div style={{
-                      display: 'grid', gridTemplateColumns: '36px 1fr auto',
-                      alignItems: 'center', gap: 12,
-                      padding: '12px 20px',
-                      borderTop: `1px solid ${C.border}`,
-                      background: row.you ? `${C.blue500}10` : 'transparent',
-                      transition: 'background 0.15s',
-                    }}>
-                      <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 900, color: row.rank <= 3 ? C.amber : C.muted, textAlign: 'center' }}>
-                        {row.rank <= 3 ? ['🥇','🥈','🥉'][row.rank - 1] : `#${row.rank}`}
-                      </div>
-                      <div>
-                        <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: row.you ? 800 : 600, color: row.you ? C.blue500 : C.text }}>{row.name} {row.you && '← you'}</div>
-                        <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 2 }}>🔥 {row.streak} day streak</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 900, color: C.text }}>{row.irs}</div>
-                        <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted }}>{row.tier}</div>
-                      </div>
+              <Reveal>
+                <div style={{ background: C.card, border: `1.5px solid ${C.borderMd}`, borderRadius: 18, overflow: 'hidden', boxShadow: C.shadowMd }}>
+                  <div style={{ background: C.blue900, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 800, color: '#fff' }}>CHARUSAT · CSE</div>
+                      <div style={{ fontFamily: F.mono, fontSize: 9, color: 'rgba(255,255,255,0.40)', marginTop: 2 }}>Week 32 · Resets in 4 days</div>
                     </div>
+                    <div style={{ fontFamily: F.mono, fontSize: 9, color: C.cyan400, background: 'rgba(0,200,240,0.15)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '3px 9px' }}>147 students</div>
                   </div>
-                ))}
-                <div style={{ padding: '12px 20px', borderTop: `1px solid ${C.border}`, background: C.blue50 }}>
-                  <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.blue500, textAlign: 'center' }}>8 spots to top 3 · +0.4 IRS/day at current rate → 20 days</div>
-                </div>
-              </div>
-
-              <div>
-                <p style={S.eyebrow}>College leaderboard</p>
-                <h2 style={{ ...S.sectionH2, marginBottom: 12 }}>Know exactly where<br />you rank in your college.</h2>
-                <p style={{ ...S.sectionSub, marginBottom: 24 }}>
-                  The leaderboard resets every week, so rank is earned continuously — not from a one-time high score. Your position updates live after each session.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {[
-                    { icon: '🔄', title: 'Weekly reset', desc: 'Every Monday. Last week\'s rank is gone. Fresh start, same stakes.' },
-                    { icon: '🏫', title: 'College-scoped', desc: 'You only compete against students from your own college — not an aggregated national pool that makes your rank meaningless.' },
-                    { icon: '📊', title: 'IRS as the metric', desc: 'Rank is by IRS, not session count. The student who showed up most doesn\'t win — the most prepared one does.' },
-                  ].map((item, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 13, padding: '14px 16px', borderRadius: 13, background: C.cardAlt, border: `1px solid ${C.border}`, alignItems: 'flex-start' }}>
-                      <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
-                      <div>
-                        <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 4 }}>{item.title}</div>
-                        <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.6 }}>{item.desc}</div>
+                    { rank: 1,  name: 'Priya S.',    irs: 84, streak: 18, tier: '₹20 LPA+',   you: false },
+                    { rank: 2,  name: 'Arjun M.',    irs: 81, streak: 22, tier: '₹20 LPA+',   you: false },
+                    { rank: 3,  name: 'Riddhi P.',   irs: 79, streak: 14, tier: '₹12–20 LPA', you: false },
+                    { rank: 11, name: 'You',          irs: 68, streak: 7,  tier: '₹12–20 LPA', you: true  },
+                    { rank: 12, name: 'Nehal K.',    irs: 67, streak: 5,  tier: '₹6–12 LPA',  you: false },
+                  ].map((row, i) => (
+                    <div key={i}>
+                      {i === 3 && <div style={{ padding: '7px 20px', background: C.bgDeep, borderTop: `1px solid ${C.border}`, fontFamily: F.mono, fontSize: 9, color: C.muted, textAlign: 'center', letterSpacing: '0.5px' }}>· · · · ·</div>}
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '36px 1fr auto',
+                        alignItems: 'center', gap: 12,
+                        padding: '12px 20px',
+                        borderTop: `1px solid ${C.border}`,
+                        background: row.you ? `${C.blue500}10` : 'transparent',
+                        transition: 'background 0.15s',
+                      }}>
+                        <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 900, color: row.rank <= 3 ? C.amber : C.muted, textAlign: 'center' }}>
+                          {row.rank <= 3 ? ['🥇','🥈','🥉'][row.rank - 1] : `#${row.rank}`}
+                        </div>
+                        <div>
+                          <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: row.you ? 800 : 600, color: row.you ? C.blue500 : C.text }}>{row.name} {row.you && '← you'}</div>
+                          <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginTop: 2 }}>🔥 {row.streak} day streak</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 900, color: C.text }}>{row.irs}</div>
+                          <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted }}>{row.tier}</div>
+                        </div>
                       </div>
                     </div>
                   ))}
+                  <div style={{ padding: '12px 20px', borderTop: `1px solid ${C.border}`, background: C.blue50 }}>
+                    <div style={{ fontFamily: F.mono, fontSize: 9.5, color: C.blue500, textAlign: 'center' }}>8 spots to top 3 · +0.4 IRS/day at current rate → 20 days</div>
+                  </div>
                 </div>
-              </div>
+              </Reveal>
+
+              <Reveal delay={100}>
+                <div>
+                  <p style={S.eyebrow}>College leaderboard</p>
+                  <h2 style={{ ...S.sectionH2, marginBottom: 12 }}>Know exactly where<br />you rank in your college.</h2>
+                  <p style={{ ...S.sectionSub, marginBottom: 24 }}>
+                    The leaderboard resets every week, so rank is earned continuously — not from a one-time high score. Your position updates live after each session.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {[
+                      { icon: '🔄', title: 'Weekly reset', desc: 'Every Monday. Last week\'s rank is gone. Fresh start, same stakes.' },
+                      { icon: '🏫', title: 'College-scoped', desc: 'You only compete against students from your own college — not an aggregated national pool that makes your rank meaningless.' },
+                      { icon: '📊', title: 'IRS as the metric', desc: 'Rank is by IRS, not session count. The student who showed up most doesn\'t win — the most prepared one does.' },
+                    ].map((item, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 13, padding: '14px 16px', borderRadius: 13, background: C.cardAlt, border: `1px solid ${C.border}`, alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
+                        <div>
+                          <div style={{ fontFamily: F.display, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 4 }}>{item.title}</div>
+                          <div style={{ fontFamily: F.body, fontSize: 12.5, color: C.sub, lineHeight: 1.6 }}>{item.desc}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Reveal>
             </div>
           </div>
         </section>
@@ -1129,32 +1368,34 @@ const Home = () => {
         <section style={{ padding: '72px 32px', background: C.bg }}>
           <div style={S.sectionInner}>
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }} className="mm-irs-grid">
-              <div style={{ flex: '1 1 340px' }}>
-                <p style={S.eyebrow}>Interview archetypes</p>
-                <h2 style={{ ...S.sectionH2, marginBottom: 10 }}>Your interview personality is data, not vibes.</h2>
-                <p style={S.sectionSub}>MockMate uses standard deviation and trend slope on your real score history to assign an archetype — then gives you a fix specific to that pattern.</p>
-                <div style={{ marginTop: 20, padding: '14px 16px', borderRadius: 12, background: C.card, border: `1px solid ${C.border}` }}>
-                  <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginBottom: 8 }}>HOW ARCHETYPES ARE ASSIGNED</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {[
-                      { label: 'Trend slope > 0.5/session', result: '→ Consistent Climber' },
-                      { label: 'Std deviation > 12 pts',    result: '→ Inconsistent Genius' },
-                      { label: 'Speed < 90s, score > 85',   result: '→ Speed Runner' },
-                      { label: 'Score > 80, speed > 4 min', result: '→ Deep Thinker' },
-                    ].map((a, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>{a.label}</span>
-                        <span style={{ fontFamily: F.display, fontSize: 11, fontWeight: 700, color: C.blue500 }}>{a.result}</span>
-                      </div>
-                    ))}
+              <Reveal style={{ flex: '1 1 340px' }}>
+                <div>
+                  <p style={S.eyebrow}>Interview archetypes</p>
+                  <h2 style={{ ...S.sectionH2, marginBottom: 10 }}>Your interview personality is data, not vibes.</h2>
+                  <p style={S.sectionSub}>MockMate uses standard deviation and trend slope on your real score history to assign an archetype — then gives you a fix specific to that pattern.</p>
+                  <div style={{ marginTop: 20, padding: '14px 16px', borderRadius: 12, background: C.card, border: `1px solid ${C.border}` }}>
+                    <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginBottom: 8 }}>HOW ARCHETYPES ARE ASSIGNED</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {[
+                        { label: 'Trend slope > 0.5/session', result: '→ Consistent Climber' },
+                        { label: 'Std deviation > 12 pts',    result: '→ Inconsistent Genius' },
+                        { label: 'Speed < 90s, score > 85',   result: '→ Speed Runner' },
+                        { label: 'Score > 80, speed > 4 min', result: '→ Deep Thinker' },
+                      ].map((a, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.muted }}>{a.label}</span>
+                          <span style={{ fontFamily: F.display, fontSize: 11, fontWeight: 700, color: C.blue500 }}>{a.result}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 16 }}>
+                    <Button variant="secondary" onClick={goToInterview}>
+                      Discover your archetype →
+                    </Button>
                   </div>
                 </div>
-                <div style={{ marginTop: 16 }}>
-                  <Button variant="secondary" onClick={goToInterview}>
-                    Discover your archetype →
-                  </Button>
-                </div>
-              </div>
+              </Reveal>
               <div style={{ flex: '1 1 400px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {[
                   { icon: '📈', label: 'Consistent Climber', desc: 'Steady improvement — the archetype that wins campus placements.', color: C.green, bg: C.greenTint, border: '#BBF7D0', fix: 'Keep the streak. The formula rewards you.' },
@@ -1162,15 +1403,17 @@ const Home = () => {
                   { icon: '🧠', label: 'Deep Thinker',        desc: 'Thorough and accurate — needs to improve time under live pressure.', color: C.blue500, bg: C.blue50, border: C.borderMd, fix: 'Set a 2-minute clock per sub-question in practice.' },
                   { icon: '⚡', label: 'Speed Runner',         desc: 'Fast answers, sometimes sacrifices depth. Think aloud.', color: C.cyan500, bg: C.cyanTint, border: '#7DE8FF', fix: 'Add one "and the reason this matters is..." per answer.' },
                 ].map((a, i) => (
-                  <div key={i} style={{ padding: '16px 15px', borderRadius: 14, background: a.bg, border: `1.5px solid ${a.border}`, boxShadow: C.shadow, transition: 'all 0.2s' }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; }}
-                  >
-                    <div style={{ fontSize: 22, marginBottom: 8 }}>{a.icon}</div>
-                    <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: a.color, marginBottom: 6 }}>{a.label}</div>
-                    <div style={{ fontFamily: F.body, fontSize: 11.5, color: C.sub, lineHeight: 1.5, marginBottom: 10 }}>{a.desc}</div>
-                    <div style={{ padding: '7px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.55)', fontFamily: F.mono, fontSize: 9.5, color: a.color }}>Fix: {a.fix}</div>
-                  </div>
+                  <Reveal key={i} delay={i * 60}>
+                    <div style={{ padding: '16px 15px', borderRadius: 14, background: a.bg, border: `1.5px solid ${a.border}`, boxShadow: C.shadow, transition: 'all 0.2s', height: '100%' }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = C.shadowMd; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = C.shadow; }}
+                    >
+                      <div style={{ fontSize: 22, marginBottom: 8 }}>{a.icon}</div>
+                      <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: a.color, marginBottom: 6 }}>{a.label}</div>
+                      <div style={{ fontFamily: F.body, fontSize: 11.5, color: C.sub, lineHeight: 1.5, marginBottom: 10 }}>{a.desc}</div>
+                      <div style={{ padding: '7px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.55)', fontFamily: F.mono, fontSize: 9.5, color: a.color }}>Fix: {a.fix}</div>
+                    </div>
+                  </Reveal>
                 ))}
               </div>
             </div>
@@ -1180,52 +1423,56 @@ const Home = () => {
         {/* ── PRICING ───────────────────────────────────────────────────────── */}
         <section style={{ padding: '80px 32px', background: C.card }}>
           <div style={S.sectionInner}>
-            <p style={S.eyebrow}>Pricing</p>
-            <h2 style={S.sectionH2}>Start free. Go pro when you're serious.</h2>
+            <Reveal>
+              <p style={S.eyebrow}>Pricing</p>
+              <h2 style={S.sectionH2}>Start free. Go pro when you're serious.</h2>
+            </Reveal>
             <div style={S.pricingGrid} className="mm-pricing-grid">
               {PRICING.map((plan, i) => (
-                <div key={i} style={{
-                  ...S.pricingCard,
-                  background: plan.highlight ? `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 50%, ${C.cyan600} 100%)` : C.card,
-                  border: `1.5px solid ${plan.highlight ? 'rgba(0,200,240,0.28)' : C.border}`,
-                  boxShadow: plan.highlight ? '0 20px 60px rgba(0,31,107,0.28)' : C.shadow,
-                }}>
-                  {plan.highlight && (
-                    <div style={{ position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)', background: C.blue500, borderRadius: 99, padding: '4px 14px', fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', boxShadow: '0 2px 10px rgba(26,110,255,0.40)' }}>
-                      MOST POPULAR
+                <Reveal key={i} delay={i * 80}>
+                  <div style={{
+                    ...S.pricingCard, height: '100%',
+                    background: plan.highlight ? `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 50%, ${C.cyan600} 100%)` : C.card,
+                    border: `1.5px solid ${plan.highlight ? 'rgba(0,200,240,0.28)' : C.border}`,
+                    boxShadow: plan.highlight ? '0 20px 60px rgba(0,31,107,0.28)' : C.shadow,
+                  }}>
+                    {plan.highlight && (
+                      <div style={{ position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)', background: C.blue500, borderRadius: 99, padding: '4px 14px', fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', boxShadow: '0 2px 10px rgba(26,110,255,0.40)' }}>
+                        MOST POPULAR
+                      </div>
+                    )}
+                    <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 700, color: plan.highlight ? 'rgba(255,255,255,0.55)' : C.sub, marginBottom: 8 }}>{plan.name}</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 22 }}>
+                      <span style={{ fontFamily: F.display, fontSize: 40, fontWeight: 900, color: plan.highlight ? '#fff' : C.text }}>{plan.price}</span>
+                      <span style={{ fontFamily: F.mono, fontSize: 12, color: plan.highlight ? 'rgba(255,255,255,0.40)' : C.muted }}>{plan.period}</span>
                     </div>
-                  )}
-                  <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 700, color: plan.highlight ? 'rgba(255,255,255,0.55)' : C.sub, marginBottom: 8 }}>{plan.name}</div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 22 }}>
-                    <span style={{ fontFamily: F.display, fontSize: 40, fontWeight: 900, color: plan.highlight ? '#fff' : C.text }}>{plan.price}</span>
-                    <span style={{ fontFamily: F.mono, fontSize: 12, color: plan.highlight ? 'rgba(255,255,255,0.40)' : C.muted }}>{plan.period}</span>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 22px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+                      {plan.features.map(f => (
+                        <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: F.body, fontSize: 13.5, color: plan.highlight ? 'rgba(255,255,255,0.82)' : C.sub }}>
+                          <span style={{ color: plan.highlight ? C.cyan400 : C.blue500, fontSize: 14, flexShrink: 0 }}>✓</span>
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                    <button style={{
+                      width: '100%', padding: '13px',
+                      background: plan.highlight ? 'rgba(255,255,255,0.12)' : 'transparent',
+                      border: plan.highlight ? '1px solid rgba(255,255,255,0.20)' : `1.5px solid ${C.borderMd}`,
+                      color: plan.highlight ? '#fff' : C.sub,
+                      fontFamily: F.display, fontSize: 14, fontWeight: 700, borderRadius: 10, cursor: 'pointer', transition: 'all 0.18s',
+                    }}
+                      onClick={() => plan.action === 'contact' ? window.location.href = 'mailto:hello@mockmate.in' : goToAuth()}
+                      onMouseEnter={e => {
+                        if (plan.highlight) { e.currentTarget.style.background = 'rgba(255,255,255,0.22)'; }
+                        else { e.currentTarget.style.borderColor = C.blue500; e.currentTarget.style.color = C.blue500; }
+                      }}
+                      onMouseLeave={e => {
+                        if (plan.highlight) { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }
+                        else { e.currentTarget.style.borderColor = C.borderMd; e.currentTarget.style.color = C.sub; }
+                      }}
+                    >{plan.cta}</button>
                   </div>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 22px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-                    {plan.features.map(f => (
-                      <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: F.body, fontSize: 13.5, color: plan.highlight ? 'rgba(255,255,255,0.82)' : C.sub }}>
-                        <span style={{ color: plan.highlight ? C.cyan400 : C.blue500, fontSize: 14, flexShrink: 0 }}>✓</span>
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                  <button style={{
-                    width: '100%', padding: '13px',
-                    background: plan.highlight ? 'rgba(255,255,255,0.12)' : 'transparent',
-                    border: plan.highlight ? '1px solid rgba(255,255,255,0.20)' : `1.5px solid ${C.borderMd}`,
-                    color: plan.highlight ? '#fff' : C.sub,
-                    fontFamily: F.display, fontSize: 14, fontWeight: 700, borderRadius: 10, cursor: 'pointer', transition: 'all 0.18s',
-                  }}
-                    onClick={() => plan.action === 'contact' ? window.location.href = 'mailto:hello@mockmate.in' : goToAuth()}
-                    onMouseEnter={e => {
-                      if (plan.highlight) { e.currentTarget.style.background = 'rgba(255,255,255,0.22)'; }
-                      else { e.currentTarget.style.borderColor = C.blue500; e.currentTarget.style.color = C.blue500; }
-                    }}
-                    onMouseLeave={e => {
-                      if (plan.highlight) { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }
-                      else { e.currentTarget.style.borderColor = C.borderMd; e.currentTarget.style.color = C.sub; }
-                    }}
-                  >{plan.cta}</button>
-                </div>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -1234,24 +1481,27 @@ const Home = () => {
         {/* ── FINAL CTA ─────────────────────────────────────────────────────── */}
         <section style={{ padding: '0 32px 80px', background: C.bg }}>
           <div style={S.sectionInner}>
-            <div style={S.ctaBox}>
-              <div style={S.ctaScan} />
-              <div style={{ position: 'relative', textAlign: 'center' }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(0,200,240,0.15)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '5px 14px', marginBottom: 20 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green, display: 'inline-block', animation: 'mmLivePulse 1.6s ease-in-out infinite', boxShadow: '0 0 8px rgba(5,150,105,0.6)' }} />
-                  <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: C.cyan400 }}>READINESS CHALLENGE</span>
+            <Reveal>
+              <div style={S.ctaBox}>
+                <div style={S.ctaScan} />
+                <AuroraCanvas />
+                <div style={{ position: 'relative', zIndex: 2, textAlign: 'center' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(0,200,240,0.15)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '5px 14px', marginBottom: 20 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green, display: 'inline-block', animation: 'mmLivePulse 1.6s ease-in-out infinite', boxShadow: '0 0 8px rgba(5,150,105,0.6)' }} />
+                    <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: C.cyan400 }}>READINESS CHALLENGE</span>
+                  </div>
+                  <h2 style={{ fontFamily: F.display, fontSize: 'clamp(26px, 4.5vw, 50px)', fontWeight: 900, color: '#fff', margin: '0 0 14px', letterSpacing: '-1.5px', lineHeight: 1.1 }}>
+                    The interview that lands your offer<br />is next week.
+                  </h2>
+                  <p style={{ fontFamily: F.body, fontSize: 15, color: 'rgba(255,255,255,0.65)', margin: '0 0 32px', lineHeight: 1.65 }}>
+                    Don't let it be the first time you've answered under pressure.
+                  </p>
+                  <Button surface="dark" size="lg" onClick={goToInterview} style={{ fontSize: 15, fontWeight: 700, padding: '14px 22px', borderRadius: 10 }}>
+                    Practice now — it's free
+                  </Button>
                 </div>
-                <h2 style={{ fontFamily: F.display, fontSize: 'clamp(26px, 4.5vw, 50px)', fontWeight: 900, color: '#fff', margin: '0 0 14px', letterSpacing: '-1.5px', lineHeight: 1.1 }}>
-                  The interview that lands your offer<br />is next week.
-                </h2>
-                <p style={{ fontFamily: F.body, fontSize: 15, color: 'rgba(255,255,255,0.65)', margin: '0 0 32px', lineHeight: 1.65 }}>
-                  Don't let it be the first time you've answered under pressure.
-                </p>
-                <Button surface="dark" size="lg" onClick={goToInterview} style ={{ fontSize: 15, fontWeight: 700, padding: '14px 22px', borderRadius: 10 }}>
-                  Practice now — it's free
-                </Button>
               </div>
-            </div>
+            </Reveal>
           </div>
         </section>
 
@@ -1283,16 +1533,9 @@ const Home = () => {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const S = {
-  strip: { position: 'sticky', top: 0, zIndex: 100, background: C.card, borderBottom: `1px solid ${C.border}`, boxShadow: C.shadow },
-  stripInner: { maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 28px' },
-  stripLeft: { display: 'flex', alignItems: 'center', gap: 8 },
-  stripRight: { display: 'flex', alignItems: 'center', gap: 8 },
-  liveDot: { width: 7, height: 7, borderRadius: '50%', background: C.green, display: 'inline-block', animation: 'mmLivePulse 2s ease-in-out infinite', boxShadow: '0 0 8px rgba(5,150,105,0.5)' },
-  monoText: { fontFamily: F.mono, fontSize: 10, letterSpacing: '0.4px', color: C.muted },
-
-  hero: { position: 'relative', overflow: 'hidden', background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 44%, ${C.blue600} 72%, ${C.cyan600} 100%)`, padding: '84px 32px 80px' },
-  heroScan: { position: 'absolute', top: 0, left: 0, width: '18%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent)', animation: 'mmHeroScan 10s linear infinite', pointerEvents: 'none' },
-  heroInner: { maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 64, flexWrap: 'wrap', position: 'relative' },
+  hero: { position: 'relative', overflow: 'hidden', background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 44%, ${C.blue600} 72%, ${C.cyan600} 100%)`, padding: '40px 32px 80px' },
+  heroScan: { position: 'absolute', top: 0, left: 0, width: '18%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent)', animation: 'mmHeroScan 10s linear infinite', pointerEvents: 'none', zIndex: 1 },
+  heroInner: { maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 64, flexWrap: 'wrap' },
   heroLeft: { flex: '1 1 460px', maxWidth: 580 },
   heroRight: { flex: '1 1 360px', display: 'flex', justifyContent: 'center' },
   heroBadge: { display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,0.09)', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 99, padding: '5px 14px', marginBottom: 22, backdropFilter: 'blur(10px)' },
@@ -1333,7 +1576,7 @@ const S = {
   pricingCard: { borderRadius: 18, padding: '28px 24px', position: 'relative' },
 
   ctaBox: { background: `linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 50%, ${C.cyan600} 100%)`, borderRadius: 24, padding: '72px 40px', position: 'relative', overflow: 'hidden', boxShadow: C.shadowLg },
-  ctaScan: { position: 'absolute', top: 0, left: 0, width: '18%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent)', animation: 'mmHeroScan 12s linear infinite', pointerEvents: 'none' },
+  ctaScan: { position: 'absolute', top: 0, left: 0, width: '18%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent)', animation: 'mmHeroScan 12s linear infinite', pointerEvents: 'none', zIndex: 1 },
 };
 
 // ─── Global CSS ───────────────────────────────────────────────────────────────
@@ -1349,6 +1592,18 @@ const GLOBAL_CSS = `
   @keyframes mmLivePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.35;transform:scale(0.80)} }
   @keyframes mmHeroScan  { 0%{transform:translateX(-100%)} 100%{transform:translateX(500%)} }
   @keyframes mmFadeUp    { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes mmCaret     { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  /* Aurora shimmer pulse on hero */
+  @keyframes mmAuroraShift {
+    0%   { transform: scale(1)   rotate(0deg);   }
+    50%  { transform: scale(1.08) rotate(4deg);  }
+    100% { transform: scale(1)   rotate(0deg);   }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
 
   @media (max-width: 1000px) {
     .mm-irs-grid       { grid-template-columns: 1fr !important; gap: 40px !important; }
@@ -1365,7 +1620,6 @@ const GLOBAL_CSS = `
     .mm-features-grid  { grid-template-columns: 1fr !important; }
     .mm-pipeline-grid  { grid-template-columns: 1fr !important; }
     .mm-streak-box     { flex-direction: column !important; gap: 28px !important; }
-    .mm-strip-right    { display: none !important; }
     .mm-badge-grid-lg  { grid-template-columns: repeat(2, 1fr) !important; }
   }
   @media (max-width: 540px) {

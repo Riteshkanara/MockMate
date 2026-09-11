@@ -1427,6 +1427,7 @@ const Interview = () => {
                   background: mode.soft,
                   color: mode.accent,
                 }}
+                className="iv-console-mode-icon"
               >
                 {mode.icon}
               </div>
@@ -1598,19 +1599,18 @@ const Interview = () => {
                       : 'OPEN QUESTION'}
               </div>
 
-              <h1 style={S.questionText}>
+              <h1 style={S.questionText} className="iv-question-text">
                 {currentQuestion.text}
               </h1>
 
               <div style={S.questionHelp}>
-                <span
-                  style={{
-                    color: mode.accent,
-                  }}
-                >
-                  ✦
+                <span style={{ color: mode.accent, flexShrink: 0, fontSize: 14 }}>
+                  {currentQuestion.questionType === 'mcq'
+                    ? '🎯'
+                    : currentQuestion.questionType === 'aptitude'
+                      ? '🧮'
+                      : '💬'}
                 </span>
-
                 {currentQuestion.questionType === 'mcq'
                   ? 'Only one option is correct — eliminate wrong ones first, then pick the strongest.'
                   : currentQuestion.questionType === 'aptitude'
@@ -1791,6 +1791,7 @@ const Interview = () => {
 
                   <div
                     style={S.answerActions}
+                    className="iv-answer-actions"
                   >
                     <button
                       type="button"
@@ -1887,16 +1888,12 @@ const Interview = () => {
         </main>
 
         {!isSubmitted && (
-          <div style={S.roomFoot}>
-            <span
-              style={{
-                color: C.blue500,
-              }}
-            >
-              ✦
-            </span>
-            Focus on clarity, reasoning and technical
-            correctness.
+          <div style={S.roomFoot} className="iv-footnote">
+            {currentQuestion.questionType === 'mcq'
+              ? '🎯 Eliminate clearly wrong options first — pattern recognition beats guessing.'
+              : currentQuestion.questionType === 'aptitude'
+                ? '🧮 Show your working — partial marks matter and it helps you catch errors.'
+                : '💬 Clarity beats length. A focused 60-word answer scores better than a rambling 200-word one.'}
           </div>
         )}
 
@@ -2016,11 +2013,20 @@ const TimerRing = ({
 };
 
 // ── Splits a paragraph string into bullet-ready sentences ─────────────────
-// Handles ". ", "! ", "? " as sentence boundaries.
-// Returns an array of clean non-empty strings.
 const splitToBullets = (text = '') => {
   if (!text) return [];
-  // Split on sentence boundaries but keep short text as one bullet
+
+  // If the text contains numbered list markers (e.g. "1. ... 2. ..."),
+  // split on them and strip the number prefix — avoids "1." showing as
+  // a standalone bullet with the sentence as the next one.
+  const numberedSplit = text
+    .split(/(?<!\d)\d+\.\s+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if (numberedSplit.length > 1) return numberedSplit;
+
+  // Fallback: sentence boundaries
   const sentences = text
     .replace(/([.!?])\s+/g, '$1|||')
     .split('|||')
@@ -2028,7 +2034,6 @@ const splitToBullets = (text = '') => {
     .filter(Boolean);
   return sentences.length <= 1 ? [text.trim()] : sentences;
 };
-
 // ── Score metadata ─────────────────────────────────────────────────────────
 const scoreConfig = (score) => {
   if (score >= 90) return {
@@ -2626,7 +2631,7 @@ const McqExplanation = ({ question, correct, userAnswerIndex, skipped = false })
               const bw  = isCorrect || (isUser && !correct) ? 1.5 : 1;
               const bc  = isCorrect ? `${C.green}40` : isUser && !correct ? `${C.red}30` : C.border;
               return (
-                <div key={i} style={{ ...S.mcqOption, background: bg, borderStyle: 'solid', borderWidth: bw, borderColor: bc }}>
+                <div key={i} style={{ ...S.mcqOption, background: bg, borderStyle: 'solid', borderWidth: bw, borderColor: bc }} className="iv-mcq-option">
                   <span style={{ ...S.mcqOptionBullet, color: col, borderStyle: 'solid', borderWidth: 1.5, borderColor: `${col}40`, background: isCorrect || isUser ? `${col}15` : 'transparent', fontWeight: isCorrect ? 800 : 600 }}>
                     {String.fromCharCode(65 + i)}
                   </span>
@@ -3093,16 +3098,46 @@ const GlobalStyles = () => (
       /* Session panels */
       .iv-question-panel,
       .iv-answer-panel {
-        padding: 16px !important;
+        padding: 15px 14px !important;
         min-height: unset !important;
         border-radius: 14px !important;
       }
 
+      /* Question text — slightly smaller clamp on very narrow screens */
+      .iv-question-text {
+        font-size: 16px !important;
+        line-height: 1.6 !important;
+      }
+
+      /* Answer actions — skip and submit stack to column on narrow phones */
+      .iv-answer-actions {
+        flex-direction: column !important;
+      }
+
+      .iv-skip-btn {
+        width: 100% !important;
+        order: 2 !important;
+        text-align: center !important;
+      }
+
+      .iv-submit-btn {
+        width: 100% !important;
+        order: 1 !important;
+        text-align: center !important;
+      }
+
       /* Console card */
       .iv-console-card {
-        padding: 12px 14px !important;
+        padding: 11px 13px !important;
         position: relative !important;
         top: unset !important;
+      }
+
+      /* Console mode icon — slightly smaller */
+      .iv-console-mode-icon {
+        width: 30px !important;
+        height: 30px !important;
+        font-size: 14px !important;
       }
 
       /* Next button — sticky bottom on mobile so user doesn't have to scroll */
@@ -3111,19 +3146,19 @@ const GlobalStyles = () => (
         bottom: 16px !important;
         background: ${C.card} !important;
         padding: 12px !important;
-        margin: 16px -16px -16px !important;
+        margin: 16px -14px -14px !important;
         border-radius: 0 0 14px 14px !important;
         box-shadow: 0 -4px 16px rgba(10,22,40,0.08) !important;
         border-top: 1px solid ${C.border} !important;
       }
 
-      /* Score number — slightly smaller on tiny screens */
+      /* Score number */
       .iv-fb-score-num {
         font-size: 36px !important;
         letter-spacing: -1.5px !important;
       }
 
-      /* Feedback secondary row (key idea + next move) stacks on mobile */
+      /* Feedback secondary row stacks on mobile */
       .iv-fb-secondary {
         grid-template-columns: 1fr !important;
       }
@@ -3138,6 +3173,12 @@ const GlobalStyles = () => (
       /* Exit modal */
       .iv-exit-modal {
         margin: 0 10px !important;
+      }
+
+      /* MCQ options — bigger tap area on mobile */
+      .iv-mcq-option {
+        padding: 12px 13px !important;
+        min-height: 52px !important;
       }
     }
 
@@ -3791,8 +3832,10 @@ const S = {
   },
 
   consoleCard: {
-    padding: '13px 16px',
-    border: `1px solid ${C.border}`,
+    padding: '12px 16px',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 16,
     background: C.card,
     boxShadow: C.shadow,
@@ -3801,100 +3844,92 @@ const S = {
     top: 8,
     zIndex: 5,
   },
-
   consoleTop: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
   },
-
   consoleContext: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
     minWidth: 0,
+    flex: 1,
   },
-
   consoleModeIcon: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 15,
+    fontSize: 17,
   },
-
   consoleModeLabel: {
     display: 'block',
     color: C.text,
     fontFamily: F.display,
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: 800,
+    letterSpacing: '-0.1px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
-
   consoleModeSub: {
     display: 'block',
-    marginTop: 1,
+    marginTop: 2,
     color: C.muted,
-    fontSize: 10.5,
+    fontFamily: F.mono,
+    fontSize: 10,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    letterSpacing: '0.2px',
   },
-
   consoleRight: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     flexShrink: 0,
   },
-
-  // ── CHANGED: F.display → F.mono, fontSize 14 → 13
-  // The 01/05 counter is a numeric display — mono is the right face here.
   questionNumber: {
     display: 'flex',
     alignItems: 'baseline',
-    gap: 3,
+    gap: 2,
     fontFamily: F.mono,
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: 700,
+    lineHeight: 1,
   },
-
   progressTrack: {
     marginTop: 10,
-    height: 7,
+    height: 5,
     borderRadius: 999,
-    background: '#E2EAF8',
+    background: C.border,
     overflow: 'hidden',
-    boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06)',
   },
-
   trail: {
     display: 'flex',
     gap: 4,
-    marginTop: 8,
+    marginTop: 10,
     alignItems: 'center',
   },
-
   trailDot: {
     height: 5,
     borderRadius: 999,
-    transition: 'background 0.35s ease, width 0.3s cubic-bezier(.16,1,.3,1), opacity 0.25s ease',
+    transition: 'all 0.35s cubic-bezier(0.16,1,0.3,1)',
     flexShrink: 0,
   },
-
   ringWrap: {
     position: 'relative',
     width: 58,
     height: 58,
     flexShrink: 0,
     borderRadius: '50%',
-    transition: 'width 0.3s ease, height 0.3s ease',
   },
-
-  // Timer countdown: mono face, transitions on color/weight for urgency stages
   ringLabel: {
     position: 'absolute',
     inset: 0,
@@ -3902,221 +3937,208 @@ const S = {
     alignItems: 'center',
     justifyContent: 'center',
     fontFamily: F.mono,
-    fontSize: 10,
     fontWeight: 700,
-    transition: 'color 0.4s ease, font-size 0.2s ease, font-weight 0.2s ease',
-    userSelect: 'none',
+    pointerEvents: 'none',
+    letterSpacing: '-0.3px',
   },
-
   roomGrid: {
     display: 'grid',
-    gridTemplateColumns:
-      '1fr 1fr',
+    gridTemplateColumns: '1fr 1fr',
     gap: 12,
+    alignItems: 'start',
   },
-
   questionPanel: {
     minHeight: 380,
-    padding: 22,
+    padding: '22px 22px',
     display: 'flex',
     flexDirection: 'column',
-    border: `1px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 18,
     background: C.card,
     boxShadow: C.shadow,
   },
-
   questionPanelTop: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 8,
+    marginBottom: 18,
   },
-
   questionLabel: {
     fontFamily: F.mono,
     fontSize: 11,
     fontWeight: 700,
-    letterSpacing: '0.3px',
+    letterSpacing: '0.2px',
     color: C.blue500,
   },
-
   questionTags: {
     display: 'flex',
     gap: 6,
+    flexShrink: 0,
   },
-
   questionTagNeutral: {
-    padding: '4px 9px',
+    padding: '4px 10px',
     borderRadius: 999,
     borderStyle: 'solid',
     borderWidth: 1,
     borderColor: C.border,
     background: C.cardAlt,
-    color: C.muted,
-    fontSize: 9,
+    color: C.sub,
+    fontSize: 9.5,
     fontFamily: F.mono,
-    letterSpacing: '0.6px',
+    letterSpacing: '0.4px',
     fontWeight: 700,
     textTransform: 'uppercase',
   },
-
   questionBody: {
-    margin: 'auto 0',
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
-    paddingTop: 6,
     paddingBottom: 4,
   },
-
   questionType: {
-    marginBottom: 12,
-    color: C.faint,
-    fontSize: 10,
-    letterSpacing: '1.4px',
+    marginBottom: 10,
+    color: C.muted,
+    fontSize: 10.5,
+    letterSpacing: '0.8px',
     fontWeight: 700,
     fontFamily: F.mono,
     textTransform: 'uppercase',
   },
-
-  // Question body: generous lineHeight is critical for multi-line readability
-  // during a live session. 1.62 is the sweet spot — scannable, not loose.
   questionText: {
     margin: 0,
     color: C.text,
-    fontFamily: F.body,
-    fontSize: 'clamp(17px, 1.8vw, 22px)',
-    lineHeight: 1.62,
-    fontWeight: 600,
-    letterSpacing: '-0.1px',
+    fontFamily: F.display,
+    fontSize: 'clamp(16px, 2vw, 21px)',
+    lineHeight: 1.65,
+    fontWeight: 700,
+    letterSpacing: '-0.2px',
   },
-
   questionHelp: {
     display: 'flex',
-    gap: 8,
+    gap: 9,
     alignItems: 'flex-start',
-    marginTop: 18,
+    marginTop: 20,
     paddingTop: 14,
     borderTop: `1px solid ${C.border}`,
     color: C.sub,
     fontSize: 12.5,
-    lineHeight: 1.6,
-    fontStyle: 'normal',
+    lineHeight: 1.62,
     fontWeight: 500,
   },
-
   kbdHint: {
     marginTop: 14,
-    fontSize: 10.5,
+    fontSize: 11,
     color: C.faint,
     fontFamily: F.mono,
     display: 'flex',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     flexWrap: 'wrap',
   },
-
   answerPanel: {
-    minHeight: 380,
-    padding: 18,
+    padding: '18px 18px',
     borderStyle: 'solid',
     borderWidth: 1,
     borderColor: C.border,
     borderRadius: 18,
     background: C.card,
     boxShadow: C.shadow,
+    display: 'flex',
+    flexDirection: 'column',
   },
-
   answerHeading: {
     display: 'flex',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 9,
-    marginBottom: 13,
+    marginBottom: 14,
+    paddingBottom: 14,
+    borderBottom: `1px solid ${C.border}`,
   },
-
   answerHeadingEyebrow: {
     display: 'block',
     color: C.blue500,
     fontFamily: F.mono,
     fontSize: 9.5,
     fontWeight: 700,
-    letterSpacing: '1px',
+    letterSpacing: '0.9px',
+    textTransform: 'uppercase',
   },
-
   answerHeadingTitle: {
     display: 'block',
     marginTop: 3,
     color: C.text,
     fontFamily: F.display,
-    fontSize: 14.5,
+    fontSize: 15,
     fontWeight: 800,
     letterSpacing: '-0.2px',
   },
-
   answerModeTag: {
-    padding: '4px 9px',
-    borderRadius: 999,
+    padding: '4px 10px',
+    borderRadius: 8,
     borderStyle: 'solid',
     borderWidth: 1,
     borderColor: C.border,
     background: C.cardAlt,
-    color: C.muted,
-    fontSize: 9,
+    color: C.sub,
+    fontSize: 9.5,
     fontFamily: F.mono,
-    letterSpacing: '0.7px',
+    letterSpacing: '0.5px',
+    fontWeight: 700,
+    flexShrink: 0,
   },
-
   answerBox: {
+    flex: 1,
     width: '100%',
-    minHeight: 220,
+    minHeight: 210,
     resize: 'vertical',
     borderStyle: 'solid',
     borderWidth: 1.5,
     borderColor: C.border,
-    borderRadius: 14,
+    borderRadius: 12,
     background: '#FFFFFF',
     color: C.text,
     padding: '14px 15px',
     outline: 'none',
     fontFamily: F.body,
-    fontSize: 13.5,
+    fontSize: 14,
     lineHeight: 1.72,
     letterSpacing: '0.01em',
+    transition: 'border-color 0.18s ease, box-shadow 0.18s ease',
   },
-
   options: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 8,
+    gap: 9,
+    flex: 1,
   },
-
   option: {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     width: '100%',
-    minHeight: 50,
+    minHeight: 54,
     borderStyle: 'solid',
     borderWidth: 1,
     borderColor: C.border,
-    borderRadius: 13,
+    borderRadius: 14,
     background: C.card,
-    padding: '9px 11px',
+    padding: '11px 14px',
     cursor: 'pointer',
     textAlign: 'left',
+    transition: 'border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease',
   },
-
   optionActive: {
-    boxShadow: C.shadow,
+    boxShadow: `0 4px 16px rgba(26,110,255,0.13)`,
   },
-
   optionLetter: {
-    width: 27,
-    height: 27,
-    borderRadius: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 9,
     borderStyle: 'solid',
     borderWidth: 1,
     borderColor: C.border,
@@ -4127,95 +4149,89 @@ const S = {
     justifyContent: 'center',
     flexShrink: 0,
     fontFamily: F.mono,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 800,
-    transition:
-      'background 0.14s ease, border-color 0.14s ease, color 0.14s ease',
+    transition: 'background 0.14s ease, border-color 0.14s ease, color 0.14s ease',
   },
-
   optionText: {
     flex: 1,
     color: C.text,
-    fontSize: 13,
-    lineHeight: 1.45,
+    fontFamily: F.body,
+    fontSize: 14,
+    lineHeight: 1.5,
+    fontWeight: 500,
   },
-
   optionRadio: {
-    width: 19,
-    height: 19,
+    width: 20,
+    height: 20,
     borderRadius: '50%',
     borderStyle: 'solid',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: C.borderMd,
     color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 9,
+    fontSize: 10,
     flexShrink: 0,
-    transition:
-      'background 0.14s ease, border-color 0.14s ease',
+    transition: 'background 0.14s ease, border-color 0.14s ease',
   },
-
   answerFooter: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     gap: 10,
-    marginTop: 13,
+    marginTop: 14,
     paddingTop: 13,
     borderTop: `1px solid ${C.border}`,
   },
-
   answerFooterHint: {
     color: C.muted,
     fontFamily: F.mono,
-    fontSize: 10.5,
-    letterSpacing: '0.2px',
+    fontSize: 11,
+    letterSpacing: '0.15px',
   },
-
   answerActions: {
     display: 'flex',
     gap: 8,
+    alignItems: 'center',
   },
-
   skipBtn: {
-    border: `1.5px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1.5,
+    borderColor: C.border,
     background: C.card,
-    borderRadius: 10,
-    padding: '10px 16px',
+    borderRadius: 11,
+    padding: '11px 17px',
     color: C.muted,
     cursor: 'pointer',
     fontFamily: F.body,
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: 700,
     letterSpacing: '0.1px',
+    flexShrink: 0,
+    transition: 'border-color 0.15s ease, color 0.15s ease, background 0.15s ease',
   },
-
   submitBtn: {
     border: 'none',
-    borderRadius: 10,
-    padding: '10px 20px',
-    background:
-      `linear-gradient(135deg, ${C.blue700}, ${C.blue500})`,
+    borderRadius: 11,
+    padding: '11px 22px',
+    background: `linear-gradient(135deg, ${C.blue700}, ${C.blue500})`,
     color: '#fff',
-    boxShadow:
-      '0 7px 20px rgba(26,110,255,0.26)',
+    boxShadow: '0 6px 20px rgba(26,110,255,0.28)',
     cursor: 'pointer',
-    fontFamily: F.body,
-    fontSize: 12.5,
+    fontFamily: F.display,
+    fontSize: 13.5,
     fontWeight: 800,
-    letterSpacing: '0.15px',
+    letterSpacing: '0px',
     whiteSpace: 'nowrap',
+    flex: 1,
+    transition: 'box-shadow 0.15s ease, transform 0.1s ease',
   },
-
   feedback: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 0,
+    gap: 10,
   },
-
-  // ── Score strip ──
   fbScoreStrip: {
     display: 'flex',
     alignItems: 'center',
@@ -4226,7 +4242,7 @@ const S = {
     borderStyle: 'solid',
     borderWidth: 1,
     borderColor: C.border,
-    marginBottom: 10,
+    marginBottom: 2,
     flexWrap: 'wrap',
   },
   fbScoreLeft: {
@@ -4237,81 +4253,75 @@ const S = {
     minWidth: 0,
   },
   fbScoreEmoji: {
-    fontSize: 26,
+    fontSize: 24,
     lineHeight: 1,
     flexShrink: 0,
   },
   fbScoreLabel: {
-    fontFamily: F.display,
-    fontSize: 14.5,
+    fontFamily: F.mono,
+    fontSize: 9.5,
     fontWeight: 800,
-    lineHeight: 1.2,
+    letterSpacing: '0.6px',
+    textTransform: 'uppercase',
+    marginBottom: 3,
   },
   fbScoreVibe: {
     fontSize: 12,
     color: C.sub,
-    marginTop: 3,
-    lineHeight: 1.45,
+    lineHeight: 1.4,
+    fontWeight: 500,
   },
   fbScoreRight: {
     display: 'flex',
     alignItems: 'baseline',
-    gap: 2,
-    flexShrink: 0,
+    gap: 3,
   },
   fbScoreNum: {
     fontFamily: F.display,
-    fontSize: 'clamp(36px, 5vw, 52px)',
+    fontSize: 42,
     fontWeight: 900,
-    lineHeight: 1,
     letterSpacing: '-2px',
+    lineHeight: 1,
   },
   fbScoreOutOf: {
-    fontSize: 12,
-    color: C.muted,
     fontFamily: F.mono,
-    letterSpacing: '-0.5px',
+    fontSize: 14,
+    color: C.muted,
+    fontWeight: 600,
   },
-
-  // ── Score bar ──
   fbBarWrap: {
-    position: 'relative',
-    marginBottom: 14,
-    paddingBottom: 4,
+    marginBottom: 4,
   },
   fbBarTrack: {
-    height: 6,
+    height: 8,
     borderRadius: 999,
     background: C.border,
     overflow: 'hidden',
+    position: 'relative',
   },
   fbBarFill: {
     height: '100%',
     borderRadius: 999,
-    transition: 'width 0.7s cubic-bezier(.16,1,.3,1)',
+    transition: 'width 0.9s cubic-bezier(0.16,1,0.3,1)',
   },
   fbBarTicks: {
     position: 'relative',
-    height: 4,
-    marginTop: 3,
+    height: 0,
   },
   fbBarTick: {
     position: 'absolute',
-    top: 0,
+    top: -8,
     width: 1,
-    height: 4,
-    background: C.border,
-    transform: 'translateX(-50%)',
+    height: 8,
+    background: 'rgba(255,255,255,0.5)',
+    pointerEvents: 'none',
   },
-
-  // ── Feedback blocks ──
   fbBlocks: {
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 4,
   },
-
   feedbackBlock: {
     padding: '13px 16px',
     borderStyle: 'solid',
@@ -4322,65 +4332,43 @@ const S = {
   fbBlockHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 9,
+    gap: 8,
+    marginBottom: 7,
   },
   fbBlockIcon: {
-    fontSize: 13,
-    lineHeight: 1,
+    fontSize: 14,
     flexShrink: 0,
   },
   fbBlockTitle: {
-    fontSize: 11,
-    fontWeight: 800,
     fontFamily: F.mono,
-    letterSpacing: '0.4px',
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: '0.5px',
     textTransform: 'uppercase',
   },
   fbBullets: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 7,
+    gap: 6,
   },
   fbBulletRow: {
     display: 'flex',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: 9,
   },
   fbBulletDot: {
     width: 5,
     height: 5,
     borderRadius: '50%',
     flexShrink: 0,
-    marginTop: 6,
+    marginTop: 7,
   },
   fbBulletText: {
     fontSize: 12.5,
     lineHeight: 1.6,
     color: C.sub,
+    flex: 1,
   },
-
-  // ── Objective feedback ──
-  fbObjNote: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    padding: '12px 14px',
-    borderRadius: 13,
-    background: C.cardAlt,
-    border: `1px solid ${C.border}`,
-    marginBottom: 12,
-  },
-  fbObjPoint: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 9,
-    fontSize: 13,
-    color: C.sub,
-    lineHeight: 1.6,
-  },
-
-  // ── MCQ explanation card ──
   mcqWrap: {
     display: 'flex',
     flexDirection: 'column',
@@ -4388,12 +4376,12 @@ const S = {
     marginBottom: 4,
   },
   mcqAnswerRow: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    display: 'flex',
+    flexDirection: 'column',
     gap: 8,
   },
   mcqAnswerBox: {
-    padding: '10px 13px',
+    padding: '12px 14px',
     borderRadius: 12,
     borderStyle: 'solid',
     borderWidth: 1,
@@ -4410,26 +4398,30 @@ const S = {
     textTransform: 'uppercase',
   },
   mcqAnswerText: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: 600,
     color: C.text,
-    lineHeight: 1.45,
+    lineHeight: 1.5,
   },
   mcqExplainWrap: {
     borderRadius: 13,
-    border: `1px solid ${C.blue100}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     background: C.blue50,
     overflow: 'hidden',
   },
   mcqExplainHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: 7,
-    padding: '9px 13px',
-    borderBottom: `1px solid ${C.blue100}`,
+    gap: 8,
+    padding: '10px 14px',
+    borderBottom: `1px solid ${C.border}`,
+    background: C.blue50,
   },
   mcqExplainIcon: {
-    fontSize: 13,
+    fontSize: 14,
+    flexShrink: 0,
   },
   mcqExplainTitle: {
     fontSize: 11,
@@ -4440,27 +4432,34 @@ const S = {
     textTransform: 'uppercase',
   },
   mcqExplainBody: {
-    padding: '10px 13px',
+    padding: '12px 14px',
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
+    background: C.card,
   },
   mcqExplainText: {
-    fontSize: 12.5,
+    fontSize: 13,
     lineHeight: 1.65,
     color: C.sub,
+    fontWeight: 500,
   },
   mcqNoExplain: {
-    fontSize: 12.5,
+    fontSize: 13,
     color: C.muted,
-    padding: '10px 14px',
+    padding: '12px 14px',
     borderRadius: 12,
     background: C.cardAlt,
-    border: `1px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
+    fontWeight: 500,
   },
   mcqOptionsWrap: {
-    borderRadius: 13,
-    border: `1px solid ${C.border}`,
+    borderRadius: 14,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     overflow: 'hidden',
   },
   mcqOptionsLabel: {
@@ -4468,31 +4467,30 @@ const S = {
     fontSize: 9.5,
     fontWeight: 800,
     fontFamily: F.mono,
-    letterSpacing: '0.8px',
+    letterSpacing: '0.7px',
     color: C.muted,
     textTransform: 'uppercase',
-    padding: '8px 13px 6px',
+    padding: '9px 14px 7px',
     borderBottom: `1px solid ${C.border}`,
     background: C.cardAlt,
   },
   mcqOptionsList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 0,
   },
   mcqOption: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    padding: '9px 13px',
+    padding: '10px 14px',
     borderStyle: 'solid',
     borderWidth: 1,
     borderColor: C.border,
     borderRadius: 0,
   },
   mcqOptionBullet: {
-    width: 20,
-    height: 20,
+    width: 22,
+    height: 22,
     borderRadius: 6,
     borderStyle: 'solid',
     borderWidth: 1.5,
@@ -4500,15 +4498,15 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: 800,
     fontFamily: F.mono,
     flexShrink: 0,
   },
   mcqOptionText: {
-    fontSize: 12.5,
+    fontSize: 13,
     flex: 1,
-    lineHeight: 1.4,
+    lineHeight: 1.5,
     fontWeight: 500,
   },
   mcqOptionBadge: {
@@ -4516,7 +4514,7 @@ const S = {
     fontWeight: 800,
     fontFamily: F.mono,
     letterSpacing: '0.3px',
-    padding: '2px 7px',
+    padding: '2px 8px',
     borderRadius: 999,
     borderStyle: 'solid',
     borderWidth: 1,
@@ -4526,50 +4524,46 @@ const S = {
     flexShrink: 0,
     textTransform: 'uppercase',
   },
-
-  // ── Sample answer toggle ──
   fbSampleWrap: {
-    marginBottom: 4,
+    marginBottom: 2,
     borderRadius: 13,
-    border: `1px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     overflow: 'hidden',
   },
   fbSampleToggle: {
     width: '100%',
     display: 'flex',
     alignItems: 'center',
-    gap: 7,
-    padding: '10px 14px',
+    gap: 8,
+    padding: '11px 14px',
     background: C.cardAlt,
     border: 'none',
     cursor: 'pointer',
     fontFamily: F.body,
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: 700,
     color: C.sub,
     textAlign: 'left',
     transition: 'background 0.15s ease',
-  },
-  fbSampleToggleIcon: {
-    fontSize: 10,
-    color: C.muted,
-    flexShrink: 0,
   },
   fbSampleBadge: {
     marginLeft: 'auto',
     fontSize: 9.5,
     fontFamily: F.mono,
     fontWeight: 700,
-    letterSpacing: '0.5px',
+    letterSpacing: '0.4px',
     color: C.faint,
     textTransform: 'uppercase',
+    flexShrink: 0,
   },
   fbSampleBody: {
-    padding: '10px 14px 14px',
+    padding: '12px 14px 16px',
     background: C.card,
     display: 'flex',
     flexDirection: 'column',
-    gap: 8,
+    gap: 10,
     borderTop: `1px solid ${C.border}`,
   },
   fbSamplePoint: {
@@ -4591,14 +4585,13 @@ const S = {
     fontSize: 9,
   },
   fbSampleText: {
-    fontSize: 13,
+    fontSize: 13.5,
     lineHeight: 1.7,
     color: C.text,
+    fontWeight: 500,
   },
-
   nextBtn: {
     width: '100%',
-    marginTop: 'auto',
     border: 'none',
     borderRadius: 13,
     padding: '15px 20px',
@@ -4607,45 +4600,185 @@ const S = {
     justifyContent: 'center',
     gap: 8,
     color: '#fff',
-    fontFamily: F.body,
-    fontSize: 14,
+    fontFamily: F.display,
+    fontSize: 14.5,
     fontWeight: 800,
     cursor: 'pointer',
-    boxShadow: '0 10px 26px rgba(26,110,255,0.26)',
-    letterSpacing: '0.1px',
+    boxShadow: '0 8px 24px rgba(26,110,255,0.28)',
+    letterSpacing: '-0.1px',
+    transition: 'box-shadow 0.18s ease, transform 0.12s ease',
   },
-
   nextBtnHint: {
-    marginTop: 9,
+    marginTop: 8,
     textAlign: 'center',
     fontSize: 11,
     color: C.faint,
     fontFamily: F.mono,
-  },
-
-  roomFoot: {
-    marginTop: 11,
-    textAlign: 'center',
-    color: C.muted,
-    fontSize: 11.5,
     letterSpacing: '0.2px',
   },
-
+  roomFoot: {
+    marginTop: 10,
+    textAlign: 'center',
+    color: C.muted,
+    fontSize: 12,
+    lineHeight: 1.6,
+    letterSpacing: '0.1px',
+    fontFamily: F.body,
+    fontWeight: 500,
+  },
   errorBanner: {
     marginTop: 10,
     display: 'flex',
     justifyContent: 'center',
     gap: 8,
     flexWrap: 'wrap',
-    padding: '10px 13px',
+    padding: '10px 14px',
     borderRadius: 11,
     background: C.redTint,
-    border: '1px solid #F0C5C9',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: '#FECACA',
     color: C.red,
-    fontSize: 12,
-    fontFamily: F.mono,
+    fontSize: 12.5,
+    fontFamily: F.body,
+    fontWeight: 600,
   },
-
+  btnDisabled: {
+    opacity: 0.45,
+    cursor: 'not-allowed',
+    boxShadow: 'none',
+    transform: 'none',
+  },
+  spinner: {
+    width: 13,
+    height: 13,
+    borderRadius: '50%',
+    borderStyle: 'solid',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderTopColor: '#fff',
+    animation: 'ivSpin 0.7s linear infinite',
+    display: 'inline-block',
+    flexShrink: 0,
+  },
+  footnote: {
+    padding: '12px 22px 18px',
+    color: C.faint,
+    fontFamily: F.body,
+    fontSize: 11.5,
+    letterSpacing: '0.1px',
+    lineHeight: 1.7,
+  },
+  kbd: {
+    display: 'inline-block',
+    padding: '2px 7px',
+    borderRadius: 5,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.borderMd,
+    borderBottomWidth: 2,
+    background: C.cardAlt,
+    color: C.sub,
+    fontFamily: F.mono,
+    fontSize: 10,
+    fontWeight: 700,
+    lineHeight: 1.4,
+    verticalAlign: 'middle',
+  },
+  roomTop: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 11,
+  },
+  roomActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  exitBtn: {
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
+    background: C.card,
+    borderRadius: 9,
+    padding: '7px 13px',
+    color: C.sub,
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 700,
+    fontFamily: F.body,
+    transition: 'border-color 0.15s ease, color 0.15s ease',
+  },
+  exitOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(10,22,40,0.6)',
+    backdropFilter: 'blur(4px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 200,
+    padding: 20,
+  },
+  exitModal: {
+    width: '100%',
+    maxWidth: 380,
+    background: C.card,
+    borderRadius: 20,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
+    boxShadow: '0 24px 60px rgba(10,22,40,0.28)',
+    padding: '24px 24px 20px',
+  },
+  exitModalTitle: {
+    fontSize: 17,
+    fontWeight: 800,
+    color: C.text,
+    fontFamily: F.display,
+    marginBottom: 7,
+    letterSpacing: '-0.2px',
+  },
+  exitModalBody: {
+    fontSize: 13.5,
+    color: C.sub,
+    lineHeight: 1.6,
+    marginBottom: 20,
+    fontWeight: 500,
+  },
+  exitModalRow: {
+    display: 'flex',
+    gap: 10,
+    justifyContent: 'flex-end',
+  },
+  exitModalCancel: {
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
+    background: C.card,
+    borderRadius: 10,
+    padding: '10px 18px',
+    color: C.sub,
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 700,
+    fontFamily: F.body,
+    transition: 'border-color 0.15s ease',
+  },
+  exitModalConfirm: {
+    border: 'none',
+    background: C.red,
+    borderRadius: 10,
+    padding: '10px 18px',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 700,
+    fontFamily: F.body,
+    boxShadow: `0 4px 14px ${C.red}40`,
+    transition: 'box-shadow 0.15s ease',
+  },
   emptyWrap: {
     minHeight: '72vh',
     display: 'flex',
@@ -4653,17 +4786,6 @@ const S = {
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  emptySpinner: {
-    width: 46,
-    height: 46,
-    borderRadius: '50%',
-    border: `4px solid ${C.blue50}`,
-    borderTopColor: C.blue500,
-    animation:
-      'ivSpin 0.75s linear infinite',
-  },
-
   emptyTitle: {
     marginTop: 16,
     fontFamily: F.display,
@@ -4671,7 +4793,6 @@ const S = {
     fontWeight: 700,
     color: C.text,
   },
-
   emptySub: {
     marginTop: 5,
     fontSize: 12.5,

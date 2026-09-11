@@ -27,7 +27,7 @@ const C = {
   ...CT,
   // War-room violet accent — differentiates Analytics from Dashboard's cyan
   violet:      CT.blue500,
-  violetLight: CT.cyan400,
+  violetLight: CT.blue300,
   violetTint:  CT.blue50,
   violetMid:   CT.blue600,
   violetDeep:  CT.blue700,

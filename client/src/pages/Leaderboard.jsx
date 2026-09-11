@@ -6,10 +6,16 @@ import { AuthContext, authFetch } from '../context/AuthContext.jsx';
 import { getAnalytics, getPerformanceAnalytics } from '../Services/interviewService.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MOCKMATE — LEADERBOARD v3 (Readiness Terminal v6 design language, premium pass)
-// Hero rebuilt to share Coach's CommandHeader grammar exactly (dark panel,
-// glow orbs, mono eyebrow, chip row, F.display headline) while keeping
-// leaderboard-native content: rank, rival gap, and weakest-skill callout.
+// MOCKMATE — LEADERBOARD v6 (Dashboard-matched hero, shared Navbar restored)
+// Hero rebuilt to match the Dashboard's visual language exactly: a flat
+// solid blue diagonal-gradient panel (no dark glow panel), a white/light
+// rounded card floating on the left holding the rank ring + score, white
+// bold headline text on the blue field, a white primary button + light
+// ghost buttons. The page-local TopNav header (added in v5) has been
+// removed — this page now relies solely on the shared app-wide Navbar
+// component, same as every other page. Toggle groups render as light-blue
+// pill / black-text, matching Dashboard's active-tab treatment. Podium and
+// table are untouched from v4.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Best-effort bridge from the 6 scoring dimensions (server-side,
@@ -80,13 +86,17 @@ const C = {
   platinum:     '#4C57C7',
   platinumTint: '#EDEEFC',
 
-  // Coach-style hero accents (brighter cyan/blue)
+  // Hero accents — flat Dashboard-matched signal-blue diagonal register.
+  // Dashboard's hero runs a simple two/three-stop blue diagonal (deep navy
+  // -> signal blue -> lighter sky blue), no dark glow panel underneath.
   heroDark0:    '#080F1E',
   heroDark1:    '#0A1628',
   heroDark2:    '#0D1F3C',
   heroBlue900:  '#001F6B',
   cyanBright:   '#00C8F0',
   blueBright:   '#1A6EFF',
+  heroRing:     '#4FD8F5',
+  heroSkyEnd:   '#2F8CFF',
 
   shadow:   '0 1px 2px rgba(10,22,40,0.04), 0 8px 24px rgba(15,45,120,0.06)',
   shadowMd: '0 4px 14px rgba(15,45,120,0.08), 0 1px 3px rgba(10,22,40,0.05)',
@@ -95,8 +105,9 @@ const C = {
 
 const F = {
   serif:   "'Fraunces', 'Georgia', serif",
-  // Matches Coach's CommandHeader (F.display in styles/tokens.js) — used only
-  // in the Leaderboard hero so the two "welcome back" surfaces read as one family.
+  // Matches Coach's CommandHeader (F.display in styles/tokens.js) — used
+  // in the Leaderboard hero so the two "welcome back" surfaces read as one
+  // family, and now also in the tab card labels for visual consistency.
   display: "'Plus Jakarta Sans', 'Lexend', sans-serif",
   body:    "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
   mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
@@ -141,75 +152,94 @@ const Eyebrow = ({ children, color = C.cyanBright }) => (
   <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: '1.8px', color, marginBottom: 6, textTransform: 'uppercase' }}>{children}</div>
 );
 
-const HeroChip = ({ label, value, color }) => (
-  <div style={S.heroChip}>
-    <div style={S.heroChipLabel}>{label}</div>
-    <div style={{ ...S.heroChipVal, color }}>{value}</div>
-  </div>
-);
-
-// ─── Climb track — the hero's centerpiece ───────────────────────────────────
-// A leaderboard's one honest question is "where do I stand, and against whom."
-// Instead of a stat card, this renders an actual track: your position, your
-// next rival, and the leader, placed by score along a line. Real data only —
-// no decorative markers.
-
-const ClimbTrack = ({ you, rival, leader, mounted, maxScore }) => {
-  const scale = Math.max(maxScore, you?.score ?? 0, 1);
-  const pos = (s) => Math.min(96, Math.max(4, (s / scale) * 100));
-
-  // Adjacent leaderboard entries are often close in score (that's what makes
-  // them adjacent), so raw positions collide constantly. Sort by position and
-  // push overlapping labels apart while keeping their left-to-right order.
-  const MIN_GAP = 13;
-  const nodes = [
-    you && { key: 'you', ...you, pos: pos(you.score) },
-    rival && { key: 'rival', ...rival, pos: pos(rival.score) },
-    leader && { key: 'leader', ...leader, pos: pos(leader.score) },
-  ]
-    .filter(Boolean)
-    .sort((a, b) => a.pos - b.pos);
-
-  for (let i = 1; i < nodes.length; i++) {
-    if (nodes[i].pos - nodes[i - 1].pos < MIN_GAP) {
-      nodes[i].pos = nodes[i - 1].pos + MIN_GAP;
-    }
-  }
-  // If pushing right ran past the track edge, pull the whole cluster back.
-  const overflow = nodes.length ? Math.max(0, nodes[nodes.length - 1].pos - 96) : 0;
-  if (overflow > 0) nodes.forEach((n) => { n.pos -= overflow; });
-
-  const youRawPos = pos(you?.score ?? 0);
+// ─── Rank ring — fused rank number inside its own progress ring ─────────────
+// Sits inside the white hero card now (Dashboard-matched), so the ring
+// track/gradient are tuned for a light background instead of a dark panel:
+// signal-blue stroke on a pale blue track, dark ink rank number.
+let rankRingIdSeq = 0;
+const RankRing = ({ rank, pct, mounted, size = 122, stroke = 7 }) => {
+  const r = (size - stroke) / 2;
+  const c = size / 2;
+  const circumference = 2 * Math.PI * r;
+  const clampedPct = Math.max(0, Math.min(100, pct ?? 0));
+  const offset = mounted ? circumference * (1 - clampedPct / 100) : circumference;
+  const gradId = useMemo(() => `rankRingGrad${rankRingIdSeq++}`, []);
+  const glowId = useMemo(() => `rankRingGlow${rankRingIdSeq++}`, []);
 
   return (
-    <div style={S.track}>
-      <div style={S.trackLine}>
-        <div style={{ ...S.trackFill, width: mounted ? `${youRawPos}%` : '0%' }} />
-        {nodes.map((n) => (
-          <div
-            key={n.key}
-            className={n.key === 'you' ? 'mm-track-you' : undefined}
-            style={{
-              ...S.trackNode,
-              left: `${n.pos}%`,
-              opacity: mounted ? 1 : 0,
-              transform: `translate(-50%, -50%) scale(${mounted ? 1 : 0.4})`,
-              transitionDelay: n.key === 'you' ? '0.5s' : n.key === 'rival' ? '0.62s' : '0.74s',
-            }}
-          >
-            <div style={{ ...S.trackDot, ...(n.key === 'you' ? S.trackDotYou : n.key === 'leader' ? S.trackDotLeader : S.trackDotRival) }} />
-            <div style={S.trackTag}>
-              <div style={{ ...S.trackTagLabel, color: n.key === 'you' ? C.cyanBright : 'rgba(255,255,255,0.55)' }}>
-                {n.key === 'you' ? 'you' : n.label}
-              </div>
-              <div style={S.trackTagScore}>{n.score}</div>
-            </div>
-          </div>
-        ))}
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ position: 'absolute', inset: 0 }}>
+        <defs>
+          <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#FFFFFF" />
+            <stop offset="55%" stopColor="#DCEBFF" />
+            <stop offset="100%" stopColor="#AFD3FF" />
+          </linearGradient>
+          <filter id={glowId}>
+            <feGaussianBlur stdDeviation="1.6" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <g transform={`rotate(-90 ${c} ${c})`}>
+          <circle cx={c} cy={c} r={r} fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth={stroke} />
+          <circle
+            cx={c} cy={c} r={r} fill="none"
+            stroke={`url(#${gradId})`} strokeWidth={stroke} strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            filter={`url(#${glowId})`}
+            style={{ transition: 'stroke-dashoffset 1.1s cubic-bezier(.16,1,.3,1) 0.25s' }}
+          />
+        </g>
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ fontFamily: F.display, fontSize: 8, fontWeight: 800, letterSpacing: '1.9px', color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', marginBottom: 3 }}>rank</div>
+        <div style={{ fontFamily: F.display, fontSize: 37, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-1.5px' }}>
+          {rank != null ? `#${rank}` : '—'}
+        </div>
       </div>
     </div>
   );
 };
+
+// ─── Hero stat — right-aligned score/gap readouts beside the ring ──────────
+const HeroStat = ({ label, value, unit, color = '#fff' }) => (
+  <div style={{ textAlign: 'right' }}>
+    <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, letterSpacing: '1.5px', color: 'rgba(255,255,255,0.62)', textTransform: 'uppercase', marginBottom: 7 }}>{label}</div>
+    <div style={{ fontFamily: F.display, fontSize: 31, fontWeight: 800, color, letterSpacing: '-0.7px' }}>
+      {value}
+      {unit && <span style={{ fontFamily: F.display, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.55)' }}>{unit}</span>}
+    </div>
+  </div>
+);
+
+// ─── Podium watermark — low-opacity line-art glyph, sits above the hero's
+// action row (right side) as a subtle "leaderboard" motif in the background,
+// never competing with foreground content or text. ───────────────────────
+const PodiumWatermark = () => (
+  <svg width="150" height="92" viewBox="0 0 150 92" style={S.heroPodiumWatermark} className="mm-hero-podium-watermark" aria-hidden="true">
+    <rect x="8" y="46" width="38" height="40" rx="5" fill="none" stroke="#FFFFFF" strokeWidth="2.5" />
+    <rect x="54" y="18" width="38" height="68" rx="5" fill="none" stroke="#FFFFFF" strokeWidth="2.5" />
+    <rect x="100" y="58" width="38" height="28" rx="5" fill="none" stroke="#FFFFFF" strokeWidth="2.5" />
+    <circle cx="73" cy="8" r="7.5" fill="none" stroke="#FFFFFF" strokeWidth="2.5" />
+  </svg>
+);
+
+// ─── Hero icon action button — compact icon-only CTA with a title tooltip ──
+const HeroIconButton = ({ icon, title, onClick, primary = false }) => (
+  <button
+    title={title}
+    aria-label={title}
+    onClick={onClick}
+    className={primary ? 'mm-hero-icon-btn-primary' : 'mm-hero-icon-btn'}
+    style={primary ? S.heroIconBtnPrimary : S.heroIconBtnGhost}
+  >
+    <span aria-hidden="true">{icon}</span>
+  </button>
+);
 
 // ─── Animated counter ───────────────────────────────────────────────────────
 
@@ -353,6 +383,8 @@ const MiniTrend = ({ points = [] }) => {
 };
 
 // ─── Premium podium block ────────────────────────────────────────────────────
+// NOTE: left fully unchanged from v3/v4 per direction — only the hero,
+// nav strip, and toggle bar have been rebuilt to match the Dashboard.
 
 // Colors match the C.gold/C.silver/C.bronze tokens above (darkened for AA
 // contrast) — kept as literals here since this map also carries bright/tint/
@@ -517,216 +549,214 @@ const PodiumBlock = ({ entry, place, delay, isPlatinum, mounted }) => {
 // accent border-left, mono eyebrow). Data comes from aheadOfUser which the
 // leaderboard API already returns — no extra fetch needed.
 
-const RivalCard = ({ rival, gapToNext, userRank, navigate, weakestDim, weakestPracticeTopic, mounted }) => {
+
+const RivalCard = ({
+  rival,
+  gapToNext,
+  userRank,
+  navigate,
+  weakestDim,
+  weakestPracticeTopic,
+  mounted,
+}) => {
   if (!rival || gapToNext == null) return null;
+
   const rivalScore = Number(rival.avgScore) || 0;
-  const urgency = gapToNext <= 2 ? 'critical' : gapToNext <= 5 ? 'close' : 'chase';
+
+  const urgency =
+    gapToNext <= 2 ? 'critical' :
+    gapToNext <= 5 ? 'close' :
+    'chase';
+
   const urgencyMeta = {
-    critical: { label: '🔴 SO CLOSE',   color: C.red,       msg: `Just ${gapToNext} pt${gapToNext !== 1 ? 's' : ''} — one good session takes this.` },
-    close:    { label: '🟠 WITHIN REACH', color: C.amber,    msg: `${gapToNext} points. A focused topic session will do it.` },
-    chase:    { label: '🔵 THE HUNT',    color: C.blueBright, msg: `${gapToNext} points back. Fix ${weakestDim?.label || 'your weakest skill'} first.` },
+    critical: {
+      label: 'SO CLOSE',
+      color: C.red,
+      tint: C.redTint,
+      msg: `Just ${gapToNext} pt${gapToNext !== 1 ? 's' : ''} — one good session could move you ahead.`,
+    },
+    close: {
+      label: 'WITHIN REACH',
+      color: C.amber,
+      tint: C.amberTint,
+      msg: `${gapToNext} points separate you. A focused practice session can close the gap.`,
+    },
+    chase: {
+      label: 'THE HUNT',
+      color: C.signal,
+      tint: C.signalTint,
+      msg: `${gapToNext} points back. Strengthen ${weakestDim?.label || 'your weakest skill'} first.`,
+    },
   }[urgency];
 
   return (
-    <div style={S.rivalCard}>
-      <div style={{ ...S.rivalAccentBar, background: urgencyMeta.color }} />
+   <div
+  style={{
+    ...S.rivalCard,
+    opacity: mounted ? 1 : 0,
+    transform: mounted ? 'translateY(0)' : 'translateY(8px)',
+  }}
+  className="rival-card-hover"
+>
+      {/* Accent rail */}
+      <div
+        style={{
+          ...S.rivalAccentBar,
+          background: `linear-gradient(
+            180deg,
+            ${urgencyMeta.color} 0%,
+            ${C.signal} 48%,
+            ${C.pulse} 100%
+          )`,
+        }}
+      />
+
       <div style={S.rivalInner}>
+        {/* LEFT */}
         <div style={S.rivalLeft}>
-          <Eyebrow color={urgencyMeta.color}>{urgencyMeta.label}</Eyebrow>
+          <div style={S.rivalEyebrowRow}>
+            <span
+              style={{
+                ...S.rivalEyebrowDot,
+                background: urgencyMeta.color,
+              }}
+            />
+
+            <span
+              style={{
+                ...S.rivalEyebrow,
+                color: urgencyMeta.color,
+              }}
+            >
+              {urgencyMeta.label}
+            </span>
+
+            <span style={S.rivalEyebrowDivider}>·</span>
+
+            <span style={S.rivalEyebrowContext}>
+              #{userRank - 1} is the next rank
+            </span>
+          </div>
+
           <div style={S.rivalName}>
-            <div style={{ ...S.rivalAvatar, background: `linear-gradient(135deg, ${urgencyMeta.color}33, ${urgencyMeta.color}99)` }}>
+            <div
+              style={{
+                ...S.rivalAvatar,
+                background: `linear-gradient(
+                  135deg,
+                  ${C.signalTint} 0%,
+                  ${C.pulseTint} 100%
+                )`,
+                border: `1px solid ${C.lineMd}`,
+                color: C.signalDeep,
+              }}
+            >
               {rival.name?.charAt(0).toUpperCase() || '?'}
             </div>
-            <div>
-              <div style={S.rivalNameText}>{rival.name || `Rank #${userRank - 1}`}</div>
-              <div style={S.rivalNameSub}>{rival.college || 'ranked just above you'}</div>
+
+            <div style={{ minWidth: 0 }}>
+              <div style={S.rivalNameText}>
+                {rival.name || `Rank #${userRank - 1}`}
+              </div>
+
+              <div style={S.rivalNameSub}>
+                {rival.college || 'Ranked just above you'}
+              </div>
             </div>
           </div>
-          <p style={S.rivalMsg}>{urgencyMeta.msg}</p>
+
+          <p style={S.rivalMsg}>
+            {urgencyMeta.msg}
+          </p>
         </div>
+
+        {/* RIGHT */}
         <div style={S.rivalRight}>
-          <div style={S.rivalScoreBlock}>
-            <div style={S.rivalScoreLabel}>THEIR SCORE</div>
-            <div style={{ ...S.rivalScoreVal, color: urgencyMeta.color }}>{rivalScore}/100</div>
+          <div style={S.rivalMetrics}>
+            <div style={S.rivalMetric}>
+              <div style={S.rivalScoreLabel}>
+                THEIR SCORE
+              </div>
+
+              <div style={S.rivalScoreVal}>
+                {rivalScore}
+                <span style={S.rivalScoreUnit}>/100</span>
+              </div>
+            </div>
+
+            <div style={S.rivalMetricDivider} />
+
+            <div style={S.rivalMetric}>
+              <div style={S.rivalScoreLabel}>
+                GAP
+              </div>
+
+              <div
+                style={{
+                  ...S.rivalScoreVal,
+                  color: urgencyMeta.color,
+                }}
+              >
+                −{gapToNext}
+                <span style={S.rivalScoreUnit}> pts</span>
+              </div>
+            </div>
           </div>
-          <div style={S.rivalGapBlock}>
-            <div style={S.rivalScoreLabel}>GAP</div>
-            <div style={{ ...S.rivalScoreVal, color: '#fff', fontSize: 20 }}>−{gapToNext}</div>
-          </div>
+
           <button
-            style={{ ...S.btnPrimary, fontSize: 12, padding: '9px 16px', marginTop: 8, background: `linear-gradient(135deg, ${urgencyMeta.color}, ${urgencyMeta.color}CC)` }}
-            onClick={() => weakestPracticeTopic
-              ? navigate('/interview', { state: { mode: 'topic', topic: weakestPracticeTopic } })
-              : navigate('/interview')}
+            style={{
+              ...S.rivalCta,
+              color: C.signalDeep,
+              borderColor: C.lineMd,
+              background: '#FFFFFF',
+            }}
+            onClick={() =>
+              weakestPracticeTopic
+                ? navigate('/interview', {
+                    state: {
+                      mode: 'topic',
+                      topic: weakestPracticeTopic,
+                    },
+                  })
+                : navigate('/interview')
+            }
           >
-            🎯 Close the gap
+            <span>🎯</span>
+            <span>Close the gap</span>
+            <span style={S.rivalCtaArrow}>→</span>
           </button>
         </div>
       </div>
-    </div>
-  );
-};
 
-// ─── Dimension radar (SVG hexagon) ──────────────────────────────────────────
-// The one visualisation Coach doesn't have. Shows all 6 scored dimensions as
-// a filled polygon so you can see your shape at a glance — where you're
-// round vs where you have a dent. Pure SVG, no library needed.
-
-const RADAR_DIMS = [
-  { key: 'technical',      label: 'Technical',    short: 'Tech'   },
-  { key: 'problemSolving', label: 'Problem Solv.', short: 'PS'    },
-  { key: 'communication',  label: 'Comm.',         short: 'Comm'  },
-  { key: 'behavioral',     label: 'Behavioral',    short: 'Beh'   },
-  { key: 'design',         label: 'System Design', short: 'Design'},
-  { key: 'fundamentals',   label: 'Fundamentals',  short: 'Fund'  },
-];
-
-const DimensionRadar = ({ dimensionProfile, mounted }) => {
-  if (!dimensionProfile || dimensionProfile.length === 0) return null;
-
-  const cx = 130, cy = 130, r = 90;
-  const n = RADAR_DIMS.length;
-  const angleStep = (2 * Math.PI) / n;
-  const startAngle = -Math.PI / 2;
-
-  const getPoint = (i, pct) => {
-    const angle = startAngle + i * angleStep;
-    return {
-      x: cx + pct * r * Math.cos(angle),
-      y: cy + pct * r * Math.sin(angle),
-    };
-  };
-
-  const getLabelPoint = (i) => {
-    const angle = startAngle + i * angleStep;
-    const dist = r + 22;
-    return { x: cx + dist * Math.cos(angle), y: cy + dist * Math.sin(angle) };
-  };
-
-  // Map fetched profile onto our fixed dim order so missing dims default to 0
-  const scores = RADAR_DIMS.map(d => {
-    const found = dimensionProfile.find(p => p.key === d.key);
-    return found?.hasData ? ((found.score || 0) / 100) : 0;
-  });
-
-  const polygon = scores
-    .map((s, i) => {
-      const pt = getPoint(i, mounted ? s : 0);
-      return `${pt.x},${pt.y}`;
-    })
-    .join(' ');
-
-  // Grid rings at 25 / 50 / 75 / 100%
-  const rings = [0.25, 0.5, 0.75, 1.0];
-
-  return (
-    <div style={S.radarCard}>
-      <div style={S.radarHeader}>
-        <div>
-          <Eyebrow color={C.signal}>🕸 SKILL RADAR</Eyebrow>
-          <h2 style={S.cardH2Light}>Your dimension shape</h2>
-          <p style={S.radarSub}>Where you're round vs where you have a dent. Untested dimensions show as 0.</p>
-        </div>
-      </div>
-      <div style={S.radarBody}>
-        <svg width={260} height={260} viewBox="0 0 260 260" style={{ overflow: 'visible', flexShrink: 0 }}>
-          {/* Grid rings */}
-          {rings.map((ring, ri) => {
-            const pts = RADAR_DIMS.map((_, i) => {
-              const pt = getPoint(i, ring);
-              return `${pt.x},${pt.y}`;
-            }).join(' ');
-            return (
-              <polygon key={ri} points={pts}
-                fill="none"
-                stroke={ri === 3 ? 'rgba(0,87,232,0.25)' : 'rgba(0,87,232,0.1)'}
-                strokeWidth={ri === 3 ? 1.5 : 1}
-              />
-            );
-          })}
-
-          {/* Spokes */}
-          {RADAR_DIMS.map((_, i) => {
-            const outer = getPoint(i, 1);
-            return (
-              <line key={i} x1={cx} y1={cy} x2={outer.x} y2={outer.y}
-                stroke="rgba(0,87,232,0.12)" strokeWidth={1} />
-            );
-          })}
-
-          {/* Filled polygon — animates in via CSS transition on the points */}
-          <polygon
-            points={polygon}
-            fill="rgba(0,87,232,0.15)"
-            stroke={C.signal}
-            strokeWidth={2}
-            strokeLinejoin="round"
-            style={{ transition: 'all 1.1s cubic-bezier(.16,1,.3,1) 0.3s' }}
+      {/* Bottom progress line */}
+      <div style={S.rivalBottomLine}>
+        <div style={S.rivalBottomTrack}>
+          <div
+            style={{
+              ...S.rivalBottomFill,
+              width: `${Math.min(
+                100,
+                Math.max(8, 100 - gapToNext * 10)
+              )}%`,
+              background: `linear-gradient(
+                90deg,
+                ${C.signal},
+                ${C.pulse}
+              )`,
+            }}
           />
-
-          {/* Dots at each vertex */}
-          {scores.map((s, i) => {
-            const pt = getPoint(i, mounted ? s : 0);
-            const col = scoreColor(s * 100);
-            return (
-              <circle key={i} cx={pt.x} cy={pt.y} r={4}
-                fill={col} stroke="#fff" strokeWidth={1.5}
-                style={{ transition: `cx 1.1s cubic-bezier(.16,1,.3,1) 0.3s, cy 1.1s cubic-bezier(.16,1,.3,1) 0.3s` }}
-              />
-            );
-          })}
-
-          {/* Labels */}
-          {RADAR_DIMS.map((d, i) => {
-            const lp = getLabelPoint(i);
-            const score = dimensionProfile.find(p => p.key === d.key);
-            const hasData = score?.hasData;
-            return (
-              <text key={i} x={lp.x} y={lp.y}
-                textAnchor="middle" dominantBaseline="middle"
-                fontSize={9} fontFamily="'JetBrains Mono', monospace"
-                fontWeight={700}
-                fill={hasData ? C.ink : C.muted}
-              >
-                {d.short}
-              </text>
-            );
-          })}
-
-          {/* Ring labels */}
-          {[25, 50, 75].map(v => {
-            const pt = getPoint(0, v / 100);
-            return (
-              <text key={v} x={pt.x + 4} y={pt.y}
-                fontSize={7} fontFamily="'JetBrains Mono', monospace"
-                fill="rgba(65,84,123,0.5)" dominantBaseline="middle">
-                {v}
-              </text>
-            );
-          })}
-        </svg>
-
-        {/* Legend */}
-        <div style={S.radarLegend}>
-          {RADAR_DIMS.map((d) => {
-            const found = dimensionProfile.find(p => p.key === d.key);
-            const s = found?.hasData ? (found.score || 0) : null;
-            const col = s != null ? scoreColor(s) : C.muted;
-            return (
-              <div key={d.key} style={S.radarLegendRow}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0 }} />
-                <div style={{ flex: 1, fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.ink }}>{d.label}</div>
-                <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: col }}>
-                  {s != null ? `${s}/100` : '—'}
-                </div>
-              </div>
-            );
-          })}
         </div>
+
+        <span style={S.rivalBottomText}>
+          {weakestDim
+            ? `Focus: ${weakestDim.label}`
+            : 'One focused session could change your rank'}
+        </span>
       </div>
     </div>
   );
 };
+
 
 const Leaderboard = () => {
   const navigate = useNavigate();
@@ -753,7 +783,6 @@ const Leaderboard = () => {
   const [podiumMounted, setPodiumMounted] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const [weakestDim, setWeakestDim] = useState(null);
-  const [dimensionProfile, setDimensionProfile] = useState([]);
   const [userIRS, setUserIRS] = useState(null);
 
   // ─── Load leaderboard ──────────────────────────────────────────────────────
@@ -826,7 +855,6 @@ const Leaderboard = () => {
 
       if (analyticsResult.status === 'fulfilled') {
         const dims = analyticsResult.value?.dimensionProfile || [];
-        setDimensionProfile(dims);
         const tested = dims.filter((d) => d.hasData);
         if (tested.length) {
           const weakest = [...tested].sort((a, b) => (a.score ?? 0) - (b.score ?? 0))[0];
@@ -909,15 +937,30 @@ const Leaderboard = () => {
   const rankLabel = activeTab === 'global' ? 'global rank' : 'college rank';
   const periodLabel = activePeriod === 'weekly' ? 'this week' : 'overall';
 
+  // Field activity — total real sessions logged by everyone on the current
+  // board, plus how many of them are on an active streak (streak >= 2).
+  // Both come straight off rawData (already fetched), so this replaces the
+  // old static "Platinum band · Top 5%" cell with a live, useful signal
+  // instead of adding a new fetch.
+  const fieldSessions = rawData.reduce((sum, e) => sum + (Number(e.sessionCount) || 0), 0);
+  const fieldOnStreak = rawData.filter((e) => (Number(e.streak) || 0) >= 2).length;
+
+  // Capitalized standalone sentence — previously this was lowercase and
+  // appended after "Priya, " inline; now the name renders as its own label
+  // above the headline, so the verdict needs to read as a complete sentence
+  // on its own. Calls out "top 5" specifically when that's the next
+  // meaningful milestone (rank 6-10), otherwise names the actual rank ahead.
   const heroVerdict = !currentUser
-    ? "let's get you on the board."
+    ? "Let's get you on the board."
     : userRank == null
-      ? 'complete a session to get ranked.'
+      ? 'Complete a session to get ranked.'
       : userIsPlatinum
-        ? "you're in the platinum band — top 1%."
+        ? "You're in the platinum band — top 1%."
         : userRank === 1
-          ? `you're #1 ${periodLabel} — defend it.`
-          : `you're #${userRank} ${activeTab === 'global' ? 'globally' : 'in your college'} ${periodLabel}.`;
+          ? `You're #1 ${periodLabel} — defend it.`
+          : userRank <= 10
+            ? "You're closing in on top 5."
+            : `You're #${userRank} ${activeTab === 'global' ? 'globally' : 'in your college'} ${periodLabel}.`;
 
   // Priority for what the hero pushes: 1) fix the weakest tested skill,
   // 2) close the gap on the rival just ahead, 3) generic percentile line.
@@ -925,11 +968,11 @@ const Leaderboard = () => {
   // room — someone already #1 shouldn't be told to "fix" anything.
   const weakestPracticeTopic = weakestDim ? (DIMENSION_TO_TOPIC[weakestDim.key] || null) : null;
 
-  // Progress toward catching the rival — shown as a narrow urgency bar
-  // below the CTAs. Capped at 99% so it never falsely reads "done".
-  // Uses the leader's score as the full-range ceiling so the bar is
-  // calibrated against the real top, not just the next rank.
-  const urgencyPct = (() => {
+  // Ring fill — how far along the field's top score the user's own score
+  // sits. Calibrated against the leader (top3[0]) so it reads as "distance
+  // climbed toward the top", not just an arbitrary progress value. Capped
+  // at 99% so it never visually reads "done" while still outranked.
+  const ringPct = (() => {
     if (currentUserScore == null || !top3[0]?.avgScore) return null;
     const leader = Number(top3[0].avgScore);
     if (leader <= 0) return null;
@@ -1056,108 +1099,180 @@ const Leaderboard = () => {
           </div>
 
           {/* ═══════════════════════════════════════════════════════════════
-               HERO — mirrors Coach's CommandHeader pixel-for-pixel
-               (same gradient, glow orbs, border, chip row, F.display head,
-               button styles) with leaderboard-native content.
-               New: IRS chip from /performance, urgency bar, streak note.
+               HERO — Dashboard-matched flat blue panel. A white/light card
+               floats on the left holding the fused rank+ring centerpiece
+               and score readout (mirrors Dashboard's "interview readiness
+               score" card). Headline + verdict stay white on the blue
+               field, per direction. Buttons follow Dashboard's exact
+               pattern: solid white primary + pale ghost buttons.
           ════════════════════════════════════════════════════════════════ */}
           <section ref={heroRef} style={S.hero} className="mm-hero">
-            {/* Glow orbs — exact positions from CommandHeader */}
-            <div style={S.heroGlowTop} />
-            <div style={S.heroGlowBottom} />
+            {/* Podium motif — low-opacity line art anchoring the action row */}
+            <PodiumWatermark />
 
-            {/* Top row: headline block + chip row */}
-            <div style={S.heroTopRow} className="mm-hero-top">
-              <div style={{ flex: '1 1 320px', minWidth: 0 }}>
-                <Eyebrow>⚡ rank command center</Eyebrow>
-                <h1 style={S.heroH1}>
-                  {currentUser?.name?.split(' ')[0]
-                    ? `${currentUser.name.split(' ')[0]}, ${heroVerdict}`
-                    : heroVerdict}
-                </h1>
-                <p style={S.heroSub}>{heroSub}</p>
-              </div>
-
-              {/* Chip row — 5 chips matching Coach's IRS/Tier/Sessions/Last/Trend */}
-              <div style={S.heroChipRow} className="mm-irs-num mm-hero-chips">
-                {userRank != null ? (
-                  <HeroChip label="RANK" value={`#${userRank}`} color="#fff" />
-                ) : null}
-                {currentUserScore != null ? (
-                  <HeroChip label="AVG SCORE" value={`${currentUserScore}/100`} color={scoreColor(currentUserScore)} />
-                ) : null}
-                {userIRS != null ? (
-                  <div className="mm-hero-chip-irs">
-                    <HeroChip label="IRS" value={`${userIRS}/100`} color={scoreColor(userIRS)} />
+            {/* Top row: eyebrow left, live field status pills right */}
+            <div style={S.heroStatusRow} className="mm-hero-status-row">
+              <Eyebrow color="rgba(255,255,255,0.75)">rank command center</Eyebrow>
+              <div style={S.heroPillRow} className="mm-hero-pills">
+                <div style={S.heroPillLive}>
+                  <span style={S.heroPillLiveDot} />
+                  <span style={S.heroPillText}>
+                    {totalCount} practicing {periodLabel === 'this week' ? 'this week' : 'overall'}
+                  </span>
+                </div>
+                {top3[0]?.name && top3[0]?.avgScore != null && (
+                  <div style={S.heroPillLeader}>
+                    <span>🥇</span>
+                    <span style={S.heroPillLeaderText}>
+                      {top3[0].name.split(' ')[0]} leads · {top3[0].avgScore}/100
+                    </span>
                   </div>
-                ) : null}
-                {gapToNext != null && gapToNext > 0 ? (
-                  <div className="mm-hero-chip-gap">
-                    <HeroChip label="GAP TO #1" value={`${gapToNext} pts`} color={C.cyanBright} />
-                  </div>
-                ) : null}
-                {weakestDim ? (
-                  <div className="mm-hero-chip-weakest">
-                    <HeroChip label="WEAKEST" value={`${weakestDim.icon || '⚠'} ${weakestDim.label}`} color={C.orange} />
-                  </div>
-                ) : null}
+                )}
               </div>
             </div>
 
-            {/* Climb track — leaderboard-unique, sits between chips and CTAs */}
-            {userRank != null && currentUserScore != null && (
-              <div className="mm-track-wrap">
-                <ClimbTrack
-                  mounted={mounted}
-                  maxScore={maxScore}
-                  you={{ score: currentUserScore, label: currentUser?.name?.split(' ')[0] || 'You' }}
-                  rival={aheadOfUser
-                    ? { score: Number(aheadOfUser.avgScore), label: aheadOfUser.name?.split(' ')[0] || `#${userRank - 1}` }
-                    : null}
-                  leader={top3[0]?.avgScore != null
-                    ? { score: Number(top3[0].avgScore), label: top3[0].name?.split(' ')[0] || '#1' }
-                    : null}
-                />
+            <div style={S.heroTopRow} className="mm-hero-top">
+              {/* Left: white rank card (ring + score), Dashboard-matched */}
+              <div style={S.heroRankCard} className="mm-hero-rank-card">
+                {userRank != null ? (
+                  <>
+                    <div style={S.heroRankCardLabel}>your rank</div>
+                    <div style={S.heroRankCardBody}>
+                      <RankRing rank={userRank} pct={ringPct} mounted={mounted} size={104} stroke={6} />
+                      <div style={{ minWidth: 0 }}>
+                        {currentUserScore != null && (
+                          <>
+                            <div style={S.heroRankCardScore}>
+                              {currentUserScore}<span style={S.heroRankCardScoreUnit}>/100</span>
+                            </div>
+                            <div style={S.heroRankCardScoreLabel}>avg score</div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {userPercentile != null && (
+                      <div style={S.heroRankCardPill}>Top {100 - userPercentile}%</div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div style={S.heroRankCardLabel}>your rank</div>
+                    <div style={S.heroRankCardUnranked}>—</div>
+                    <div style={S.heroRankCardPill}>Not ranked yet</div>
+                  </>
+                )}
               </div>
-            )}
 
-            {/* Urgency bar — progress toward the leader's score */}
-            {urgencyPct != null && (
-              <div style={S.urgencyWrap}>
-                <div style={S.urgencyTrack}>
-                  <div style={{ ...S.urgencyFill, width: mounted ? `${urgencyPct}%` : '0%' }} />
-                  <div style={{ ...S.urgencyThumb, left: mounted ? `${urgencyPct}%` : '0%' }} />
-                </div>
-                <div style={S.urgencyLabels}>
-                  <span style={S.urgencyLabelL} className="mm-urgency-label">you · {currentUserScore}/100</span>
-                  <span style={S.urgencyLabelR} className="mm-urgency-label">🥇 leader · {top3[0]?.avgScore}/100</span>
-                </div>
+              {/* Middle: name/verdict/percentile */}
+              <div style={S.heroTextGroup} className="mm-hero-text-group">
+                {currentUser?.name?.split(' ')[0] && (
+                  <div style={S.heroEyebrowLabel}>YOUR STANDING</div>
+                )}
+                <h1 style={S.heroH1}>{heroVerdict}</h1>
+                <p style={S.heroSub}>{heroSub}</p>
+                {userPercentile != null && userRank != null && (
+                  <div style={S.heroPercentileLine}>
+                    <span style={S.heroPercentileHighlight}>Top {100 - userPercentile}%</span>
+                    {' '}of {totalCount} students · beating {Math.max(0, totalCount - userRank)} of them
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* CTAs — exact Coach button styling */}
+              {/* Right: gap/IRS stat readouts */}
+              {(gapToNext != null || userIRS != null) && (
+                <div style={S.heroStatRow} className="mm-hero-stats">
+                  {gapToNext != null && gapToNext > 0 && (
+                    <HeroStat label={`gap to #${userRank - 1}`} value={gapToNext} unit=" pts" color="#fff" />
+                  )}
+                  {userIRS != null && (
+                    <>
+                      <div style={S.heroStatDivider} className="mm-hero-irs-divider" />
+                      <div className="mm-hero-irs-stat">
+                        <HeroStat label="IRS" value={userIRS} unit="/100" color="#fff" />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Action row — Dashboard-matched button trio: solid white
+                primary CTA first, pale ghost buttons after, streak chip
+                and compact icon buttons trailing. */}
             <div style={S.heroActions} className="mm-hero-actions">
               <button
                 style={S.btnPrimary}
-                className="mm-btn-primary"
-                onClick={() => weakestPracticeTopic
-                  ? navigate('/interview', { state: { mode: 'topic', topic: weakestPracticeTopic } })
-                  : navigate('/interview')}
+                className="mm-btn-primary mm-hero-cta"
+                onClick={() => navigate('/interview')}
               >
-                🎯 {weakestDim ? `Sharpen ${weakestDim.label}` : 'Start Interview'}
+                New mock interview
+              </button>
+              <button style={S.btnGhost} className="mm-btn-ghost" onClick={() => navigate('/analytics')}>
+                Full analytics
               </button>
               <button
                 style={S.btnGhost}
                 className="mm-btn-ghost"
-                onClick={() => navigate('/analytics')}
+                onClick={() => weakestPracticeTopic
+                  ? navigate('/interview', { state: { mode: 'topic', topic: weakestPracticeTopic } })
+                  : navigate('/coach')}
               >
-                📊 Full Analytics
+                {weakestDim ? `Sharpen ${weakestDim.label}` : 'AI Coach'}
               </button>
               {currentUserStreak >= 2 && (
                 <div style={S.heroStreakChip} className="mm-hero-streak">
                   🔥 {currentUserStreak}-day streak
                 </div>
               )}
+              <div style={{ flex: 1 }} className="mm-hero-actions-spacer" />
+              <HeroIconButton icon="🕘" title="Practice history" onClick={() => navigate('/history')} />
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════════════
+               TAB CARD — refined 3-zone layout: leaderboard icon badge on
+               the left, both toggle groups centered together with a
+               divider between them, entry count on the right. Its own
+               white surface, visually distinct from the hero panel.
+               Toggle pills now match Dashboard's active-tab treatment:
+               light blue pill fill + black text.
+          ════════════════════════════════════════════════════════════════ */}
+          <section style={S.toggleCard} className="lb-toggle-card">
+            <div style={S.toggleBar} className="lb-toggle-bar">
+              {/* Left: leaderboard icon badge + label */}
+              <div style={S.toggleBadgeGroup} className="lb-toggle-badge-group">
+                <div style={S.toggleBadgeIcon}>🏆</div>
+                <div>
+                  <div style={S.toggleBadgeTitle}>Board settings</div>
+                  <div style={S.toggleBadgeSub}>customize your view</div>
+                </div>
+              </div>
+
+              {/* Center: both toggle groups */}
+              <div style={S.toggleCenterGroup} className="lb-toggle-center-group">
+                <ToggleGroup
+                  options={[
+                    { id: 'weekly', label: 'This week', helper: 'Resets every Monday' },
+                    { id: 'overall', label: 'Overall', helper: 'All-time record' },
+                  ]}
+                  value={activePeriod}
+                  onChange={setActivePeriod}
+                />
+                <div style={S.toggleDivider} className="lb-toggle-divider" />
+                <ToggleGroup
+                  options={[
+                    { id: 'global', label: 'Global', helper: `${selectedBoard.globalTotal || 0} students` },
+                    { id: 'college', label: currentUser?.college?.split(' ')[0] || 'College', helper: `${selectedBoard.collegeTotal || 0} students` },
+                  ]}
+                  value={activeTab}
+                  onChange={setActiveTab}
+                />
+              </div>
+
+              {/* Right: entry count */}
+              <div style={S.toggleMeta} className="lb-toggle-meta">
+                <span style={S.mono}>viewing {activeData.length !== rawData.length ? `${activeData.length} of ` : ''}{rawData.length} {rawData.length === 1 ? 'entry' : 'entries'}</span>
+              </div>
             </div>
           </section>
 
@@ -1172,46 +1287,6 @@ const Leaderboard = () => {
               weakestPracticeTopic={weakestPracticeTopic}
               mounted={mounted}
             />
-          )}
-
-          {/* ── DEDICATED TOGGLE SECTION ─────────────────────────────────── */}
-          <section style={S.toggleCard} className="lb-toggle-card">
-            <div style={S.toggleHeadRow}>
-              <div style={S.eyebrow}>Board settings</div>
-              <div style={S.mono}>viewing {activeData.length !== rawData.length ? `${activeData.length} of ` : ''}{rawData.length} {rawData.length === 1 ? 'entry' : 'entries'}</div>
-            </div>
-
-            <div style={S.toggleGrid} className="lb-toggle-grid">
-              <ToggleGroup
-                label="Time period"
-                icon="◷"
-                options={[
-                  { id: 'weekly', label: 'This week', helper: 'Resets every Monday' },
-                  { id: 'overall', label: 'Overall', helper: 'All-time record' },
-                ]}
-                value={activePeriod}
-                onChange={setActivePeriod}
-                accent={C.signal}
-                accentTint={C.signalTint}
-              />
-              <ToggleGroup
-                label="Scope"
-                icon="◎"
-                options={[
-                  { id: 'global', label: 'Global', helper: `${selectedBoard.globalTotal || 0} students` },
-                  { id: 'college', label: currentUser?.college?.split(' ')[0] || 'College', helper: `${selectedBoard.collegeTotal || 0} students` },
-                ]}
-                value={activeTab}
-                onChange={setActiveTab}
-                accent={C.pulseDeep}
-                accentTint={C.pulseTint}
-              />
-            </div>
-          </section>
-
-          {/* ── DIMENSION RADAR — skill shape at a glance ─────────────── */}
-          {dimensionProfile.length > 0 && (
-            <DimensionRadar dimensionProfile={dimensionProfile} mounted={mounted} />
           )}
 
           {/* ── PREMIUM PODIUM ─────────────────────────────────────────── */}
@@ -1460,7 +1535,12 @@ const Leaderboard = () => {
                 value={`${rawData.length ? Math.round(rawData.reduce((sum, e) => sum + (Number(e.avgScore) || 0), 0) / rawData.length) : 0}/100`}
                 color={C.pulseDeep}
               />
-              <RailStat label="Platinum band" value={`Top 5% · 95th+`} color={C.platinum} sub={`${Math.max(1, Math.round(totalCount * 0.05))} students`} />
+              <RailStat
+                label="Field activity"
+                value={`${fieldSessions} session${fieldSessions !== 1 ? 's' : ''}`}
+                color={C.orange}
+                sub={fieldOnStreak > 0 ? `🔥 ${fieldOnStreak} on a streak` : `${periodLabel} on this board`}
+              />
             </section>
           )}
 
@@ -1486,7 +1566,7 @@ const Leaderboard = () => {
           </div>
 
           <footer style={S.footerRow}>
-            <span style={S.mono}>mockmate leaderboard v3 · aligned to readiness terminal v6</span>
+            <span style={S.mono}>mockmate leaderboard v6 · dashboard-matched</span>
             <span style={S.mono}>ranks recompute live · weekly resets monday</span>
           </footer>
         </div>
@@ -1495,23 +1575,26 @@ const Leaderboard = () => {
   );
 };
 
-// ─── Dedicated toggle group ───────────────────────────────────────────────────
+// ─── Dedicated toggle group — Dashboard-matched: light-blue pill active
+// state, black/ink text, plain gray inactive text (no gradient fill). ────
 
-const ToggleGroup = ({ label, icon, options, value, onChange, accent, accentTint }) => {
+const ToggleGroup = ({ label, icon, options, value, onChange }) => {
   const activeIdx = options.findIndex(o => o.id === value);
   return (
     <div style={S.toggleGroupWrap}>
-      <div style={S.toggleGroupLabel}>
-        <span style={{ fontSize: 12, color: accent }}>{icon}</span>
-        <span>{label}</span>
-      </div>
-      <div style={S.toggleGroupTrack}>
+      {label && (
+        <div style={S.toggleGroupLabel}>
+          <span style={{ fontSize: 12, color: C.signal }}>{icon}</span>
+          <span>{label}</span>
+        </div>
+      )}
+      <div style={S.toggleGroupTrack} className="lb-toggle-track">
         <div
+          className="lb-toggle-thumb"
           style={{
             ...S.toggleGroupThumb,
             width: `calc(${100 / options.length}% - 4px)`,
             transform: `translateX(${activeIdx * 100}%)`,
-            background: `linear-gradient(135deg, ${accent}, ${accent}CC)`,
           }}
         />
         {options.map(opt => {
@@ -1523,11 +1606,11 @@ const ToggleGroup = ({ label, icon, options, value, onChange, accent, accentTint
               className="lb-toggle-opt"
               style={{
                 ...S.toggleGroupBtn,
-                color: isActive ? '#fff' : C.sub,
+                color: isActive ? C.ink : C.muted,
               }}
             >
               <span style={S.toggleOptLabel}>{opt.label}</span>
-              <span style={{ ...S.toggleOptHelper, color: isActive ? 'rgba(255,255,255,0.75)' : C.muted }}>{opt.helper}</span>
+              <span style={{ ...S.toggleOptHelper, color: isActive ? C.signalDeep : C.faint }}>{opt.helper}</span>
             </button>
           );
         })}
@@ -1535,7 +1618,6 @@ const ToggleGroup = ({ label, icon, options, value, onChange, accent, accentTint
     </div>
   );
 };
-
 // ─── Rail stat ───────────────────────────────────────────────────────────────
 
 const RailStat = ({ label, value, sub, color }) => (
@@ -1552,7 +1634,7 @@ const RailStat = ({ label, value, sub, color }) => (
 
 const GlobalStyles = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800;900&display=swap');
 
     *, *::before, *::after { box-sizing: border-box; }
     ::selection { background: rgba(0,87,232,0.16); color: ${C.ink}; }
@@ -1563,8 +1645,6 @@ const GlobalStyles = () => (
     @keyframes livePulse    { 0%,100% { opacity:1; } 50% { opacity:0.28; } }
     @keyframes heroSweep    { 0% { transform:translateX(-30%); } 100% { transform:translateX(130%); } }
     @keyframes scaleIn      { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:scale(1); } }
-    @keyframes trackPulse   { 0%, 100% { box-shadow: 0 0 0 4px rgba(0,200,240,0.18); } 50% { box-shadow: 0 0 0 7px rgba(0,200,240,0.08); } }
-    .mm-track-you > div:first-child { animation: trackPulse 2.4s ease-in-out infinite 1.4s; }
     @keyframes lbAvatarFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
     @keyframes lbPlinthSweep { 0% { left: -40%; } 100% { left: 130%; } }
     @keyframes lbGlowPulse  { 0%,100% { opacity: 0.5; } 50% { opacity: 0.9; } }
@@ -1597,10 +1677,15 @@ const GlobalStyles = () => (
     .mm-rail-cell:hover { background: ${C.surfaceSunk} !important; }
 
     .mm-btn-primary { transition: transform 0.15s cubic-bezier(.16,1,.3,1), box-shadow 0.15s ease !important; }
-    .mm-btn-primary:hover { transform: translateY(-2px) !important; box-shadow: 0 10px 28px rgba(0,173,224,0.45) !important; }
+    .mm-btn-primary:hover { transform: translateY(-2px) !important; box-shadow: 0 10px 26px rgba(0,20,80,0.28) !important; }
 
     .mm-btn-ghost { transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease !important; }
-    .mm-btn-ghost:hover { background: rgba(255,255,255,0.14) !important; transform: translateY(-1px) !important; }
+    .mm-btn-ghost:hover { background: rgba(255,255,255,0.22) !important; transform: translateY(-1px) !important; }
+
+    .mm-hero-icon-btn-primary { transition: transform 0.15s cubic-bezier(.16,1,.3,1), box-shadow 0.15s ease !important; }
+    .mm-hero-icon-btn-primary:hover { transform: translateY(-2px) !important; box-shadow: 0 12px 26px rgba(0,10,40,0.3) !important; }
+    .mm-hero-icon-btn { transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease !important; }
+    .mm-hero-icon-btn:hover { background: rgba(255,255,255,0.2) !important; transform: translateY(-1px) !important; }
 
     .mm-btn-blue { transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1) !important; }
     .mm-btn-blue:hover { box-shadow: 0 8px 22px rgba(0,87,232,0.35) !important; transform: translateY(-2px) !important; }
@@ -1613,17 +1698,44 @@ const GlobalStyles = () => (
 
     .mm-irs-num { animation: scaleIn 0.7s cubic-bezier(.16,1,.3,1) both 0.1s; }
 
+    .lb-toggle-track { transition: box-shadow 0.2s ease; }
+    .lb-toggle-track:focus-within { box-shadow: inset 0 1px 3px rgba(10,22,40,0.06), 0 0 0 3px ${C.signalTint}; }
+    .lb-toggle-opt:hover { color: ${C.signalDeep} !important; }
+    .lb-toggle-thumb { will-change: transform; }
+
+    .rival-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 16px 34px rgba(15,45,120,0.11),
+    0 3px 8px rgba(10,22,40,0.05);
+}
+
+.mm-page button[style*="rivalCta"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0,40,140,0.12);
+  border-color: ${C.signalSoft} !important;
+}
+
     @media (prefers-reduced-motion: reduce) {
       .mm-page * { animation: none !important; transition-duration: 0.01ms !important; }
     }
 
     @media (max-width: 1020px) {
       .mm-stat-rail { grid-template-columns: repeat(2, 1fr) !important; }
-      .lb-toggle-grid { grid-template-columns: 1fr !important; }
+    }
+    @media (max-width: 780px) {
+      .lb-toggle-bar { grid-template-columns: 1fr !important; justify-items: center; text-align: center; }
+      .lb-toggle-badge-group { justify-content: center; }
+      .lb-toggle-center-group { flex-wrap: wrap; justify-content: center; }
+      .lb-toggle-divider { display: none !important; }
+      .lb-toggle-meta { text-align: center !important; }
     }
     @media (max-width: 640px) {
       .mm-hero-top   { flex-direction: column !important; align-items: flex-start !important; }
-      .mm-hero-chips { margin-top: 16px !important; }
+      .mm-hero-rank-card { width: 100%; }
+      .mm-hero-text-group  { width: 100%; }
+      .mm-hero-stats { margin-top: 18px !important; width: 100%; justify-content: flex-start !important; }
+      .mm-hero-status-row { flex-direction: column !important; align-items: flex-start !important; }
     }
     @media (max-width: 700px) {
       .lb-college-col, .lb-efficiency-col, .lb-trend-col { display: none !important; }
@@ -1637,20 +1749,20 @@ const GlobalStyles = () => (
       .mm-stat-rail { grid-template-columns: 1fr !important; }
 
       /* Hero panel — tighter padding on small screens */
-      .mm-hero { padding: 20px 18px 20px !important; border-radius: 18px !important; }
+      .mm-hero { padding: 22px 18px !important; border-radius: 18px !important; }
 
-      /* Chip row — hide IRS and GAP on very small screens (3 chips is enough).
-         RANK + AVG SCORE + WEAKEST are highest signal, IRS and GAP are secondary. */
-      .mm-hero-chip-irs   { display: none !important; }
-      .mm-hero-chip-gap   { display: none !important; }
+      /* Secondary hero stats — IRS is the first to go on very small screens */
+      .mm-hero-irs-divider, .mm-hero-irs-stat { display: none !important; }
 
-      /* Weakest chip value — long labels like "System Design" need to truncate */
-      .mm-hero-chip-weakest .chip-val { font-size: 11px !important; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      /* Podium watermark and leader pill are decorative — drop them before
+         anything load-bearing gets cramped on very small screens */
+      .mm-hero-podium-watermark { display: none !important; }
+      .mm-hero-pills { flex-direction: column !important; align-items: flex-start !important; }
 
-      /* Actions — stack buttons full-width */
-      .mm-hero-actions { flex-direction: column !important; align-items: stretch !important; }
-      .mm-hero-actions > button { text-align: center !important; justify-content: center !important; }
-      .mm-hero-streak { width: 100% !important; justify-content: center !important; }
+      /* Actions — buttons wrap; primary CTA and ghosts stay compact */
+      .mm-hero-actions { flex-wrap: wrap !important; }
+      .mm-hero-actions-spacer { display: none !important; }
+      .mm-hero-streak { justify-content: center !important; }
       .mm-sticky-weak { display: none !important; }
     }
   `}</style>
@@ -1682,78 +1794,109 @@ const S = {
     boxShadow: '0 6px 20px rgba(4,12,34,0.28)', animation: 'lbFadeUp 0.22s ease',
   },
 
-  // ── HERO — matches Coach's CommandHeader panel exactly (same gradient
-  // stops, same glow orbs, same border/shadow) so the two "welcome back"
-  // surfaces read as one product. Content below is leaderboard-native. ──
+  // ── HERO — Dashboard-matched flat blue diagonal panel. No dark glow
+  // panel underneath; a white rank card floats on the left mirroring
+  // Dashboard's "interview readiness score" card exactly. ──────────────
   hero: {
     position: 'relative', overflow: 'hidden',
-    padding: '28px 32px', marginBottom: 18, borderRadius: 24,
-    background: `linear-gradient(135deg, ${C.heroDark0} 0%, ${C.heroBlue900} 40%, #001A3A 70%, ${C.heroDark0} 100%)`,
-    border: '1px solid rgba(0,200,240,0.18)',
-    boxShadow: '0 24px 72px rgba(0,20,80,0.55)',
+    padding: '32px 36px', marginBottom: 16, borderRadius: 24,
+    background: `linear-gradient(115deg, ${C.signalDeep} 0%, ${C.signal} 55%, ${C.heroSkyEnd} 100%)`,
+    boxShadow: '0 20px 48px rgba(0,60,180,0.22)',
   },
-  heroGlowTop:    { position: 'absolute', top: -60, right: -60, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,200,240,0.08) 0%, transparent 70%)', pointerEvents: 'none' },
-  heroGlowBottom: { position: 'absolute', bottom: -40, left: 80, width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(26,110,255,0.07) 0%, transparent 70%)', pointerEvents: 'none' },
-  heroTopRow:     { position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' },
-  heroH1:         { margin: '8px 0 6px', fontFamily: F.display, fontSize: 'clamp(22px, 3.5vw, 34px)', fontWeight: 900, color: '#fff', lineHeight: 1.1, letterSpacing: '-0.5px', maxWidth: 560 },
-  heroSub:        { margin: 0, fontFamily: F.body, fontSize: 13, lineHeight: 1.65, color: 'rgba(255,255,255,0.52)', maxWidth: 480 },
-  heroActions:    { position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 22 },
+  heroPodiumWatermark: { position: 'absolute', bottom: 78, right: 40, opacity: 0.1, pointerEvents: 'none' },
 
-  // Chip row — exact pixel values from Coach CommandHeader .map() block
-  heroChipRow:   { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' },
-  heroChip:      { padding: '10px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'center', minWidth: 78 },
-  heroChipLabel: { fontFamily: F.mono, fontSize: 7.5, letterSpacing: '0.8px', color: 'rgba(255,255,255,0.3)', marginBottom: 4 },
-  heroChipVal:   { fontFamily: F.display, fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap' },
+  // Status row — eyebrow left, live field + leader pills right
+  heroStatusRow:     { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 22 },
+  heroPillRow:        { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  heroPillLive:       { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 99, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)' },
+  heroPillLiveDot:    { width: 5, height: 5, borderRadius: '50%', background: '#3ED598', boxShadow: '0 0 5px #3ED598', flexShrink: 0 },
+  heroPillText:       { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: '#fff' },
+  heroPillLeader:     { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 99, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)' },
+  heroPillLeaderText: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: '#fff' },
+
+  heroTopRow:     { position: 'relative', display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' },
+
+  // White/light rank card floating on the hero — Dashboard-matched
+  heroRankCard: {
+    position: 'relative', flexShrink: 0,
+    background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.26)',
+    borderRadius: 18, padding: '18px 22px', minWidth: 250,
+    backdropFilter: 'blur(6px)',
+  },
+  heroRankCardLabel: { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '1.2px', color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', marginBottom: 12 },
+  heroRankCardBody: { display: 'flex', alignItems: 'center', gap: 18 },
+  heroRankCardScore: { fontFamily: F.display, fontSize: 30, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-0.6px' },
+  heroRankCardScoreUnit: { fontFamily: F.display, fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)' },
+  heroRankCardScoreLabel: { fontFamily: F.mono, fontSize: 9.5, color: 'rgba(255,255,255,0.6)', marginTop: 4 },
+  heroRankCardUnranked: { fontFamily: F.display, fontSize: 34, fontWeight: 900, color: 'rgba(255,255,255,0.5)', marginBottom: 12 },
+  heroRankCardPill: { display: 'inline-block', marginTop: 14, fontFamily: F.body, fontSize: 11.5, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.26)', padding: '5px 12px', borderRadius: 99 },
+
+  heroTextGroup:  { flex: '1 1 260px', minWidth: 0 },
+  heroEyebrowLabel: { fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'rgba(255,255,255,0.6)', marginBottom: 6, textTransform: 'uppercase' },
+  heroH1:         { margin: '0 0 10px', fontFamily: F.display, fontSize: 'clamp(23px, 2.8vw, 29px)', fontWeight: 800, color: '#fff', lineHeight: 1.2, letterSpacing: '-0.5px', maxWidth: 420 },
+  heroSub:        { margin: '0 0 9px', fontFamily: F.body, fontSize: 13, lineHeight: 1.7, color: 'rgba(255,255,255,0.82)', maxWidth: 400 },
+  heroPercentileLine: { fontFamily: F.mono, fontSize: 10.5, color: 'rgba(255,255,255,0.65)' },
+  heroPercentileHighlight: { color: '#fff', fontWeight: 800 },
+  heroActions:    { position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 30 },
+
+  // Right-side gap/irs readouts
+  heroStatRow:     { display: 'flex', alignItems: 'center', gap: 26, flexShrink: 0, marginLeft: 'auto' },
+  heroStatDivider: { width: 1, alignSelf: 'stretch', background: 'rgba(255,255,255,0.25)' },
+
+  // Compact icon-only action buttons — tooltip via title attr
+  heroIconBtnPrimary: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 12, background: '#fff', color: C.signalDeep, width: 44, height: 44, fontSize: 17, cursor: 'pointer', boxShadow: '0 6px 16px rgba(0,10,40,0.18)', flexShrink: 0 },
+  heroIconBtnGhost:   { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 12, background: 'rgba(255,255,255,0.12)', color: '#fff', width: 44, height: 44, fontSize: 17, cursor: 'pointer', flexShrink: 0 },
 
   // Streak chip beside CTAs — subdued so it doesn't compete with primary action
-  heroStreakChip: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 13px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', fontFamily: F.body, fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.65)' },
-
-  // Urgency bar — single glance answer to "how far am I from the leader?"
-  urgencyWrap:   { position: 'relative', marginTop: 26 },
-  urgencyTrack:  { position: 'relative', height: 3, borderRadius: 3, background: 'rgba(255,255,255,0.10)', overflow: 'visible' },
-  urgencyFill:   { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 3, background: `linear-gradient(90deg, ${C.blueBright}, ${C.cyanBright})`, transition: 'width 1.4s cubic-bezier(.16,1,.3,1) 0.4s', boxShadow: `0 0 8px ${C.cyanBright}55` },
-  urgencyThumb:  { position: 'absolute', top: '50%', width: 8, height: 8, borderRadius: '50%', background: C.cyanBright, border: '2px solid rgba(10,22,40,0.9)', transform: 'translate(-50%,-50%)', transition: 'left 1.4s cubic-bezier(.16,1,.3,1) 0.4s', boxShadow: `0 0 6px ${C.cyanBright}` },
-  urgencyLabels: { display: 'flex', justifyContent: 'space-between', marginTop: 8 },
-  urgencyLabelL: { fontFamily: F.mono, fontSize: 9.5, color: C.cyanBright, fontWeight: 700 },
-  urgencyLabelR: { fontFamily: F.mono, fontSize: 9.5, color: 'rgba(255,255,255,0.35)', fontWeight: 600 },
-
-  // Climb track — leaderboard-specific (not in Coach), between chips and CTAs
-  track:          { position: 'relative', marginTop: 28 },
-  trackLine:      { position: 'relative', height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.12)' },
-  trackFill:      { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 2, background: `linear-gradient(90deg, rgba(0,200,240,0.5), ${C.cyanBright})`, transition: 'width 1.1s cubic-bezier(.16,1,.3,1) 0.3s' },
-  trackNode:      { position: 'absolute', top: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, transition: 'opacity 0.5s ease, transform 0.5s cubic-bezier(.34,1.4,.64,1)' },
-  trackDot:       { width: 12, height: 12, borderRadius: '50%', border: '2px solid', boxSizing: 'border-box' },
-  trackDotYou:    { background: C.cyanBright, borderColor: C.cyanBright, boxShadow: `0 0 0 4px rgba(0,200,240,0.18)` },
-  trackDotRival:  { background: '#0A1F3E', borderColor: 'rgba(255,255,255,0.55)' },
-  trackDotLeader: { background: C.gold, borderColor: C.gold },
-  trackTag:       { textAlign: 'center', whiteSpace: 'nowrap' },
-  trackTagLabel:  { fontFamily: F.body, fontSize: 11, fontWeight: 700, marginBottom: 2 },
-  trackTagScore:  { fontFamily: F.mono, fontSize: 10, color: 'rgba(255,255,255,0.45)' },
+  heroStreakChip: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 15px', height: 44, borderRadius: 12, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.24)', fontFamily: F.body, fontSize: 12, fontWeight: 700, color: '#fff' },
 
   // Bottom CTA banner only — not the hero
   heroNoise:  { position: 'absolute', top: 0, left: 0, width: '30%', height: '100%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.025), transparent)', animation: 'heroSweep 11s linear infinite' },
   heroKicker: { fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: '1.8px', color: C.cyanBright, textTransform: 'uppercase' },
 
-  // Buttons — exact Coach CommandHeader values
-  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 8, border: 'none', borderRadius: 12, background: `linear-gradient(135deg, ${C.blueBright}, ${C.cyanBright})`, color: '#fff', padding: '11px 22px', fontSize: 13, fontWeight: 800, fontFamily: F.body, cursor: 'pointer', boxShadow: '0 4px 18px rgba(0,173,224,0.35)' },
-  btnGhost: { border: '1px solid rgba(255,255,255,0.18)', borderRadius: 12, background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.8)', padding: '11px 22px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer' },
+  // Buttons — Dashboard-matched: solid white primary + pale/ghost secondary,
+  // used on the blue hero surface.
+  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 8, border: 'none', borderRadius: 12, background: '#fff', color: C.signalDeep, padding: '13px 22px', fontSize: 13.5, fontWeight: 800, fontFamily: F.body, cursor: 'pointer', boxShadow: '0 8px 20px rgba(0,10,40,0.18)' },
+  btnGhost: { display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid rgba(255,255,255,0.3)', borderRadius: 12, background: 'rgba(255,255,255,0.14)', color: '#fff', padding: '13px 22px', fontSize: 13.5, fontWeight: 700, fontFamily: F.body, cursor: 'pointer' },
   btnGhostLight: { border: `1px solid ${C.lineMd}`, borderRadius: 11, background: C.surface, color: C.signalDeep, padding: '11px 20px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', marginTop: 6 },
   btnBlue: { border: 'none', borderRadius: 11, background: `linear-gradient(135deg, ${C.signalDeep}, ${C.signal})`, color: '#fff', padding: '12px 24px', fontSize: 13, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: `0 4px 14px rgba(0,87,232,0.28)`, textAlign: 'center', letterSpacing: '-0.1px', marginTop: 8 },
   btnBannerCta: { flexShrink: 0, border: 'none', borderRadius: 12, background: '#fff', color: C.signalDeep, padding: '14px 24px', fontSize: 13.5, fontWeight: 700, fontFamily: F.body, cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.18)', position: 'relative' },
 
-  // Dedicated toggle section — its own card, echoes stat-rail grammar
-  toggleCard: { background: C.surface, border: `1px solid ${C.line}`, borderRadius: 18, padding: '20px 22px', boxShadow: C.shadow, marginBottom: 18 },
-  toggleHeadRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 },
-  toggleGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 },
+  // ── TAB CARD — refined 3-zone layout: leaderboard icon badge on the
+  // left, both toggle groups centered together with a divider, entry
+  // count on the right. Its own white surface, visually distinct from
+  // the hero panel below which it sits. Toggle pills use Dashboard's
+  // light-blue-fill + black-text active treatment. ─────────────────────
+  toggleCard: { background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: '14px 20px', boxShadow: C.shadow, marginBottom: 18 },
+  toggleBar: { display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 14 },
+
+  toggleBadgeGroup: { display: 'flex', alignItems: 'center', gap: 10 },
+  toggleBadgeIcon:  { width: 36, height: 36, borderRadius: 10, background: C.signalTint, border: `1px solid ${C.lineMd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 },
+  toggleBadgeTitle: { fontFamily: F.display, fontSize: 12.5, fontWeight: 800, color: C.ink },
+  toggleBadgeSub:   { fontFamily: F.mono, fontSize: 8.5, color: C.muted, marginTop: 1 },
+
+  toggleCenterGroup: { display: 'flex', alignItems: 'center', gap: 16, justifySelf: 'center' },
+  toggleDivider: { width: 1, height: 32, background: C.line },
+  toggleMeta: { textAlign: 'right' },
+
   toggleGroupWrap: {},
-  toggleGroupLabel: { display: 'flex', alignItems: 'center', gap: 7, fontFamily: F.mono, fontSize: 10.5, fontWeight: 600, color: C.sub, letterSpacing: '0.3px', marginBottom: 9, textTransform: 'lowercase' },
-  toggleGroupTrack: { position: 'relative', display: 'flex', gap: 4, padding: 4, borderRadius: 14, background: C.surfaceSunk, border: `1px solid ${C.line}` },
-  toggleGroupThumb: { position: 'absolute', top: 4, bottom: 4, left: 4, borderRadius: 10, transition: 'transform 0.28s cubic-bezier(.16,1,.3,1)', boxShadow: '0 4px 14px rgba(0,0,0,0.14)' },
-  toggleGroupBtn: { position: 'relative', zIndex: 1, flex: 1, border: 'none', background: 'transparent', padding: '10px 12px', borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontFamily: F.body },
+  toggleGroupLabel: { display: 'flex', alignItems: 'center', gap: 6, fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: C.muted, letterSpacing: '1.1px', marginBottom: 8, textTransform: 'uppercase' },
+  toggleGroupTrack: {
+    position: 'relative', display: 'flex', gap: 4, padding: 4, borderRadius: 12,
+    background: C.surfaceSunk,
+    border: `1px solid ${C.line}`,
+  },
+  toggleGroupThumb: {
+    position: 'absolute', top: 4, bottom: 4, left: 4, borderRadius: 9,
+    transition: 'transform 0.32s cubic-bezier(.16,1,.3,1)',
+    background: C.signalTint,
+    boxShadow: `inset 0 0 0 1px ${C.lineStr}`,
+  },
+  toggleGroupBtn: { position: 'relative', zIndex: 1, border: 'none', background: 'transparent', padding: '8px 14px', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, fontFamily: F.body },
   toggleOptLabel: { fontSize: 12.5, fontWeight: 700 },
   toggleOptHelper: { fontSize: 9, fontFamily: F.mono },
 
-  // Podium card — more elevated / centerpiece treatment
+  // Podium card — unchanged from v3/v4
   podiumCard: { position: 'relative', background: C.surface, border: `1px solid ${C.line}`, borderRadius: 24, padding: '28px 26px 0', boxShadow: '0 8px 32px rgba(15,45,120,0.10), 0 2px 8px rgba(10,22,40,0.05)', marginBottom: 16, overflow: 'hidden' },
   podiumGlowTop: { position: 'absolute', top: -100, left: '50%', transform: 'translateX(-50%)', width: 420, height: 200, borderRadius: '50%', background: 'radial-gradient(ellipse, rgba(173,127,16,0.10), transparent 70%)', pointerEvents: 'none' },
   podiumFloorGlow: { position: 'absolute', bottom: 0, left: '10%', right: '10%', height: 40, background: 'radial-gradient(ellipse, rgba(173,127,16,0.14), transparent 75%)', pointerEvents: 'none' },
@@ -1783,30 +1926,243 @@ const S = {
   railVal: { fontFamily: F.display, fontWeight: 800, lineHeight: 1, letterSpacing: '-0.4px' },
   railSub: { marginTop: 6, fontSize: 10.5, color: C.muted },
 
-  // ── Rival card — DarkCard grammar, accent border-left ──────────────────
-  rivalCard: { position: 'relative', marginBottom: 18, borderRadius: 18, background: `linear-gradient(145deg, ${C.heroDark2} 0%, ${C.heroDark1} 100%)`, border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 32px rgba(0,20,80,0.28)', overflow: 'hidden' },
-  rivalAccentBar: { position: 'absolute', top: 0, left: 0, width: 4, height: '100%', borderRadius: '18px 0 0 18px' },
-  rivalInner: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, padding: '22px 24px 22px 28px', flexWrap: 'wrap' },
-  rivalLeft: { flex: '1 1 220px', minWidth: 0 },
-  rivalRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 },
-  rivalName: { display: 'flex', alignItems: 'center', gap: 12, margin: '8px 0 6px' },
-  rivalAvatar: { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: F.serif, fontSize: 16, fontWeight: 600, color: '#fff', flexShrink: 0 },
-  rivalNameText: { fontFamily: F.display, fontSize: 15, fontWeight: 800, color: '#fff' },
-  rivalNameSub: { fontFamily: F.mono, fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 },
-  rivalMsg: { margin: 0, fontFamily: F.body, fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 },
-  rivalScoreBlock: { textAlign: 'right' },
-  rivalGapBlock: { textAlign: 'right' },
-  rivalScoreLabel: { fontFamily: F.mono, fontSize: 7.5, letterSpacing: '0.8px', color: 'rgba(255,255,255,0.3)', marginBottom: 2 },
-  rivalScoreVal: { fontFamily: F.display, fontSize: 24, fontWeight: 900, lineHeight: 1, letterSpacing: '-0.5px' },
+  
+// ── Rival card — light Blueprint-blue treatment ────────────────────────────
+rivalCard: {
+  position: 'relative',
+  marginBottom: 18,
+  borderRadius: 18,
+  background: `linear-gradient(
+    135deg,
+    #F7FAFF 0%,
+    #EEF5FF 52%,
+    #E9F8FF 100%
+  )`,
+  border: `1px solid ${C.lineMd}`,
+  boxShadow: `
+    0 10px 28px rgba(15,45,120,0.08),
+    0 2px 6px rgba(10,22,40,0.04)
+  `,
+  overflow: 'hidden',
+  transition: 'transform 0.22s cubic-bezier(.16,1,.3,1), box-shadow 0.22s ease',
+},
 
-  // ── Dimension radar ─────────────────────────────────────────────────────
-  radarCard: { background: C.surface, border: `1px solid ${C.line}`, borderRadius: 20, padding: '22px 24px', boxShadow: C.shadow, marginBottom: 18 },
-  radarHeader: { marginBottom: 18 },
-  cardH2Light: { margin: '0 0 2px', fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.ink, letterSpacing: '-0.2px' },
-  radarSub: { margin: 0, fontFamily: F.body, fontSize: 12, color: C.muted, lineHeight: 1.5 },
-  radarBody: { display: 'flex', alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' },
-  radarLegend: { flex: '1 1 160px', display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 },
-  radarLegendRow: { display: 'flex', alignItems: 'center', gap: 10 },
+rivalAccentBar: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  width: 4,
+  height: '100%',
+  borderRadius: '18px 0 0 18px',
+},
+
+rivalInner: {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 24,
+  padding: '22px 24px 20px 28px',
+  flexWrap: 'wrap',
+},
+
+rivalLeft: {
+  flex: '1 1 340px',
+  minWidth: 0,
+},
+
+rivalRight: {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-end',
+  gap: 12,
+  flexShrink: 0,
+},
+
+rivalEyebrowRow: {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 7,
+  marginBottom: 10,
+},
+
+rivalEyebrowDot: {
+  width: 6,
+  height: 6,
+  borderRadius: '50%',
+  boxShadow: '0 0 0 3px rgba(0,87,232,0.08)',
+  flexShrink: 0,
+},
+
+rivalEyebrow: {
+  fontFamily: F.mono,
+  fontSize: 9,
+  fontWeight: 800,
+  letterSpacing: '1.25px',
+  textTransform: 'uppercase',
+},
+
+rivalEyebrowDivider: {
+  color: C.lineStr,
+  fontFamily: F.mono,
+  fontSize: 10,
+},
+
+rivalEyebrowContext: {
+  fontFamily: F.mono,
+  fontSize: 9,
+  color: C.muted,
+},
+
+rivalName: {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  marginBottom: 9,
+},
+
+rivalAvatar: {
+  width: 42,
+  height: 42,
+  borderRadius: '50%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontFamily: F.serif,
+  fontSize: 17,
+  fontWeight: 600,
+  flexShrink: 0,
+  boxShadow: '0 4px 14px rgba(0,87,232,0.10)',
+},
+
+rivalNameText: {
+  fontFamily: F.display,
+  fontSize: 15,
+  fontWeight: 800,
+  color: C.ink,
+  letterSpacing: '-0.25px',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+},
+
+rivalNameSub: {
+  fontFamily: F.mono,
+  fontSize: 9.5,
+  color: C.muted,
+  marginTop: 3,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+},
+
+rivalMsg: {
+  margin: 0,
+  maxWidth: 520,
+  fontFamily: F.body,
+  fontSize: 12.5,
+  color: C.sub,
+  lineHeight: 1.65,
+},
+
+rivalMetrics: {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 18,
+  padding: '10px 14px',
+  borderRadius: 13,
+  background: 'rgba(255,255,255,0.72)',
+  border: `1px solid ${C.line}`,
+},
+
+rivalMetric: {
+  minWidth: 70,
+  textAlign: 'right',
+},
+
+rivalMetricDivider: {
+  width: 1,
+  height: 32,
+  background: C.lineMd,
+},
+
+rivalScoreLabel: {
+  fontFamily: F.mono,
+  fontSize: 7.5,
+  fontWeight: 700,
+  letterSpacing: '0.85px',
+  color: C.muted,
+  marginBottom: 4,
+},
+
+rivalScoreVal: {
+  fontFamily: F.display,
+  fontSize: 22,
+  fontWeight: 900,
+  lineHeight: 1,
+  letterSpacing: '-0.5px',
+  color: C.ink,
+},
+
+rivalScoreUnit: {
+  fontFamily: F.mono,
+  fontSize: 8.5,
+  fontWeight: 600,
+  color: C.muted,
+  marginLeft: 2,
+},
+
+rivalCta: {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  border: '1px solid',
+  borderRadius: 11,
+  padding: '10px 14px',
+  fontSize: 12,
+  fontWeight: 800,
+  fontFamily: F.body,
+  cursor: 'pointer',
+  boxShadow: '0 4px 12px rgba(0,40,140,0.08)',
+  transition: 'transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease',
+},
+
+rivalCtaArrow: {
+  fontSize: 14,
+  lineHeight: 1,
+  marginLeft: 2,
+},
+
+rivalBottomLine: {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  padding: '0 24px 14px 28px',
+},
+
+rivalBottomTrack: {
+  flex: 1,
+  height: 4,
+  borderRadius: 99,
+  background: C.line,
+  overflow: 'hidden',
+},
+
+rivalBottomFill: {
+  height: '100%',
+  borderRadius: 99,
+  transition: 'width 0.8s cubic-bezier(.16,1,.3,1)',
+},
+
+rivalBottomText: {
+  fontFamily: F.mono,
+  fontSize: 8.5,
+  fontWeight: 600,
+  color: C.muted,
+  whiteSpace: 'nowrap',
+},
+
+
 
   ctaBanner: {
     position: 'relative', overflow: 'hidden',

@@ -391,6 +391,30 @@ try {
             data?.feedback || '',
         });
 
+        // Merge the now-safe-to-reveal correctAnswerIndex/explanation into
+        // this question's record in state. These are deliberately absent
+        // from the initial question list (see startInterview's
+        // publicQuestions) so the answer can't be read from the network
+        // tab before answering — the answer endpoint only sends them back
+        // for the question that was just submitted, so patch just that one
+        // entry rather than assuming every question now has them.
+        if (
+          data?.correctAnswerIndex !== undefined &&
+          data?.correctAnswerIndex !== null
+        ) {
+          setQuestions(prev =>
+            prev.map(q =>
+              q.id === question.id
+                ? {
+                    ...q,
+                    correctAnswerIndex: Number(data.correctAnswerIndex),
+                    explanation: data.explanation || q.explanation || '',
+                  }
+                : q
+            )
+          );
+        }
+
         setIsSubmitted(true);
         n.dismiss();
 

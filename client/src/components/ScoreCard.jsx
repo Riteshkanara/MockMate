@@ -510,12 +510,16 @@ const ScoreCard = (props) => {
   const generateImage = async () => {
     if (!cardRef.current) throw new Error('Card not mounted');
     await new Promise((r) => setTimeout(r, 900));
-    return toPng(cardRef.current, {
-      cacheBust: true,
+    const node = cardRef.current;
+    // Warm pass first — loads embedded images into the clone's cache
+    await toPng(node, { skipFonts: true }).catch(() => {});
+    return toPng(node, {
+      skipFonts: true,   // prevents SecurityError from cross-origin Google Fonts
+      cacheBust: false,
       pixelRatio: 2.5,
       backgroundColor: C.surface,
-      width: cardRef.current.offsetWidth,
-      height: cardRef.current.offsetHeight,
+      width: node.offsetWidth,
+      height: node.offsetHeight,
     });
   };
 

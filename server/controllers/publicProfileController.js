@@ -73,6 +73,8 @@ const computeGlobalStanding = async (userId) => {
   return { rank, totalCandidates, percentile };
 };
 
+exports.computeGlobalStanding = computeGlobalStanding;
+
 // ─── Shared builder — everything a profile "report" needs, whether viewed
 // publicly by slug or privately by the owner via /me. One implementation,
 // two thin route handlers, so the two surfaces can never drift apart. ──────

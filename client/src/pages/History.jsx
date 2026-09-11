@@ -1833,26 +1833,22 @@ const S = {
     lineHeight: 1.65,
   },
 
-  primaryButton: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 0,
-    border: 'none',
-    borderRadius: 12,
-    padding:
-      '11px 18px',
-    background:
-      `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`,
-    color: '#FFFFFF',
-    fontSize: 13.5,
-    fontWeight: 700,
-    cursor: 'pointer',
-    boxShadow:
-      '0 7px 22px rgba(0,87,232,0.30)',
-    fontFamily: F.body,
-  },
-
+ primaryButton: {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexShrink: 0,
+  border: '1px solid rgba(0,66,184,0.55)',
+  borderRadius: 13,
+  padding: '11px 18px',
+  background: `linear-gradient(135deg, #0057E8 0%, #00C8F0 100%)`,
+  color: '#FFFFFF',
+  fontSize: 13.5,
+  fontWeight: 700,
+  cursor: 'pointer',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.32), 0 4px 10px rgba(0,87,232,0.18), 0 8px 22px rgba(0,87,232,0.18)',
+  fontFamily: F.body,
+},
   statsGrid: {
     display: 'grid',
     gridTemplateColumns:

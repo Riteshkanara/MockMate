@@ -1,16 +1,17 @@
 @import "./styles/token.css";
 @import "tailwindcss";
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+/* ── Resets ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
 
 html {
   width: 100%;
   min-width: 0;
   overflow-x: hidden;
+  scroll-padding-top: 100px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -18,35 +19,9 @@ body {
   min-width: 0;
   margin: 0;
   overflow-x: hidden;
-}
-
-img,
-svg,
-video,
-canvas {
-  max-width: 100%;
-}
-
-button,
-input,
-textarea,
-select {
-  max-width: 100%;
-  font: inherit;
-}
-
-button {
-  touch-action: manipulation;
-}
-
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-p {
-  overflow-wrap: anywhere;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
 }
 
 #root {
@@ -55,16 +30,118 @@ p {
   overflow-x: hidden;
 }
 
-/* Prevent long URLs, IDs, code, etc. from breaking mobile layouts */
-pre,
-code {
-  max-width: 100%;
-  overflow-x: auto;
+/* ── Media ───────────────────────────────────────────────────────────────── */
+img, svg, video, canvas { max-width: 100%; }
+
+/* ── Forms ───────────────────────────────────────────────────────────────── */
+button, input, textarea, select { max-width: 100%; font: inherit; }
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+h1,h2,h3,h4,h5,h6,p { overflow-wrap: anywhere; }
+pre, code { max-width: 100%; overflow-x: auto; }
+
+/* ── Selection ───────────────────────────────────────────────────────────── */
+::selection { background: rgba(26,110,255,0.15); color: var(--color-text); }
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--color-border-md); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); }
+
+/* ── Focus ───────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-/* Small phones */
-@media (max-width: 480px) {
-  body {
-    font-size: 14px;
-  }
+/* ── Small phones ────────────────────────────────────────────────────────── */
+@media (max-width: 480px) { body { font-size: 14px; } }
+
+/* ── Global keyframes ────────────────────────────────────────────────────── */
+@keyframes mm-live-pulse  { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.8)} }
+@keyframes mm-fade-up     { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+@keyframes mm-fade-in     { from{opacity:0} to{opacity:1} }
+@keyframes mm-scale-in    { from{opacity:0;transform:scale(.94)} to{opacity:1;transform:scale(1)} }
+@keyframes mm-score-pop   { 0%{transform:scale(.8);opacity:0} 60%{transform:scale(1.06);opacity:1} 100%{transform:scale(1);opacity:1} }
+@keyframes mm-shimmer     { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+@keyframes mm-hero-scan   { 0%{transform:translateX(-100%)} 100%{transform:translateX(600%)} }
+@keyframes mm-pulse-ring  { 0%{transform:scale(1);opacity:.6} 100%{transform:scale(2.2);opacity:0} }
+@keyframes mm-ripple      { from{transform:scale(0);opacity:.55} to{transform:scale(1);opacity:0} }
+
+/* ── Utility classes ─────────────────────────────────────────────────────── */
+
+/* GPU layer hint for animated elements */
+.mm-animated {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* CSS-only card hover lift (no JS needed) */
+.mm-card-hover {
+  transition:
+    transform 0.22s cubic-bezier(0.22,1,0.36,1),
+    box-shadow 0.22s cubic-bezier(0.22,1,0.36,1),
+    border-color 0.22s cubic-bezier(0.22,1,0.36,1);
+  will-change: transform;
+}
+.mm-card-hover:hover  { transform: translateY(-3px); }
+.mm-card-hover:active { transform: translateY(-1px) scale(.996); transition-duration: 0.08s; }
+
+/* Skeleton shimmer */
+.mm-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-deep) 25%,
+    var(--color-border)   50%,
+    var(--color-bg-deep) 75%
+  );
+  background-size: 400px 100%;
+  animation: mm-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Score pop */
+.mm-score-pop { animation: mm-score-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+/* Stagger children (add to a list parent) */
+.mm-stagger > * {
+  animation: mm-fade-up 0.4s cubic-bezier(0.22,1,0.36,1) both;
+}
+.mm-stagger > *:nth-child(1) { animation-delay:  0ms; }
+.mm-stagger > *:nth-child(2) { animation-delay: 55ms; }
+.mm-stagger > *:nth-child(3) { animation-delay:110ms; }
+.mm-stagger > *:nth-child(4) { animation-delay:165ms; }
+.mm-stagger > *:nth-child(5) { animation-delay:220ms; }
+.mm-stagger > *:nth-child(6) { animation-delay:275ms; }
+.mm-stagger > *:nth-child(7) { animation-delay:330ms; }
+.mm-stagger > *:nth-child(8) { animation-delay:385ms; }
+
+/* Focus ring for interactive elements */
+.mm-focusable:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* Smooth input focus */
+input:focus, textarea:focus, select:focus {
+  border-color: var(--color-brand-500) !important;
+  box-shadow: 0 0 0 3px rgba(26,110,255,0.1) !important;
+  outline: none;
 }

@@ -1403,8 +1403,47 @@ Return ONLY JSON.
             )
         );
 
+    // Post-generation dedup: catches the rare case where Gemini returns a
+    // question that's identical or near-identical to one in previousQuestions
+    // despite the exclusion instruction, or repeats a question within the
+    // batch itself. Uses a normalised lowercase key (strip punctuation,
+    // collapse whitespace) so "What is polymorphism?" and "what is
+    // polymorphism" are treated as the same question.
+    const normalise = str =>
+      String(str || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const previousSet = new Set(
+      previousQuestions.map(normalise)
+    );
+
+    const dedupedNormalized = [];
+    for (const q of normalized) {
+      const key = normalise(q.text);
+      if (!previousSet.has(key)) {
+        previousSet.add(key); // also dedup within this batch
+        dedupedNormalized.push(q);
+      } else {
+        console.warn(
+          '[generateQuestions] Gemini repeated a question despite exclusion list — dropped:',
+          q.text?.slice(0, 60)
+        );
+      }
+    }
+
+    // If dedup removed too many, log it — the remaining questions are still
+    // valid and the session should proceed rather than fail entirely.
+    if (dedupedNormalized.length < normalized.length) {
+      console.warn(
+        `[generateQuestions] ${normalized.length - dedupedNormalized.length} duplicate(s) removed. Proceeding with ${dedupedNormalized.length} questions.`
+      );
+    }
+
     const hasInvalidObjective =
-      normalized.some(
+      dedupedNormalized.some(
         question => {
           if (
             question.questionType ===
@@ -1430,7 +1469,7 @@ Return ONLY JSON.
       );
     }
 
-    return normalized;
+    return dedupedNormalized;
   } catch (error) {
 console.error(
   'Gemini generateQuestions error:',
@@ -1687,6 +1726,106 @@ Return ONLY JSON.
           sampleAnswer:
             fallback.sampleAnswer,
         }),
+    };
+  }
+};
+
+// ---------------------------------------------------------
+// Generate a model answer for a SKIPPED open-ended question.
+// Distinct from evaluateOpenAnswer's empty-answer fallback (which is a
+// static, generic placeholder identical for every question) — this asks
+// the AI to actually write a real, question-specific ideal answer, so a
+// skip still teaches the student something concrete instead of the same
+// boilerplate sentence regardless of what was asked.
+// ---------------------------------------------------------
+const generateSkippedQuestionAnswer = async ({ question, topic }) => {
+  const questionText =
+    typeof question === 'string' ? question : question?.text || '';
+  const questionTopic =
+    topic ||
+    (typeof question === 'string' ? 'General' : question?.topic) ||
+    'General';
+
+  const prompt = `
+You are a senior technical interviewer writing a model answer for a placement-interview
+question that a student SKIPPED (did not attempt).
+
+Question:
+${questionText}
+
+Topic:
+${questionTopic}
+
+Write the ideal answer a strong candidate would give. Requirements:
+- Total length 75-100 words.
+- Write it as 3-5 short, distinct points (not one dense paragraph) — each point should
+  be a self-contained idea a student could scan quickly.
+- Be concrete and specific to THIS question — no generic filler like "explain the concept
+  clearly." Include the actual technical content, terms, or reasoning steps involved.
+- If the question invites an example, include one short concrete example within the points.
+- Assume the student has zero context beyond the question itself.
+
+Also write:
+- keyIdea: one sentence (max 20 words) naming the single most important concept this
+  question is really testing.
+- commonMistake: one sentence (max 20 words) on the most common way candidates get this
+  wrong or lose points, phrased usefully for someone who skipped rather than attempted it.
+
+Return ONLY JSON.
+`;
+
+  try {
+    const result = await generateWithRetry({
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: {
+          type: 'object',
+          properties: {
+            keyIdea: { type: 'string' },
+            commonMistake: { type: 'string' },
+            modelAnswer: { type: 'string' },
+          },
+          required: ['keyIdea', 'commonMistake', 'modelAnswer'],
+        },
+      },
+    });
+
+    const parsed = parseJsonResponse(result.text);
+
+    const modelAnswer = String(parsed.modelAnswer || '').trim();
+    const keyIdea = String(parsed.keyIdea || '').trim();
+    const commonMistake = String(parsed.commonMistake || '').trim();
+
+    if (!modelAnswer) {
+      throw new Error('Gemini returned an empty model answer.');
+    }
+
+    return {
+      idealHint: keyIdea,
+      tip: commonMistake,
+      sampleAnswer: modelAnswer,
+      aiAvailable: true,
+      fallback: false,
+    };
+  } catch (error) {
+    console.error(
+      'Gemini generateSkippedQuestionAnswer error:',
+      getErrorMessage(error)
+    );
+
+    // Only reached if the AI call itself fails (network/quota/parse error) —
+    // still better than nothing, but honestly labeled as a fallback so the
+    // frontend/ops can tell the difference from a real generated answer.
+    return {
+      idealHint: 'Start with the core definition or concept the question is testing.',
+      tip: 'Answer the question directly first, then support it with reasoning or an example.',
+      sampleAnswer:
+        'A strong answer would name the key concept the question is testing, explain it in ' +
+        'two or three concrete points, and close with a short example or real scenario ' +
+        'showing how it applies in practice.',
+      aiAvailable: false,
+      fallback: true,
     };
   }
 };
@@ -1996,6 +2135,7 @@ const generateFreeform = async (prompt, maxTokens = 400) => {
 module.exports = {
   generateQuestions,
   evaluateOpenAnswer,
+  generateSkippedQuestionAnswer,
   evaluateObjectiveAnswer,
   evaluateAnswer,
   getFallbackQuestions,

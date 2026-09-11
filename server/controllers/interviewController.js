@@ -60,6 +60,7 @@ const extractIRSEvidence = (sessions) => {
 const {
   generateQuestions,
   evaluateOpenAnswer,
+  generateSkippedQuestionAnswer,
   evaluateObjectiveAnswer,
 } = require('../services/aiServices');
 
@@ -334,7 +335,7 @@ const startInterview = async (req, res) => {
       .flatMap(s => s.questions || [])
       .map(q => q.text)
       .filter(Boolean)
-      .slice(0, 20); // cap at 40 so prompt doesn't bloat
+      .slice(0, 20); // cap at 20 — enough signal without bloating the prompt
 
     // Build weakAreas from per-topic average scores across recent sessions.
     // Topics averaging below 60 are treated as weak and prioritized by
@@ -528,17 +529,27 @@ const answerQuestion = async (req, res) => {
 
       if (skipped) {
         question.score = 0;
-        // Must match the same JSON shape as a real AI evaluation, or the
-        // frontend's JSON.parse(feedback) throws and shows a misleading
-        // "AI evaluation failed" toast for what was actually just a skip.
+        // Calls a dedicated generator that writes a real, question-specific
+        // model answer (75-100 words, point-wise) — not the generic
+        // "start with the main definition" placeholder evaluateOpenAnswer's
+        // empty-answer branch returns for every skipped question regardless
+        // of topic. Must still match the same feedback JSON shape as a real
+        // AI evaluation, or the frontend's JSON.parse(feedback) throws and
+        // shows a misleading "AI evaluation failed" toast for what was
+        // actually just a skip.
+        const result = await generateSkippedQuestionAnswer({
+          question,
+          topic: question.topic,
+        });
+
         question.feedback = JSON.stringify({
           good: '',
-          missing: 'Question skipped. Try to answer every question when possible.',
-          idealHint: '',
-          tip: '',
-          sampleAnswer: '',
-          aiAvailable: true,
-          fallback: false,
+          missing: 'Question skipped — no answer submitted.',
+          idealHint: result.idealHint || '',
+          tip: result.tip || '',
+          sampleAnswer: result.sampleAnswer || '',
+          aiAvailable: result.aiAvailable !== false,
+          fallback: result.fallback === true,
         });
       } else {
        const result = await evaluateOpenAnswer({
@@ -572,6 +583,8 @@ question.feedback = JSON.stringify({
 
     await session.save();
 
+    const isObjectiveQuestion = ['mcq', 'aptitude'].includes(question.questionType);
+
     return res.json({
       success: true,
       questionId,
@@ -579,9 +592,24 @@ question.feedback = JSON.stringify({
       feedback: question.feedback,
       skipped: Boolean(question.skipped),
       correct:
-        ['mcq', 'aptitude'].includes(question.questionType)
+        isObjectiveQuestion
           ? question.score === 100
           : null,
+      // Only safe to reveal once this question has actually been answered
+      // (or skipped) — startInterview's publicQuestions deliberately omits
+      // both fields for the same question so the answer can't be read off
+      // the network tab mid-question. Without these, the frontend's
+      // McqExplanation had no correct index/explanation to render at all
+      // during a live session, which is what caused the correct answer to
+      // never highlight green even when the right option was picked.
+      correctAnswerIndex:
+        isObjectiveQuestion
+          ? question.correctAnswerIndex
+          : null,
+      explanation:
+        isObjectiveQuestion
+          ? (question.explanation || '')
+          : '',
       nextQuestion:
         session.currentQuestion <
         session.questions.length - 1,

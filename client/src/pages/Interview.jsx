@@ -36,13 +36,57 @@ const C = {
   violetTint: '#F0EEFF',
 };
 
+// ─── Countdown beep (10s → 1s) ───────────────────────────────────────────────
+// Fires every second from 10 down to 1. Pitch rises as time runs out so the
+// user gets an instinctive sense of urgency without needing to read the timer:
+//   10s → low calm tick (600 Hz)
+//   5s  → mid urgency  (800 Hz)
+//   3s  → sharp alert  (1000 Hz)
+//   1s  → highest cue  (1200 Hz)
+// Volume also increases slightly with urgency. No audio file / no bundle cost.
+// Wrapped in try/catch — a missed beep never breaks the interview.
+const playTimeWarningBeep = (secondsLeft = 10) => {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    // Map seconds left → frequency and volume
+    const t = Math.max(0, Math.min(1, (10 - secondsLeft) / 9)); // 0 at 10s, 1 at 1s
+    const freq   = 600 + t * 600;   // 600 Hz → 1200 Hz
+    const volume = 0.08 + t * 0.12; // 0.08 → 0.20
+
+    // Double-tick at 5s and below for extra urgency
+    const ticks = secondsLeft <= 5 ? [0, 0.12] : [0];
+
+    ticks.forEach((offset) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = secondsLeft <= 3 ? 'square' : 'sine';
+      osc.frequency.setValueAtTime(freq, now + offset);
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(volume, now + offset + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.1);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.12);
+    });
+
+    setTimeout(() => ctx.close?.(), 600);
+  } catch {
+    // Silently ignore — never surface audio errors to the user.
+  }
+};
+
 // ─── Mode metadata ────────────────────────────────────────────────────────
 const MODE_META = {
   quick: {
     label: 'Quick Mock',
     short: 'QUICK',
     icon: '⚡',
-    description: 'A focused five-question interview sprint.',
+    description: '5 focused questions — ideal for daily practice.',
     accent: C.blue500,
     soft: C.blue50,
   },
@@ -50,7 +94,7 @@ const MODE_META = {
     label: 'Full Mock',
     short: 'FULL',
     icon: '🎯',
-    description: 'A complete interview-style session.',
+    description: 'A complete placement-style interview session.',
     accent: C.green,
     soft: C.greenTint,
   },
@@ -58,39 +102,39 @@ const MODE_META = {
     label: 'Company Specific',
     short: 'COMPANY',
     icon: '🏢',
-    description: 'Practice around a target company.',
+    description: 'Prep tailored around your target company.',
     accent: C.amber,
     soft: C.amberTint,
   },
   topic: {
     label: 'Topic Focus',
     short: 'TOPIC',
-    icon: '📚',
-    description: 'Deep practice around one technical area.',
+    icon: '📖',
+    description: 'Deep dive into one technical area.',
     accent: C.cyan500,
     soft: C.cyanTint,
   },
   mcq: {
     label: 'Technical MCQ',
     short: 'MCQ',
-    icon: '☑',
-    description: 'Placement-style technical multiple choice.',
+    icon: '✅',
+    description: 'Placement-style multiple choice questions.',
     accent: C.violet,
     soft: C.violetTint,
   },
   aptitude: {
     label: 'Aptitude',
     short: 'APTITUDE',
-    icon: '◈',
-    description: 'Quantitative and logical reasoning.',
+    icon: '🧮',
+    description: 'Quantitative and logical reasoning problems.',
     accent: C.amber,
     soft: C.amberTint,
   },
   mixed: {
     label: 'Mixed Assessment',
     short: 'MIXED',
-    icon: '✦',
-    description: 'Technical, aptitude and open interview practice.',
+    icon: '🔀',
+    description: 'Technical, aptitude and open questions combined.',
     accent: C.blue500,
     soft: C.blue50,
   },
@@ -103,7 +147,7 @@ const DIFFICULTIES = [
     description: 'Build confidence',
     accent: C.green,
     soft: C.greenTint,
-    glyph: '↑',
+    glyph: '😊',
   },
   {
     value: 'medium',
@@ -111,7 +155,7 @@ const DIFFICULTIES = [
     description: 'Placement standard',
     accent: C.blue500,
     soft: C.blue50,
-    glyph: '◆',
+    glyph: '💪',
   },
   {
     value: 'hard',
@@ -127,7 +171,7 @@ const DIFFICULTIES = [
     description: 'Balanced difficulty',
     accent: C.violet,
     soft: C.violetTint,
-    glyph: '✦',
+    glyph: '🎲',
   },
 ];
 
@@ -353,10 +397,28 @@ const Interview = () => {
   const [mounted, setMounted] = useState(false);
   const [questionKey, setQuestionKey] = useState(0);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  // Tracks "no real answer was submitted for this question" — covers both an
+  // explicit Skip click and an auto-skip on time-up with nothing entered.
+  // The client-side questions array is never mutated with a skipped flag
+  // (only the backend record is), so FeedbackView has no other way to tell
+  // a genuine low-scoring answer apart from a skip without this.
+  const [wasSkipped, setWasSkipped] = useState(false);
+  // Guards a single accidental "submitted way too early" mistake on
+  // open-ended questions — very short answers almost always score low, and
+  // an early Enter-key slip (or misjudging how much detail is expected) is
+  // otherwise unrecoverable once submitted. Shows one inline confirmation
+  // the first time; confirming or editing the answer clears it.
+  const [confirmingShortSubmit, setConfirmingShortSubmit] = useState(false);
+  const SHORT_ANSWER_WORD_THRESHOLD = 8;
 
   const textAreaRef = useRef(null);
   const submitLockRef = useRef(false);
   const transitionRef = useRef(false);
+  // Tracks which (questionId, secondsValue) pairs have already beeped so
+  // each tick fires at most once per second per question, even across effect
+  // re-renders. Stored as a Set rather than a single id so we can track
+  // individual second-marks rather than just "has this question beeped".
+  const lastBeepQuestionRef = useRef(new Set());
   const lastSubmitTimeRef = useRef(0);
 
   useEffect(() => {
@@ -423,6 +485,9 @@ const Interview = () => {
   useEffect(() => {
     setTextAnswer('');
     setQuestionKey((k) => k + 1);
+    setWasSkipped(false);
+    setConfirmingShortSubmit(false);
+    lastBeepQuestionRef.current = new Set();
 
     transitionRef.current = true;
 
@@ -488,6 +553,7 @@ const Interview = () => {
             submitLockRef.current = false;
           });
         } else {
+          setWasSkipped(true);
           handleTimeUp(timeTaken).finally(() => {
             submitLockRef.current = false;
           });
@@ -502,6 +568,7 @@ const Interview = () => {
           submitLockRef.current = false;
         });
       } else {
+        setWasSkipped(true);
         handleTimeUp(timeTaken).finally(() => {
           submitLockRef.current = false;
         });
@@ -515,6 +582,20 @@ const Interview = () => {
         if (previous <= 1) {
           window.clearInterval(timerId);
           return 0;
+        }
+
+        // Countdown beep every second from 10 down to 1 — purely audio,
+        // complements the existing visual ring pulse so users who aren't
+        // watching the timer still feel the urgency. The guard uses a Set
+        // keyed by (questionId + secondsValue) so each tick only fires once
+        // even if this effect re-renders mid-second.
+        const next = previous - 1;
+        if (next >= 1 && next <= 10) {
+          const beepKey = `${currentQuestion?.id}-${next}`;
+          if (!lastBeepQuestionRef.current.has(beepKey)) {
+            lastBeepQuestionRef.current.add(beepKey);
+            playTimeWarningBeep(next);
+          }
         }
 
         return previous - 1;
@@ -564,11 +645,29 @@ const Interview = () => {
       ? selectedAnswerIndex !== null
       : Boolean(textAnswer.trim()));
 
+  const wordCount = useMemo(
+    () => (textAnswer.trim() ? textAnswer.trim().split(/\s+/).length : 0),
+    [textAnswer]
+  );
+  const isShortOpenAnswer =
+    !isObjective && wordCount > 0 && wordCount < SHORT_ANSWER_WORD_THRESHOLD;
+
   const doSubmit = useCallback(() => {
     if (!canSubmit || isSubmitted || !currentQuestion) {
       return;
     }
 
+    // First attempt on a very short open-ended answer: hold it and ask for
+    // confirmation instead of submitting straight away. A second doSubmit()
+    // call (button click or Enter again) with the guard already tripped
+    // goes through — so this only ever costs the user one extra keypress
+    // when they actually meant to submit something that short.
+    if (isShortOpenAnswer && !confirmingShortSubmit) {
+      setConfirmingShortSubmit(true);
+      return;
+    }
+
+    setConfirmingShortSubmit(false);
     handleSubmit(
       textAnswer,
       isObjective ? selectedAnswerIndex : null,
@@ -584,6 +683,8 @@ const Interview = () => {
     selectedAnswerIndex,
     currentQuestion,
     secondsLeft,
+    isShortOpenAnswer,
+    confirmingShortSubmit,
   ]);
 
   const doAdvance = useCallback(() => {
@@ -716,19 +817,17 @@ const Interview = () => {
     // ───────────────────────────────────────────────────────────────────
     if (isLoading) {
       return (
-        <div style={S.page} className="iv-page">
+        <div style={{ ...S.page, background: C.bg }} className="iv-page">
           <GlobalStyles />
-
-          <div style={S.emptyWrap}>
+          <div style={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '40px 24px',
+          }}>
             <InterviewLoader />
-
-            <h2 style={S.emptyTitle}>
-              Preparing your interview
-            </h2>
-
-            <p style={S.emptySub}>
-              Generating your questions — almost there…
-            </p>
           </div>
         </div>
       );
@@ -885,8 +984,9 @@ const Interview = () => {
                           ...(selected
                             ? {
                                 ...S.modeCardActive,
-                                borderColor:
-                                  meta.accent,
+                                borderStyle: 'solid',
+                                borderWidth: 1.5,
+                                borderColor: meta.accent,
                               }
                             : {}),
                         }}
@@ -919,15 +1019,11 @@ const Interview = () => {
                         <div
                           style={{
                             ...S.modeCheck,
-                            background: selected
-                              ? meta.accent
-                              : '#fff',
-                            borderColor: selected
-                              ? meta.accent
-                              : C.borderMd,
-                            transform: selected
-                              ? 'scale(1)'
-                              : 'scale(0.82)',
+                            background: selected ? meta.accent : '#fff',
+                            borderStyle: 'solid',
+                            borderWidth: 1.5,
+                            borderColor: selected ? meta.accent : C.borderMd,
+                            transform: selected ? 'scale(1)' : 'scale(0.82)',
                           }}
                         >
                           {selected ? '✓' : ''}
@@ -971,8 +1067,9 @@ const Interview = () => {
                         ...(selected
                           ? {
                               ...S.difficultyCardActive,
-                              borderColor:
-                                option.accent,
+                              borderStyle: 'solid',
+                              borderWidth: 1.5,
+                              borderColor: option.accent,
                             }
                           : {}),
                       }}
@@ -1192,23 +1289,17 @@ const Interview = () => {
   // ─────────────────────────────────────────────────────────────────────
   if (!currentQuestion || isAdvancing) {
     return (
-      <div style={S.page} className="iv-page">
+      <div style={{ ...S.page, background: C.bg }} className="iv-page">
         <GlobalStyles />
-
-        <div style={S.emptyWrap}>
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '40px 24px',
+        }}>
           <InterviewLoader />
-
-          <h2 style={S.emptyTitle}>
-            {isAdvancing
-              ? 'Scoring your session'
-              : 'Preparing your interview'}
-          </h2>
-
-          <p style={S.emptySub}>
-            {isAdvancing
-              ? 'Building your full report — almost there…'
-              : 'Loading your next generated question…'}
-          </p>
         </div>
       </div>
     );
@@ -1388,7 +1479,7 @@ const Interview = () => {
                   whiteSpace: 'nowrap',
                   letterSpacing: '0.2px',
                 }}>
-                  ~{sessionMinsLeft}m left
+                  {sessionMinsLeft} min left
                 </span>
               )}
             </div>
@@ -1427,16 +1518,13 @@ const Interview = () => {
                   key={i}
                   style={{
                     ...S.trailDot,
+                    width: isCurrent ? 18 : 7,
                     background: isCurrent
                       ? mode.accent
-                      : col,
-                    transform: isCurrent
-                      ? 'scale(1.4)'
-                      : 'scale(1)',
-                    opacity:
-                      isPast || isCurrent
-                        ? 1
-                        : 0.5,
+                      : isPast
+                        ? `${mode.accent}90`
+                        : C.border,
+                    opacity: isPast || isCurrent ? 1 : 0.45,
                   }}
                   title={`Question ${i + 1}`}
                 />
@@ -1462,34 +1550,18 @@ const Interview = () => {
                 gap: 8,
               }}>
                 <span style={S.questionLabel}>
-                  QUESTION{' '}
-                  {String(currentIndex + 1).padStart(2, '0')}
-                </span>
-                <span style={{
-                  fontFamily: F.mono,
-                  fontSize: 9.5,
-                  fontWeight: 700,
-                  color: C.faint,
-                  background: C.cardAlt,
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 999,
-                  padding: '2px 8px',
-                  letterSpacing: '0.3px',
-                }}>
-                  {currentIndex + 1} / {questions.length}
+                  Q{currentIndex + 1} of {questions.length}
                 </span>
               </div>
 
               <div style={S.questionTags}>
                 <span
                   style={{
-                    background:
-                      questionDifficulty.background,
-                    color:
-                      questionDifficulty.color,
-                    borderColor:
-                      questionDifficulty.border,
-                    border: '1px solid',
+                    background: questionDifficulty.background,
+                    color: questionDifficulty.color,
+                    borderStyle: 'solid',
+                    borderWidth: 1,
+                    borderColor: questionDifficulty.border,
                     padding: '4px 9px',
                     borderRadius: 999,
                     fontSize: 9,
@@ -1517,13 +1589,13 @@ const Interview = () => {
 
             <div style={S.questionBody}>
               <div style={S.questionType}>
-                {currentQuestion.questionType ===
-                'mcq'
-                  ? 'TECHNICAL DECISION'
-                  : currentQuestion.questionType ===
-                      'aptitude'
-                    ? 'REASONING PROBLEM'
-                    : 'INTERVIEW RESPONSE'}
+                {currentQuestion.topic
+                  ? currentQuestion.topic.toUpperCase()
+                  : currentQuestion.questionType === 'mcq'
+                    ? 'MULTIPLE CHOICE'
+                    : currentQuestion.questionType === 'aptitude'
+                      ? 'APTITUDE'
+                      : 'OPEN QUESTION'}
               </div>
 
               <h1 style={S.questionText}>
@@ -1539,13 +1611,11 @@ const Interview = () => {
                   ✦
                 </span>
 
-                {currentQuestion.questionType ===
-                'mcq'
-                  ? 'Choose the strongest answer. Only one option is correct.'
-                  : currentQuestion.questionType ===
-                      'aptitude'
-                    ? 'Solve carefully before choosing. Avoid rushing the arithmetic.'
-                    : 'Lead with the core answer, then explain your reasoning or give a practical example.'}
+                {currentQuestion.questionType === 'mcq'
+                  ? 'Only one option is correct — eliminate wrong ones first, then pick the strongest.'
+                  : currentQuestion.questionType === 'aptitude'
+                    ? 'Read carefully before calculating. Write your working if it helps.'
+                    : 'Start with a direct answer, then explain your reasoning with a short example.'}
               </div>
             </div>
 
@@ -1568,18 +1638,11 @@ const Interview = () => {
               <>
                 <div style={S.answerHeading}>
                   <div>
-                    <span
-                      style={S.answerHeadingEyebrow}
-                    >
-                      RESPONSE
+                    <span style={S.answerHeadingEyebrow}>
+                      YOUR ANSWER
                     </span>
-
-                    <strong
-                      style={S.answerHeadingTitle}
-                    >
-                      {isObjective
-                        ? 'Choose an answer'
-                        : 'Build your response'}
+                    <strong style={S.answerHeadingTitle}>
+                      {isObjective ? 'Choose an option' : 'Write your response'}
                     </strong>
                   </div>
 
@@ -1607,10 +1670,10 @@ const Interview = () => {
                               ...(selected
                                 ? {
                                     ...S.optionActive,
-                                    borderColor:
-                                      mode.accent,
-                                    background:
-                                      mode.soft,
+                                    borderStyle: 'solid',
+                                    borderWidth: 1,
+                                    borderColor: mode.accent,
+                                    background: mode.soft,
                                   }
                                 : {}),
                             }}
@@ -1624,10 +1687,10 @@ const Interview = () => {
                                 ...S.optionLetter,
                                 ...(selected
                                   ? {
-                                      background:
-                                        mode.accent,
-                                      borderColor:
-                                        mode.accent,
+                                      background: mode.accent,
+                                      borderStyle: 'solid',
+                                      borderWidth: 1,
+                                      borderColor: mode.accent,
                                       color: '#fff',
                                     }
                                   : {}),
@@ -1649,10 +1712,10 @@ const Interview = () => {
                                 ...S.optionRadio,
                                 ...(selected
                                   ? {
-                                      borderColor:
-                                        mode.accent,
-                                      background:
-                                        mode.accent,
+                                      borderStyle: 'solid',
+                                      borderWidth: 1,
+                                      borderColor: mode.accent,
+                                      background: mode.accent,
                                     }
                                   : {}),
                               }}
@@ -1669,11 +1732,14 @@ const Interview = () => {
                     ref={textAreaRef}
                     style={S.answerBox}
                     value={textAnswer}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setTextAnswer(
                         e.target.value
-                      )
-                    }
+                      );
+                      if (confirmingShortSubmit) {
+                        setConfirmingShortSubmit(false);
+                      }
+                    }}
                     placeholder="Write your answer here... (Enter to submit, Shift+Enter for a new line)"
                     rows={9}
                   />
@@ -1702,6 +1768,27 @@ const Interview = () => {
                         : 'Start typing your answer…'}
                   </span>
 
+                  {confirmingShortSubmit && (
+                    <div
+                      className="iv-fade-in"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        marginTop: 10,
+                        padding: '9px 13px',
+                        borderRadius: 10,
+                        background: C.amberTint,
+                        border: `1px solid ${C.amber}40`,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, flexShrink: 0 }}>⚠️</span>
+                      <span style={{ fontSize: 11.5, color: C.sub, lineHeight: 1.4 }}>
+                        That's only {wordCount} word{wordCount === 1 ? '' : 's'} — short answers usually score low. Click submit again if you're sure, or keep typing.
+                      </span>
+                    </div>
+                  )}
+
                   <div
                     style={S.answerActions}
                   >
@@ -1710,12 +1797,13 @@ const Interview = () => {
                       style={S.skipBtn}
                       className="iv-skip-btn"
                       disabled={isLoading}
-                      onClick={() =>
+                      onClick={() => {
+                        setWasSkipped(true);
                         handleSkip(
                           currentQuestion.timeLimit -
                             secondsLeft
-                        )
-                      }
+                        );
+                      }}
                     >
                       Skip
                     </button>
@@ -1730,6 +1818,9 @@ const Interview = () => {
                         ...(isLoading
                           ? { opacity: 0.82, cursor: 'wait' }
                           : {}),
+                        ...(confirmingShortSubmit
+                          ? { background: `linear-gradient(135deg, ${C.amber}, #F59E0B)` }
+                          : {}),
                       }}
                       className={`iv-submit-btn${isLoading ? ' iv-btn-loading' : ''}`}
                       disabled={!canSubmit || isLoading}
@@ -1737,9 +1828,11 @@ const Interview = () => {
                     >
                       {isLoading
                         ? 'Checking'
-                        : isLastQuestion
-                          ? 'Submit final answer'
-                          : 'Submit answer →'}
+                        : confirmingShortSubmit
+                          ? 'Submit anyway →'
+                          : isLastQuestion
+                            ? 'Submit final answer'
+                            : 'Submit answer →'}
                     </button>
                   </div>
 
@@ -1757,7 +1850,9 @@ const Interview = () => {
                         display: 'inline-block',
                         padding: '1px 5px',
                         borderRadius: 4,
-                        border: `1px solid ${C.border}`,
+                        borderStyle: 'solid',
+                        borderWidth: 1,
+                        borderColor: C.border,
                         borderBottomWidth: 2,
                         background: C.cardAlt,
                         fontSize: 9.5,
@@ -1783,6 +1878,9 @@ const Interview = () => {
                 isLast={isLastQuestion}
                 accent={mode.accent}
                 userAnswerIndex={selectedAnswerIndex}
+                skipped={wasSkipped}
+                questionIndex={currentIndex}
+                totalQuestions={totalQuestions}
               />
             )}
           </section>
@@ -1830,8 +1928,8 @@ const TimerRing = ({
   critical,
   accent,
 }) => {
-  const size = 54;
-  const stroke = 4.5;
+  const size = 58;
+  const stroke = 5;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset =
@@ -1905,8 +2003,9 @@ const TimerRing = ({
         style={{
           ...S.ringLabel,
           color,
-          fontSize: critical || warning ? 11 : 10,
-          fontWeight: critical ? 800 : 700,
+          fontSize: critical ? 13 : warning ? 12 : 11,
+          fontWeight: critical ? 900 : 700,
+          letterSpacing: critical ? '-0.5px' : '0px',
           transition: 'color 0.4s ease, font-size 0.2s ease',
         }}
       >
@@ -1932,7 +2031,15 @@ const splitToBullets = (text = '') => {
 
 // ── Score metadata ─────────────────────────────────────────────────────────
 const scoreConfig = (score) => {
-  if (score >= 80) return {
+  if (score >= 90) return {
+    color: C.green,
+    bg: C.greenTint,
+    barGradient: `linear-gradient(90deg, #059669, #10b981)`,
+    emoji: '🏆',
+    label: 'Excellent',
+    vibe: 'Outstanding. That\'s interview-ready.',
+  };
+  if (score >= 75) return {
     color: C.green,
     bg: C.greenTint,
     barGradient: `linear-gradient(90deg, #059669, #10b981)`,
@@ -1946,23 +2053,23 @@ const scoreConfig = (score) => {
     barGradient: `linear-gradient(90deg, ${C.blue600}, ${C.blue400})`,
     emoji: '👍',
     label: 'Good',
-    vibe: 'Good base. A bit more depth and this is interview-ready.',
+    vibe: 'Good base — a bit more depth and this is interview-ready.',
   };
   if (score >= 40) return {
     color: C.amber,
     bg: C.amberTint,
     barGradient: `linear-gradient(90deg, #b45309, ${C.amber})`,
     emoji: '📝',
-    label: 'Partial',
-    vibe: 'You\'re on the right track. Missing a few key things.',
+    label: 'Developing',
+    vibe: 'You\'re on the right track. A few key points are missing.',
   };
   return {
     color: C.red,
     bg: C.redTint,
     barGradient: `linear-gradient(90deg, #b91c1c, ${C.red})`,
-    emoji: '💡',
+    emoji: '📈',
     label: 'Needs work',
-    vibe: 'Don\'t sweat it — this is exactly why you practice.',
+    vibe: 'Don\'t worry — this is exactly why you practice.',
   };
 };
 
@@ -1974,6 +2081,9 @@ const FeedbackView = ({
   isLast,
   accent,
   userAnswerIndex,
+  skipped = false,
+  questionIndex = 0,
+  totalQuestions = 1,
 }) => {
   const [showSample, setShowSample] = useState(false);
 
@@ -1991,25 +2101,143 @@ const FeedbackView = ({
     ? 'Nailed it. On to the next one.'
     : 'Scroll down — the correct answer and explanation are right below.';
 
+  // ── Skipped question — no score badge, no red "needs work" framing. This
+  // was previously indistinguishable from a genuinely weak scored answer
+  // (same score strip, same empty feedback blocks), which read as
+  // demoralizing for something the user chose not to attempt. Instead this
+  // shows a neutral summary plus whatever model-answer content the backend
+  // returns, so the skip still teaches something.
+  if (skipped) {
+    const hint = feedback?.idealHint || '';
+    const sample = feedback?.sampleAnswer || '';
+    return (
+      <div style={S.feedback} className="iv-fade-in">
+        <div style={{
+          ...S.fbScoreStrip,
+          background: C.cardAlt,
+          borderStyle: 'solid',
+          borderWidth: 1,
+          borderColor: C.border,
+        }}>
+          <div style={S.fbScoreLeft}>
+            <span style={S.fbScoreEmoji}>⏭</span>
+            <div>
+              <div style={{ ...S.fbScoreLabel, color: C.sub }}>Question skipped</div>
+              <div style={S.fbScoreVibe}>No answer was scored — here's what a strong one looks like.</div>
+            </div>
+          </div>
+        </div>
+
+        {objective ? (
+          <McqExplanation
+            question={question}
+            correct={false}
+            userAnswerIndex={null}
+            skipped
+          />
+        ) : (hint || sample) ? (
+          <div style={{
+            borderRadius: 16,
+            border: `1px solid ${C.border}`,
+            overflow: 'hidden',
+            background: C.card,
+          }}>
+            {hint && (
+              <div style={{
+                padding: '14px 18px',
+                background: C.blue50,
+                borderBottom: `1px solid ${C.border}`,
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 10,
+              }}>
+                <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1.3 }}>💡</span>
+                <div>
+                  <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.blue600, letterSpacing: '0.6px', textTransform: 'uppercase', marginBottom: 3 }}>
+                    What this question is really testing
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text, lineHeight: 1.5 }}>
+                    {hint}
+                  </div>
+                </div>
+              </div>
+            )}
+            {sample && (
+              <div style={{ padding: '16px 18px' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: 13,
+                }}>
+                  <span style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: C.muted, letterSpacing: '0.6px', textTransform: 'uppercase' }}>
+                    Model answer
+                  </span>
+                  <span style={{ flex: 1, height: 1, background: C.border }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {splitToBullets(sample).map((pt, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 11 }}>
+                      <span style={{
+                        width: 20, height: 20, borderRadius: 6, flexShrink: 0, marginTop: 1,
+                        background: `linear-gradient(135deg, ${C.blue500}, ${C.cyan500 || C.blue600})`,
+                        color: '#fff', fontSize: 10, fontWeight: 800, fontFamily: F.mono,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {i + 1}
+                      </span>
+                      <span style={{ fontSize: 13.5, lineHeight: 1.7, color: C.text, paddingTop: 1 }}>
+                        {pt}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ padding: '14px 16px', borderRadius: 12, background: C.cardAlt, border: `1px solid ${C.border}`, fontSize: 12, color: C.muted, textAlign: 'center' }}>
+            No model answer available for this question.
+          </div>
+        )}
+
+        <div className="iv-next-btn-wrap" style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <button
+            type="button"
+            style={{ ...S.nextBtn, background: `linear-gradient(135deg, ${C.blue700}, ${accent})`, ...(isLoading ? S.btnDisabled : {}) }}
+            className="iv-next-btn"
+            onClick={onNext}
+            disabled={isLoading}
+          >
+            {isLoading ? (<><span style={S.spinner} />{isLast ? 'Preparing your report…' : 'Preparing…'}</>) : isLast ? 'View your results →' : 'Next question →'}
+          </button>
+          <div style={S.nextBtnHint}>Press <kbd style={S.kbd}>Enter</kbd> to continue</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={S.feedback} className="iv-fade-in">
 
-      {/* ── Score strip ────────────────────────────────────────────────── */}
+      {/* ── Score strip ──────────────────────────────────────────────────── */}
       <div style={{
         ...S.fbScoreStrip,
         background: objective ? objBg : cfg.bg,
-        borderColor: `${objective ? objColor : cfg.color}25`,
+        borderStyle: 'solid',
+        borderWidth: 1,
+        borderColor: `${objective ? objColor : cfg.color}28`,
       }}>
         <div style={S.fbScoreLeft}>
-          <span style={S.fbScoreEmoji}>
+          {/* Emoji badge */}
+          <div style={{
+            width: 46, height: 46, borderRadius: 13, flexShrink: 0,
+            background: objective ? objColor : cfg.color,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 22, boxShadow: `0 4px 12px ${(objective ? objColor : cfg.color)}40`,
+          }}>
             {objective ? objEmoji : cfg.emoji}
-          </span>
-          <div>
+          </div>
+          <div style={{ minWidth: 0 }}>
             <div style={{ ...S.fbScoreLabel, color: objective ? objColor : cfg.color }}>
-              {objective
-                ? (correct ? 'Correct answer' : 'Wrong answer')
-                : cfg.label
-              }
+              {objective ? (correct ? 'Correct answer' : 'Wrong answer') : cfg.label}
             </div>
             <div style={S.fbScoreVibe}>
               {objective ? objVibe : cfg.vibe}
@@ -2018,34 +2246,31 @@ const FeedbackView = ({
         </div>
 
         {!objective && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
             <div style={S.fbScoreRight}>
-              <div style={{ ...S.fbScoreNum, color: cfg.color }} className="iv-fb-score-num">{score}</div>
+              <div style={{ ...S.fbScoreNum, color: cfg.color }} className="iv-fb-score-num">
+                {score}
+              </div>
               <div style={S.fbScoreOutOf}>/100</div>
             </div>
-            {feedback?.timeTaken > 0 && (
-              <span style={{
-                fontFamily: F.mono,
-                fontSize: 9.5,
-                color: C.faint,
-                letterSpacing: '0.2px',
-              }}>
-                answered in {feedback.timeTaken}s
-              </span>
-            )}
+            <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.faint, letterSpacing: '0.2px', textAlign: 'right' }}>
+              {feedback?.timeTaken > 0 ? `${feedback.timeTaken}s · ` : ''}Q{questionIndex + 1}/{totalQuestions}
+            </span>
           </div>
         )}
       </div>
 
-      {/* ── Score bar (open questions only) ────────────────────────────── */}
+      {/* ── Score bar (open only) ────────────────────────────────────────── */}
       {!objective && (
         <div style={S.fbBarWrap}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+            <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, letterSpacing: '0.4px' }}>SCORE</span>
+            <span style={{ fontFamily: F.mono, fontSize: 9, color: cfg.color, fontWeight: 700 }}>
+              {score >= 90 ? 'Excellent' : score >= 75 ? 'Strong' : score >= 60 ? 'Good' : score >= 40 ? 'Developing' : 'Needs work'}
+            </span>
+          </div>
           <div style={S.fbBarTrack}>
-            <div style={{
-              ...S.fbBarFill,
-              width: `${score}%`,
-              background: cfg.barGradient,
-            }} className="iv-fb-bar" />
+            <div style={{ ...S.fbBarFill, width: `${score}%`, background: cfg.barGradient }} className="iv-fb-bar" />
           </div>
           <div style={S.fbBarTicks}>
             {[25, 50, 75].map(t => (
@@ -2055,17 +2280,21 @@ const FeedbackView = ({
         </div>
       )}
 
-      {/* ── Open question feedback blocks ───────────────────────────────── */}
+      {/* ── Open question feedback ───────────────────────────────────────── */}
       {!objective ? (
-        <div style={S.fbBlocks} className="iv-feedback-grid">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }} className="iv-feedback-grid">
 
-          <FeedbackBlock
-            icon="✅"
-            title="What worked"
-            bullets={splitToBullets(feedback?.good)}
-            color={C.green}
-            bg={C.greenTint}
-          />
+          {/* What worked + What was missing — full-width primary blocks */}
+          {feedback?.good && splitToBullets(feedback.good).length > 0 && (
+            <FeedbackBlock
+              icon="✅"
+              title="What worked"
+              bullets={splitToBullets(feedback.good)}
+              color={C.green}
+              bg={C.greenTint}
+              size="full"
+            />
+          )}
 
           <FeedbackBlock
             icon="🔍"
@@ -2073,27 +2302,37 @@ const FeedbackView = ({
             bullets={splitToBullets(feedback?.missing)}
             color={C.red}
             bg={C.redTint}
+            size="full"
           />
 
-          <FeedbackBlock
-            icon="💡"
-            title="The key idea"
-            bullets={splitToBullets(feedback?.idealHint)}
-            color={C.blue500}
-            bg={C.blue50}
-          />
-
-          <FeedbackBlock
-            icon="🎯"
-            title="Your next move"
-            bullets={splitToBullets(feedback?.tip)}
-            color={C.amber}
-            bg={C.amberTint}
-          />
+          {/* Key idea + Next move — side by side secondary row */}
+          {(feedback?.idealHint || feedback?.tip) && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }} className="iv-fb-secondary">
+              {feedback?.idealHint && (
+                <FeedbackBlock
+                  icon="💡"
+                  title="Key idea"
+                  bullets={splitToBullets(feedback.idealHint)}
+                  color={C.blue500}
+                  bg={C.blue50}
+                  size="half"
+                />
+              )}
+              {feedback?.tip && (
+                <FeedbackBlock
+                  icon="🎯"
+                  title="Next move"
+                  bullets={splitToBullets(feedback.tip)}
+                  color={C.amber}
+                  bg={C.amberTint}
+                  size="half"
+                />
+              )}
+            </div>
+          )}
 
         </div>
       ) : (
-        /* ── Objective (MCQ/Aptitude) feedback ─────────────────────────── */
         <McqExplanation
           question={question}
           correct={correct}
@@ -2101,25 +2340,48 @@ const FeedbackView = ({
         />
       )}
 
-      {/* ── Sample answer toggle ────────────────────────────────────────── */}
+      {/* ── Sample answer toggle (open only) ────────────────────────────── */}
       {!objective && feedback?.sampleAnswer && (
         <div style={S.fbSampleWrap}>
           <button
             type="button"
             style={S.fbSampleToggle}
+            className="iv-fb-sample-toggle"
             onClick={() => setShowSample(v => !v)}
           >
-            <span style={S.fbSampleToggleIcon}>{showSample ? '▾' : '▸'}</span>
-            {showSample ? 'Hide ideal answer' : 'Show ideal answer'}
-            <span style={S.fbSampleBadge}>optional</span>
+            <span style={{
+              width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+              background: showSample ? C.blue500 : C.cardAlt,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 9, color: showSample ? '#fff' : C.muted, fontWeight: 800,
+              transition: 'all 0.18s ease',
+            }}>
+              {showSample ? '▾' : '▸'}
+            </span>
+            {showSample ? 'Hide ideal answer' : 'See a model answer'}
+            <span style={S.fbSampleBadge}>see how a top answer reads</span>
           </button>
 
           {showSample && (
             <div style={S.fbSampleBody} className="iv-fade-in">
+              <div style={{
+                fontFamily: F.mono, fontSize: 9, fontWeight: 700,
+                color: C.muted, letterSpacing: '0.6px', textTransform: 'uppercase',
+                marginBottom: 12,
+              }}>
+                What a strong answer covers
+              </div>
               {splitToBullets(feedback.sampleAnswer).map((pt, i) => (
                 <div key={i} style={S.fbSamplePoint}>
-                  <span style={S.fbSampleDot}>{i + 1}</span>
-                  <span style={S.fbSampleText}>{pt}</span>
+                  <span style={{
+                    ...S.fbSampleDot,
+                    background: `linear-gradient(135deg, ${C.blue500}, ${C.blue600})`,
+                    color: '#fff', fontSize: 9, fontWeight: 800,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {i + 1}
+                  </span>
+                  <span style={{ ...S.fbSampleText, fontSize: 13, lineHeight: 1.7 }}>{pt}</span>
                 </div>
               ))}
             </div>
@@ -2127,12 +2389,8 @@ const FeedbackView = ({
         </div>
       )}
 
-      {/* ── Continue button ─────────────────────────────────────────────── */}
-      <div className="iv-next-btn-wrap" style={{
-        marginTop: 20,
-        paddingTop: 16,
-        borderTop: `1px solid ${C.border}`,
-      }}>
+      {/* ── Continue button ──────────────────────────────────────────────── */}
+      <div className="iv-next-btn-wrap" style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
         <button
           type="button"
           style={{
@@ -2147,12 +2405,11 @@ const FeedbackView = ({
           {isLoading ? (
             <><span style={S.spinner} />{isLast ? 'Preparing your report…' : 'Preparing…'}</>
           ) : isLast ? (
-            'View your results →'
+            '🏁 View my results'
           ) : (
             'Next question →'
           )}
         </button>
-
         <div style={S.nextBtnHint}>
           Press <kbd style={S.kbd}>Enter</kbd> to continue
         </div>
@@ -2161,98 +2418,180 @@ const FeedbackView = ({
   );
 };
 
-const FeedbackBlock = ({ icon, title, bullets, color, bg }) => (
-  <div style={{
-    ...S.feedbackBlock,
-    background: bg,
-    borderColor: `${color}28`,
-    borderLeftColor: `${color}70`,
-    borderLeftWidth: 3,
-  }}>
-    <div style={S.fbBlockHeader}>
-      <span style={S.fbBlockIcon}>{icon}</span>
-      <span style={{ ...S.fbBlockTitle, color }}>{title}</span>
+const FeedbackBlock = ({ icon, title, bullets, color, bg, size = 'full' }) => {
+  const isHalf = size === 'half';
+  const hasContent = bullets?.length > 0;
+  if (!hasContent && size === 'full' && title === 'What worked') return null;
+
+  return (
+    <div style={{
+      padding: isHalf ? '11px 13px' : '13px 16px',
+      background: bg,
+      borderRadius: 13,
+      borderStyle: 'solid',
+      borderWidth: 1,
+      borderColor: `${color}28`,
+      borderLeftStyle: 'solid',
+      borderLeftWidth: 3,
+      borderLeftColor: `${color}70`,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: isHalf ? 7 : 10,
+    }}>
+      <div style={S.fbBlockHeader}>
+        <span style={{
+          width: isHalf ? 22 : 26, height: isHalf ? 22 : 26,
+          borderRadius: isHalf ? 6 : 8,
+          background: `${color}18`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: isHalf ? 11 : 13, flexShrink: 0,
+        }}>
+          {icon}
+        </span>
+        <span style={{ ...S.fbBlockTitle, color, fontSize: isHalf ? 10 : 11 }}>{title}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: isHalf ? 5 : 7 }}>
+        {(hasContent ? bullets : ['No additional feedback.']).map((pt, i) => (
+          <div key={i} style={S.fbBulletRow}>
+            <span style={{
+              ...S.fbBulletDot,
+              background: color,
+              width: isHalf ? 4 : 5,
+              height: isHalf ? 4 : 5,
+              marginTop: isHalf ? 7 : 6,
+            }} />
+            <span style={{
+              ...S.fbBulletText,
+              fontSize: isHalf ? 12 : 12.5,
+              lineHeight: isHalf ? 1.5 : 1.6,
+            }}>
+              {pt}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
-    <div style={S.fbBullets}>
-      {(bullets?.length ? bullets : ['No additional feedback.']).map((pt, i) => (
-        <div key={i} style={S.fbBulletRow}>
-          <span style={{ ...S.fbBulletDot, background: color }} />
-          <span style={S.fbBulletText}>{pt}</span>
-        </div>
-      ))}
-    </div>
-  </div>
-);
+  );
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MCQ EXPLANATION CARD
 // ═══════════════════════════════════════════════════════════════════════════
 
-const McqExplanation = ({ question, correct, userAnswerIndex }) => {
+const McqExplanation = ({ question, correct, userAnswerIndex, skipped = false }) => {
   const correctIndex = question?.correctAnswerIndex;
   const correctText  = (correctIndex !== null && correctIndex !== undefined)
     ? question?.options?.[correctIndex] : null;
-
   const userIndex = userAnswerIndex ?? null;
   const userText  = (userIndex !== null && userIndex !== undefined)
     ? question?.options?.[userIndex] : null;
-
   const explanation = question?.explanation || '';
 
-  return (
-    <div style={S.mcqWrap}>
-
-      {/* ── Answer reveal — stacked when wrong so correct gets full width ── */}
-      <div style={{
-        ...S.mcqAnswerRow,
-        flexDirection: correct ? 'row' : 'column',
-        gap: correct ? 10 : 12,
-      }}>
-
-        {/* User pick */}
-        <div style={{
-          ...S.mcqAnswerBox,
-          borderColor: correct ? `${C.green}40` : `${C.red}40`,
-          background: correct ? C.greenTint : C.redTint,
-          flex: correct ? 1 : 'unset',
-        }}>
-          <span style={{ ...S.mcqAnswerTag, color: correct ? C.green : C.red }}>
-            {correct ? '✅ Your answer · Correct' : '❌ Your answer'}
-          </span>
-          <span style={S.mcqAnswerText}>
-            {userText || 'No option selected'}
-          </span>
-        </div>
-
-        {/* Correct answer — full-width hero box when wrong */}
-        {!correct && correctText && (
+  // ── Skipped ────────────────────────────────────────────────────────────
+  if (skipped) {
+    return (
+      <div style={S.mcqWrap}>
+        {correctText ? (
           <div style={{
-            ...S.mcqAnswerBox,
-            borderColor: `${C.green}50`,
-            background: C.greenTint,
-            border: `2px solid ${C.green}50`,
-            padding: '14px 16px',
+            padding: '16px 18px', borderRadius: 14,
+            borderStyle: 'solid', borderWidth: 2, borderColor: `${C.amber}50`,
+            background: C.amberTint,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
-              <span style={{ ...S.mcqAnswerTag, color: C.green, marginBottom: 0 }}>
-                ✓ Correct answer
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <span style={{
+                width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                background: `${C.amber}25`, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', fontSize: 14,
+              }}>⏭</span>
+              <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.amber, letterSpacing: '0.6px', textTransform: 'uppercase' }}>
+                Correct answer · not attempted
               </span>
               <span style={{
-                fontSize: 10, fontWeight: 700, color: C.green,
-                background: `${C.green}15`, border: `1px solid ${C.green}30`,
-                borderRadius: 6, padding: '2px 8px',
-              }}>
+                marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: C.amber,
+                background: `${C.amber}20`, borderStyle: 'solid', borderWidth: 1,
+                borderColor: `${C.amber}40`, borderRadius: 6, padding: '3px 9px', flexShrink: 0,
+              }}>Remember this</span>
+            </div>
+            <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 700, color: C.amber, lineHeight: 1.45, paddingLeft: 38 }}>
+              {correctText}
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: '14px 16px', borderRadius: 12, background: C.cardAlt, borderStyle: 'solid', borderWidth: 1, borderColor: C.border, fontSize: 12, color: C.muted, textAlign: 'center' }}>
+            Correct answer unavailable for this question.
+          </div>
+        )}
+        {explanation ? (
+          <div style={S.mcqExplainWrap}>
+            <div style={S.mcqExplainHeader}>
+              <span style={S.mcqExplainIcon}>💡</span>
+              <span style={S.mcqExplainTitle}>Why this is the answer</span>
+            </div>
+            <div style={S.mcqExplainBody}>
+              {splitToBullets(explanation).map((pt, i) => (
+                <div key={i} style={S.fbBulletRow}>
+                  <span style={{ ...S.fbBulletDot, background: C.blue500, marginTop: 7 }} />
+                  <span style={S.mcqExplainText}>{pt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  // ── Answered ───────────────────────────────────────────────────────────
+  return (
+    <div style={S.mcqWrap}>
+      <div style={{ display: 'flex', flexDirection: correct ? 'row' : 'column', gap: correct ? 10 : 12 }}>
+        {/* User pick */}
+        <div style={{
+          padding: '14px 16px', borderRadius: 14,
+          borderStyle: 'solid', borderWidth: 1.5,
+          borderColor: correct ? `${C.green}50` : `${C.red}50`,
+          background: correct ? C.greenTint : C.redTint,
+          flex: correct ? 1 : 'unset', display: 'flex', flexDirection: 'column', gap: 6,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+              background: correct ? `${C.green}20` : `${C.red}20`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
+            }}>{correct ? '✅' : '❌'}</span>
+            <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: correct ? C.green : C.red, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+              {correct ? 'Your answer · Correct!' : 'Your answer · Incorrect'}
+            </span>
+          </div>
+          <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 600, color: correct ? C.green : C.red, lineHeight: 1.45, paddingLeft: 34 }}>
+            {userText || 'No option selected'}
+          </div>
+        </div>
+
+        {/* Correct answer when wrong */}
+        {!correct && correctText && (
+          <div style={{
+            padding: '14px 18px', borderRadius: 14,
+            borderStyle: 'solid', borderWidth: 2, borderColor: `${C.green}55`,
+            background: C.greenTint, display: 'flex', flexDirection: 'column', gap: 6,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${C.green}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>✓</span>
+                <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.green, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Correct answer</span>
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: `${C.green}18`, borderStyle: 'solid', borderWidth: 1, borderColor: `${C.green}35`, borderRadius: 6, padding: '3px 9px' }}>
                 Remember this
               </span>
             </div>
-            <span style={{ ...S.mcqAnswerText, color: `${C.green}`, fontWeight: 700, fontSize: 14 }}>
+            <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 700, color: C.green, lineHeight: 1.45, paddingLeft: 34 }}>
               {correctText}
-            </span>
+            </div>
           </div>
         )}
       </div>
 
-      {/* ── Why this is the answer ─────────────────────────────────────── */}
+      {/* Why this is the answer */}
       {explanation ? (
         <div style={S.mcqExplainWrap}>
           <div style={S.mcqExplainHeader}>
@@ -2269,10 +2608,12 @@ const McqExplanation = ({ question, correct, userAnswerIndex }) => {
           </div>
         </div>
       ) : (
-        <div style={S.mcqNoExplain}>Your answer has been recorded.</div>
+        <div style={S.mcqNoExplain}>
+          {correct ? '🎯 Great recall — on to the next one.' : '📖 Review this topic before your next session.'}
+        </div>
       )}
 
-      {/* ── All options colour-coded ────────────────────────────────────── */}
+      {/* All options at a glance */}
       {question?.options?.length > 0 && (
         <div style={S.mcqOptionsWrap}>
           <span style={S.mcqOptionsLabel}>All options at a glance</span>
@@ -2280,20 +2621,19 @@ const McqExplanation = ({ question, correct, userAnswerIndex }) => {
             {question.options.map((opt, i) => {
               const isCorrect = i === correctIndex;
               const isUser    = i === userIndex;
-              const bg   = isCorrect ? C.greenTint : isUser ? C.redTint : C.cardAlt;
-              const col  = isCorrect ? C.green     : isUser ? C.red     : C.muted;
-              const bord = isCorrect ? `${C.green}40` : isUser ? `${C.red}30` : C.border;
+              const bg  = isCorrect ? C.greenTint : isUser && !correct ? C.redTint : C.cardAlt;
+              const col = isCorrect ? C.green : isUser && !correct ? C.red : C.muted;
+              const bw  = isCorrect || (isUser && !correct) ? 1.5 : 1;
+              const bc  = isCorrect ? `${C.green}40` : isUser && !correct ? `${C.red}30` : C.border;
               return (
-                <div key={i} style={{ ...S.mcqOption, background: bg, borderColor: bord, borderWidth: isCorrect ? 1.5 : 1 }}>
-                  <span style={{ ...S.mcqOptionBullet, color: col, borderColor: `${col}40`, background: isCorrect || isUser ? `${col}15` : 'transparent', fontWeight: isCorrect ? 800 : 600 }}>
+                <div key={i} style={{ ...S.mcqOption, background: bg, borderStyle: 'solid', borderWidth: bw, borderColor: bc }}>
+                  <span style={{ ...S.mcqOptionBullet, color: col, borderStyle: 'solid', borderWidth: 1.5, borderColor: `${col}40`, background: isCorrect || isUser ? `${col}15` : 'transparent', fontWeight: isCorrect ? 800 : 600 }}>
                     {String.fromCharCode(65 + i)}
                   </span>
-                  <span style={{ ...S.mcqOptionText, color: isCorrect ? C.green : isUser ? C.red : C.sub, fontWeight: isCorrect ? 600 : 400 }}>
-                    {opt}
-                  </span>
-                  {isCorrect && !isUser && <span style={{ ...S.mcqOptionBadge, color: C.green, background: `${C.green}15`, borderColor: `${C.green}30` }}>✓ correct</span>}
-                  {isCorrect && isUser  && <span style={{ ...S.mcqOptionBadge, color: C.green, background: `${C.green}15`, borderColor: `${C.green}30` }}>✓ correct · your pick</span>}
-                  {isUser && !isCorrect && <span style={{ ...S.mcqOptionBadge, color: C.red,   background: `${C.red}12`,   borderColor: `${C.red}25`   }}>your pick</span>}
+                  <span style={{ ...S.mcqOptionText, color: col, fontWeight: isCorrect ? 600 : 400 }}>{opt}</span>
+                  {isCorrect && !isUser  && <span style={{ ...S.mcqOptionBadge, color: C.green, background: `${C.green}15`, borderStyle: 'solid', borderWidth: 1, borderColor: `${C.green}30` }}>✓ correct</span>}
+                  {isCorrect && isUser   && <span style={{ ...S.mcqOptionBadge, color: C.green, background: `${C.green}15`, borderStyle: 'solid', borderWidth: 1, borderColor: `${C.green}30` }}>✓ your pick</span>}
+                  {isUser && !isCorrect  && <span style={{ ...S.mcqOptionBadge, color: C.red,   background: `${C.red}12`,   borderStyle: 'solid', borderWidth: 1, borderColor: `${C.red}25`   }}>your pick</span>}
                 </div>
               );
             })}
@@ -2303,6 +2643,7 @@ const McqExplanation = ({ question, correct, userAnswerIndex }) => {
     </div>
   );
 };
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GLOBAL STYLES
@@ -2782,6 +3123,11 @@ const GlobalStyles = () => (
         letter-spacing: -1.5px !important;
       }
 
+      /* Feedback secondary row (key idea + next move) stacks on mobile */
+      .iv-fb-secondary {
+        grid-template-columns: 1fr !important;
+      }
+
       /* Footnote */
       .iv-footnote {
         font-size: 11.5px !important;
@@ -3080,7 +3426,9 @@ const S = {
     alignItems: 'center',
     gap: 12,
     minHeight: 78,
-    border: `1.5px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1.5,
+    borderColor: C.border,
     background: C.card,
     borderRadius: 14,
     padding: '12px 13px',
@@ -3092,6 +3440,8 @@ const S = {
   modeCardActive: {
     background: `linear-gradient(135deg, ${C.cardAlt}, #fff)`,
     boxShadow: `0 0 0 2px ${C.blue500}30, ${C.shadow}`,
+    borderStyle: 'solid',
+    borderWidth: 1.5,
     borderColor: `${C.blue500}60`,
   },
 
@@ -3131,7 +3481,9 @@ const S = {
   modeCheck: {
     width: 20,
     height: 20,
-    border: '1.5px solid',
+    borderStyle: 'solid',
+    borderWidth: 1.5,
+    borderColor: C.borderMd,
     borderRadius: '50%',
     display: 'flex',
     alignItems: 'center',
@@ -3154,7 +3506,9 @@ const S = {
     alignItems: 'center',
     gap: 9,
     minHeight: 64,
-    border: `1.5px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1.5,
+    borderColor: C.border,
     background: C.card,
     borderRadius: 13,
     padding: '10px 11px',
@@ -3165,6 +3519,8 @@ const S = {
 
   difficultyCardActive: {
     background: C.cardAlt,
+    borderStyle: 'solid',
+    borderWidth: 1.5,
     borderColor: `${C.blue500}50`,
     boxShadow: `0 0 0 2px ${C.blue500}20`,
   },
@@ -3202,7 +3558,9 @@ const S = {
     width: 18,
     height: 18,
     borderRadius: '50%',
-    border: '1.5px solid',
+    borderStyle: 'solid',
+    borderWidth: 1.5,
+    borderColor: C.borderMd,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -3327,7 +3685,9 @@ const S = {
     display: 'inline-block',
     padding: '2px 7px',
     borderRadius: 5,
-    border: `1px solid ${C.borderMd}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.borderMd,
     borderBottomWidth: 2,
     background: C.cardAlt,
     color: C.sub,
@@ -3513,22 +3873,22 @@ const S = {
 
   trail: {
     display: 'flex',
-    gap: 5,
-    marginTop: 9,
+    gap: 4,
+    marginTop: 8,
+    alignItems: 'center',
   },
 
   trailDot: {
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    transition: 'background 0.35s ease, transform 0.25s cubic-bezier(.16,1,.3,1), opacity 0.25s ease',
+    height: 5,
+    borderRadius: 999,
+    transition: 'background 0.35s ease, width 0.3s cubic-bezier(.16,1,.3,1), opacity 0.25s ease',
     flexShrink: 0,
   },
 
   ringWrap: {
     position: 'relative',
-    width: 54,
-    height: 54,
+    width: 58,
+    height: 58,
     flexShrink: 0,
     borderRadius: '50%',
     transition: 'width 0.3s ease, height 0.3s ease',
@@ -3575,10 +3935,10 @@ const S = {
 
   questionLabel: {
     fontFamily: F.mono,
-    color: C.blue500,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 700,
-    letterSpacing: '1px',
+    letterSpacing: '0.3px',
+    color: C.blue500,
   },
 
   questionTags: {
@@ -3589,12 +3949,16 @@ const S = {
   questionTagNeutral: {
     padding: '4px 9px',
     borderRadius: 999,
-    border: `1px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     background: C.cardAlt,
     color: C.muted,
     fontSize: 9,
     fontFamily: F.mono,
     letterSpacing: '0.6px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
   },
 
   questionBody: {
@@ -3633,13 +3997,14 @@ const S = {
     display: 'flex',
     gap: 8,
     alignItems: 'flex-start',
-    marginTop: 20,
+    marginTop: 18,
     paddingTop: 14,
     borderTop: `1px solid ${C.border}`,
     color: C.sub,
-    fontSize: 12,
-    lineHeight: 1.62,
-    fontStyle: 'italic',
+    fontSize: 12.5,
+    lineHeight: 1.6,
+    fontStyle: 'normal',
+    fontWeight: 500,
   },
 
   kbdHint: {
@@ -3656,7 +4021,9 @@ const S = {
   answerPanel: {
     minHeight: 380,
     padding: 18,
-    border: `1px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 18,
     background: C.card,
     boxShadow: C.shadow,
@@ -3692,7 +4059,9 @@ const S = {
   answerModeTag: {
     padding: '4px 9px',
     borderRadius: 999,
-    border: `1px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     background: C.cardAlt,
     color: C.muted,
     fontSize: 9,
@@ -3704,9 +4073,11 @@ const S = {
     width: '100%',
     minHeight: 220,
     resize: 'vertical',
-    border: `1.5px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1.5,
+    borderColor: C.border,
     borderRadius: 14,
-    background: C.cardAlt,
+    background: '#FFFFFF',
     color: C.text,
     padding: '14px 15px',
     outline: 'none',
@@ -3728,7 +4099,9 @@ const S = {
     gap: 10,
     width: '100%',
     minHeight: 50,
-    border: `1px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 13,
     background: C.card,
     padding: '9px 11px',
@@ -3744,7 +4117,9 @@ const S = {
     width: 27,
     height: 27,
     borderRadius: 8,
-    border: `1px solid ${C.border}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     background: C.cardAlt,
     color: C.sub,
     display: 'flex',
@@ -3769,7 +4144,9 @@ const S = {
     width: 19,
     height: 19,
     borderRadius: '50%',
-    border: `1px solid ${C.borderMd}`,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.borderMd,
     color: '#fff',
     display: 'flex',
     alignItems: 'center',
@@ -3846,7 +4223,9 @@ const S = {
     gap: 12,
     padding: '14px 16px',
     borderRadius: 14,
-    border: '1px solid',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     marginBottom: 10,
     flexWrap: 'wrap',
   },
@@ -3927,15 +4306,17 @@ const S = {
 
   // ── Feedback blocks ──
   fbBlocks: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
+    display: 'flex',
+    flexDirection: 'column',
     gap: 8,
     marginBottom: 12,
   },
 
   feedbackBlock: {
-    padding: '11px 13px',
-    border: '1px solid',
+    padding: '13px 16px',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 13,
   },
   fbBlockHeader: {
@@ -4014,7 +4395,9 @@ const S = {
   mcqAnswerBox: {
     padding: '10px 13px',
     borderRadius: 12,
-    border: '1px solid',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
     display: 'flex',
     flexDirection: 'column',
     gap: 5,
@@ -4102,15 +4485,18 @@ const S = {
     alignItems: 'center',
     gap: 10,
     padding: '9px 13px',
-    borderBottom: `1px solid ${C.border}`,
-    border: 'none',
-    borderLeft: '2px solid transparent',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 0,
   },
   mcqOptionBullet: {
     width: 20,
     height: 20,
     borderRadius: 6,
-    border: '1.5px solid',
+    borderStyle: 'solid',
+    borderWidth: 1.5,
+    borderColor: 'currentColor',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -4132,10 +4518,11 @@ const S = {
     letterSpacing: '0.3px',
     padding: '2px 7px',
     borderRadius: 999,
-    border: '1px solid',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: `${C.green}30`,
     color: C.green,
     background: `${C.green}15`,
-    borderColor: `${C.green}30`,
     flexShrink: 0,
     textTransform: 'uppercase',
   },
@@ -4191,24 +4578,22 @@ const S = {
     gap: 10,
   },
   fbSampleDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 5,
-    background: C.blue50,
-    color: C.blue500,
-    fontSize: 9,
-    fontWeight: 800,
-    fontFamily: F.mono,
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    flexShrink: 0,
+    marginTop: 2,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
-    marginTop: 2,
+    fontFamily: F.mono,
+    fontWeight: 800,
+    fontSize: 9,
   },
   fbSampleText: {
-    fontSize: 12.5,
-    lineHeight: 1.65,
-    color: C.sub,
+    fontSize: 13,
+    lineHeight: 1.7,
+    color: C.text,
   },
 
   nextBtn: {

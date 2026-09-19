@@ -1,9 +1,8 @@
-// ─── Imports ────────────────────────────────────────────────
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { C, F } from '../../styles/token';
 
-// ─── Constants ──────────────────────────────────────────────
+
 const CELL_MAX   = 13;
 const CELL_MIN_D = 8;
 const CELL_MIN_M = 6;
@@ -16,7 +15,6 @@ const DAY_W_M    = 20;
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_LABELS  = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
 
-// ─── Helpers ────────────────────────────────────────────────
 const dateKey = (date) => {
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return '';

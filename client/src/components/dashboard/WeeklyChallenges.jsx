@@ -1,4 +1,3 @@
-// ─── Imports ────────────────────────────────────────────────
 import PropTypes from 'prop-types';
 import { C, F } from '../../styles/token';
 
@@ -88,5 +87,4 @@ function WeeklyChallenges({ scoreTrend, topicPerformance, streakDays }) {
   );
 }
 
-// ─── Export ─────────────────────────────────────────────────
 export default WeeklyChallenges;

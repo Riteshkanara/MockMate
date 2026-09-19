@@ -1,4 +1,3 @@
-// ─── Imports ────────────────────────────────────────────────
 import { useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { C, F } from '../../styles/token';

@@ -1,4 +1,3 @@
-// — CoachInsights — Today's plan card + 7-day weekly plan
 import { useState, useRef, useCallback, useEffect, useMemo, memo } from "react";
 import PropTypes from "prop-types";
 import { getAIFreeform } from '../../Services/interviewService';
@@ -14,7 +13,7 @@ import {
   SentenceBreaker, HighlightedText,
 } from "./coachShared";
 
-// — Idle placeholder — TodayCard
+
 const TODAY_IDLE_BEATS = [
   { label: "TODAY'S PRIORITY", color: C.cyan400, w: [90, 70]      },
   { label: "WHY IT MATTERS",   color: C.blue400, w: [100, 80, 55] },
@@ -42,7 +41,6 @@ const TodayIdlePlaceholder = () => (
   </div>
 );
 
-// — Idle placeholder — WeeklyPlan
 const WEEKLY_IDLE_DAYS = [
   { label: "DAY 1–2", color: C.red     },
   { label: "DAY 3–4", color: C.amber   },
@@ -69,7 +67,6 @@ const WeeklyIdlePlaceholder = () => (
   </div>
 );
 
-// — TodayCard prompt
 const TODAY_BEATS = [
   { icon: "🎯", label: "TODAY'S PRIORITY" },
   { icon: "⚡", label: "WHY IT MATTERS"   },

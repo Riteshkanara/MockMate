@@ -2,7 +2,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { C as CT, F } from '../../styles/token';
 
-// — Analytics palette (local copy)
+
 const C = {
   ...CT,
   violet:      CT.blue500,

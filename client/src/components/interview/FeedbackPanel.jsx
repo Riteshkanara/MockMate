@@ -2,16 +2,15 @@ import PropTypes from 'prop-types';
 import { useState } from 'react';
 import { C as CT, F } from '../../styles/token';
 
-// ─── Local colour + font tokens ──────────────────────────────────────────────
+
 const C = {
   ...CT,
   violet:     '#6D5BEE',
   violetTint: '#F0EEFF',
 };
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+
 const S = {
-  // Feedback layout
   feedback:       { display: 'flex', flexDirection: 'column', gap: 10 },
   fbScoreStrip:   { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', borderRadius: 14, borderStyle: 'solid', borderWidth: 1, borderColor: C.border, marginBottom: 2, flexWrap: 'wrap' },
   fbScoreLeft:    { display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
@@ -21,19 +20,16 @@ const S = {
   fbScoreRight:   { display: 'flex', alignItems: 'baseline', gap: 3 },
   fbScoreNum:     { fontFamily: F.display, fontSize: 42, fontWeight: 900, letterSpacing: '-2px', lineHeight: 1 },
   fbScoreOutOf:   { fontFamily: F.mono, fontSize: 14, color: C.muted, fontWeight: 600 },
-  // Score bar
   fbBarWrap:      { marginBottom: 4 },
   fbBarTrack:     { height: 8, borderRadius: 999, background: C.border, overflow: 'hidden', position: 'relative' },
   fbBarFill:      { height: '100%', borderRadius: 999, transition: 'width 0.9s cubic-bezier(0.16,1,0.3,1)' },
   fbBarTicks:     { position: 'relative', height: 0 },
   fbBarTick:      { position: 'absolute', top: -8, width: 1, height: 8, background: 'rgba(255,255,255,0.5)', pointerEvents: 'none' },
-  // Feedback blocks
   fbBlockHeader:  { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 },
   fbBlockTitle:   { fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase' },
   fbBulletRow:    { display: 'flex', alignItems: 'flex-start', gap: 9 },
   fbBulletDot:    { width: 5, height: 5, borderRadius: '50%', flexShrink: 0, marginTop: 7 },
   fbBulletText:   { fontSize: 12.5, lineHeight: 1.6, color: C.sub, flex: 1 },
-  // Sample answer toggle
   fbSampleWrap:   { marginBottom: 2, borderRadius: 13, borderStyle: 'solid', borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
   fbSampleToggle: { width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', background: C.cardAlt, border: 'none', cursor: 'pointer', fontFamily: F.body, fontSize: 13, fontWeight: 700, color: C.sub, textAlign: 'left', transition: 'background 0.15s ease' },
   fbSampleBadge:  { marginLeft: 'auto', fontSize: 9.5, fontFamily: F.mono, fontWeight: 700, letterSpacing: '0.4px', color: C.faint, textTransform: 'uppercase', flexShrink: 0 },
@@ -41,14 +37,11 @@ const S = {
   fbSamplePoint:  { display: 'flex', alignItems: 'flex-start', gap: 10 },
   fbSampleDot:    { width: 20, height: 20, borderRadius: 6, flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: F.mono, fontWeight: 800, fontSize: 9 },
   fbSampleText:   { fontSize: 13.5, lineHeight: 1.7, color: C.text, fontWeight: 500 },
-  // Next button
   nextBtn:        { width: '100%', border: 'none', borderRadius: 13, padding: '15px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#fff', fontFamily: F.display, fontSize: 14.5, fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 24px rgba(26,110,255,0.28)', letterSpacing: '-0.1px', transition: 'box-shadow 0.18s ease, transform 0.12s ease' },
   nextBtnHint:    { marginTop: 8, textAlign: 'center', fontSize: 11, color: C.faint, fontFamily: F.mono, letterSpacing: '0.2px' },
-  // Shared
   kbd:            { display: 'inline-block', padding: '2px 7px', borderRadius: 5, borderStyle: 'solid', borderWidth: 1, borderColor: C.borderMd, borderBottomWidth: 2, background: C.cardAlt, color: C.sub, fontFamily: F.mono, fontSize: 10, fontWeight: 700, lineHeight: 1.4, verticalAlign: 'middle' },
   spinner:        { width: 13, height: 13, borderRadius: '50%', borderStyle: 'solid', borderWidth: 2, borderColor: 'rgba(255,255,255,0.35)', borderTopColor: '#fff', animation: 'ivSpin 0.7s linear infinite', display: 'inline-block', flexShrink: 0 },
   btnDisabled:    { opacity: 0.45, cursor: 'not-allowed', boxShadow: 'none', transform: 'none' },
-  // MCQ explanation
   mcqWrap:          { display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 4 },
   mcqExplainWrap:   { borderRadius: 13, borderStyle: 'solid', borderWidth: 1, borderColor: C.border, background: C.blue50, overflow: 'hidden' },
   mcqExplainHeader: { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: C.blue50 },
@@ -66,10 +59,7 @@ const S = {
   mcqOptionBadge:   { fontSize: 9, fontWeight: 800, fontFamily: F.mono, letterSpacing: '0.3px', padding: '2px 8px', borderRadius: 999, borderStyle: 'solid', borderWidth: 1, flexShrink: 0, textTransform: 'uppercase' },
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// Splits a paragraph string into bullet-ready sentences.
-// Handles numbered lists (e.g. "1. ... 2. ...") and sentence boundaries.
 const splitToBullets = (text = '') => {
   if (!text) return [];
   const numberedSplit = text.split(/(?<!\d)\d+\.\s+/).map(s => s.trim()).filter(Boolean);

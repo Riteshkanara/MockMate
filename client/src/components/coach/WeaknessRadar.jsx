@@ -1,4 +1,3 @@
-// — WeaknessRadar — all 6 dimension bars, sorted weakest-first
 import { useMemo, memo } from "react";
 import PropTypes from "prop-types";
 import {

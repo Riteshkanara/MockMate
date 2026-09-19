@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types';
 import { C as CT, F } from '../../styles/token';
 
-// — Analytics palette (local copy)
+
 const C = {
   ...CT,
   violet:     CT.blue500,
@@ -9,7 +9,6 @@ const C = {
   violetMid:  CT.blue600,
 };
 
-// — IRSComponentBar: private sub-component, only used here
 const IRSComponentBar = ({ label, value, weight, color }) => (
   <div style={{ marginBottom: 10 }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
@@ -63,7 +62,6 @@ const eyebrow = { fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpac
 const cardH2  = { margin: 0, fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.text, letterSpacing: '-0.2px' };
 const cardSub = { margin: '6px 0 0', color: C.sub, fontSize: 12, lineHeight: 1.65 };
 
-// — Component
 function IRSBreakdown({
   irs,
   irsComponents,

@@ -1,14 +1,13 @@
 import PropTypes from 'prop-types';
 import { C as CT, F } from '../../styles/token';
 
-// ─── Local colour + font tokens ──────────────────────────────────────────────
+
 const C = {
   ...CT,
   violet:     '#6D5BEE',
   violetTint: '#F0EEFF',
 };
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
 const S = {
   answerHeading:        { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 9, marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${C.border}` },
   answerHeadingEyebrow: { display: 'block', color: C.blue500, fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.9px', textTransform: 'uppercase' },
@@ -237,5 +236,5 @@ InterviewControls.defaultProps = {
   textAreaRef:         null,
 };
 
-// ─── Export ──────────────────────────────────────────────────────────────────
+
 export default InterviewControls;

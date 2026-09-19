@@ -1,4 +1,4 @@
-import API_BASE from '../config/api.js';
+﻿import API_BASE from '../config/api.js';
 import axios from "axios";
 
 const API = axios.create({
@@ -6,7 +6,7 @@ const API = axios.create({
   withCredentials: true,
 });
 
-// NOTE: On 401 → try /auth/refresh → retry once → if still 401 → redirect to home
+// NOTE: On 401 ΓåÆ try /auth/refresh ΓåÆ retry once ΓåÆ if still 401 ΓåÆ redirect to home
 API.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -184,7 +184,7 @@ export const getAIFreeform = async (prompt, maxTokens = 400) => {
   }
 };
 
-// NOTE: Uses direct axios (not API instance) — this route lives on /auth, not /interview
+// NOTE: Uses direct axios (not API instance) ΓÇö this route lives on /auth, not /interview
 export const fixBadges = async () => {
   try {
     const response = await axios.post(

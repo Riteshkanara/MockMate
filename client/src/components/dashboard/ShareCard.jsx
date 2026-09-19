@@ -1,11 +1,10 @@
-// ─── Imports ────────────────────────────────────────────────
 import { useState } from 'react';
 import PropTypes from 'prop-types';
 import { C, F } from '../../styles/token';
 import Button from '../../components/Button';
 import { getShareLink } from '../../Services/profileServices';
 
-// ─── PropTypes ──────────────────────────────────────────────
+
 ShareCard.propTypes = {
   name:         PropTypes.string.isRequired,
   irs:          PropTypes.number.isRequired,
@@ -20,7 +19,7 @@ ShareCard.propTypes = {
   averageScore: PropTypes.number.isRequired,
 };
 
-// ─── Component ──────────────────────────────────────────────
+
 function ShareCard({ name, irs, tier, strongest, weakest, percentile, archetype, sessions, streakDays, bestScore, averageScore }) {
   const [copied, setCopied]           = useState(false);
   const [linkCopied, setLinkCopied]   = useState(false);

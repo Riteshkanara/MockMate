@@ -1,4 +1,3 @@
-// — Coach Shared — tokens, constants, helpers, and UI primitives
 import { useState,useEffect,Component,useRef } from "react";
 import PropTypes from "prop-types";
 import { C as CT, F } from "../../styles/token";

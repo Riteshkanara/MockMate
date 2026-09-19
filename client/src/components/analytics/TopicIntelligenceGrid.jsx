@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { C as CT, F } from '../../styles/token';
 
-// — Analytics palette (local copy)
 const C = {
   ...CT,
   violet:      CT.blue500,
@@ -19,7 +18,6 @@ const C = {
   },
 };
 
-// — Helpers (private to this file)
 const scoreColor = (s) =>
   s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.orange;
 
@@ -45,7 +43,6 @@ const hexPath = (r) => {
   return `M${pts.join('L')}Z`;
 };
 
-// — Dev seed fallback (remove in production)
 const SEED_TOPICS = [
   { topic: 'Arrays & Hashing',    avgScore: 84, sessionCount: 12, trend:  6, lastScore: 88, sessions: [72,76,80,82,84,86,88] },
   { topic: 'Dynamic Programming', avgScore: 51, sessionCount:  9, trend: -3, lastScore: 48, sessions: [60,55,58,52,50,53,48] },
@@ -104,9 +101,7 @@ Sparkline.propTypes = {
   height: PropTypes.number,
 };
 
-// ─────────────────────────────────────────────
-// HexCell (private)
-// ─────────────────────────────────────────────
+
 const HexCell = ({ data, index, isSelected, onClick, reducedMotion }) => {
   const tier = getTier(data.avgScore);
   const trnd = getTrendLabel(data.trend);
@@ -221,9 +216,7 @@ HexCell.propTypes = {
   reducedMotion: PropTypes.bool.isRequired,
 };
 
-// ─────────────────────────────────────────────
-// DetailPanel (private)
-// ─────────────────────────────────────────────
+
 const DetailPanel = ({ data, onClose, onDrill, reducedMotion }) => {
   const tier = getTier(data.avgScore);
   const trnd = getTrendLabel(data.trend);

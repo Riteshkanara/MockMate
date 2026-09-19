@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { C as CT, F } from '../../styles/token';
 
-// — Analytics palette (local copy — same shape as parent)
 const C = {
   ...CT,
   violet:      CT.blue500,

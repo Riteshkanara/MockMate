@@ -1,4 +1,3 @@
-// — SessionBreakdown — AI debrief of the last completed session
 import { useState, useRef, useCallback, useEffect, memo } from "react";
 import PropTypes from "prop-types";
 import { getAIFreeform } from '../../Services/interviewService';
@@ -12,7 +11,6 @@ import {
   HighlightedText,
 } from "./coachShared";
 
-// — Idle placeholder
 const DEBRIEF_IDLE_SECTIONS = [
   { label: "WHAT HAPPENED",   color: C.blue400, lines: [100, 80, 65] },
   { label: "THE BRIGHT SPOT", color: C.green,   lines: [100, 70]     },
@@ -48,7 +46,7 @@ const DebriefIdlePlaceholder = () => (
   </div>
 );
 
-// — Debrief section config
+
 const DEBRIEF_ACCENTS = {
   "WHAT HAPPENED":   C.blue400,
   "THE BRIGHT SPOT": C.green,

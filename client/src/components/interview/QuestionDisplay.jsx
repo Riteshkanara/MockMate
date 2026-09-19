@@ -1,14 +1,12 @@
 import PropTypes from 'prop-types';
 import { C as CT, F } from '../../styles/token';
 
-// ─── Local colour + font tokens ──────────────────────────────────────────────
 const C = {
   ...CT,
   violet:     '#6D5BEE',
   violetTint: '#F0EEFF',
 };
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
 const S = {
   questionPanel:      { minHeight: 380, padding: '22px 22px', display: 'flex', flexDirection: 'column', borderStyle: 'solid', borderWidth: 1, borderColor: C.border, borderRadius: 18, background: C.card, boxShadow: C.shadow },
   questionPanelTop:   { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 18 },
@@ -139,5 +137,4 @@ function QuestionDisplay({
 
 QuestionDisplay.propTypes = questionDisplayPropTypes;
 
-// ─── Export ──────────────────────────────────────────────────────────────────
 export default QuestionDisplay;

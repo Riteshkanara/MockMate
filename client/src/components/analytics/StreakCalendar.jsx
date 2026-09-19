@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { C as CT, F } from '../../styles/token';
 
-// — Analytics palette (local copy)
+
 const C = {
   ...CT,
   violet:      CT.blue500,
@@ -11,7 +11,6 @@ const C = {
   violetMid:   CT.blue600,
 };
 
-// — PropTypes
 StreakCalendar.propTypes = {
   scoreTrend: PropTypes.arrayOf(PropTypes.shape({
     date:      PropTypes.string,
@@ -20,7 +19,6 @@ StreakCalendar.propTypes = {
   })),
 };
 
-// — Component
 function StreakCalendar({ scoreTrend }) {
   const today = new Date();
   const WEEKS = 15;

@@ -32,7 +32,7 @@ const sessionScore = (s) => {
 };
 
 /** Flatten all answered (non-skipped) questions across sessions, tagged with session index/date. */
-const allAnsweredQuestions = (sessions) =>
+const answeredQuestions = (sessions) =>
   sessions.flatMap((s, i) =>
     (s.questions || [])
       .filter((q) => !q.skipped && q.userAnswer)
@@ -42,7 +42,7 @@ const allAnsweredQuestions = (sessions) =>
 /** Distinct topics with at least one answered question. */
 const distinctTopics = (sessions) => {
   const set = new Set();
-  allAnsweredQuestions(sessions).forEach((q) => set.add((q.topic || 'General').trim()));
+  answeredQuestions(sessions).forEach((q) => set.add((q.topic || 'General').trim()));
   return [...set];
 };
 
@@ -94,8 +94,8 @@ const checkTopicSlayer = ({ sessions }) => {
   let best = { topic: null, streak: 0 };
   Object.entries(series).forEach(([topic, scores]) => {
     let run = 0, maxRun = 0;
-    scores.forEach((s) => {
-      if (s >= 85) { run += 1; maxRun = Math.max(maxRun, run); } else { run = 0; }
+    scores.forEach((score) => {
+      if (score >= 85) { run += 1; maxRun = Math.max(maxRun, run); } else { run = 0; }
     });
     if (maxRun > best.streak) best = { topic, streak: maxRun };
   });
@@ -115,7 +115,7 @@ const checkSilentGrinder = ({ user, sessions }) => {
 };
 
 const checkFullMarks = ({ sessions }) => {
-  const q = allAnsweredQuestions(sessions).find((q) => Number(q.score) === 100);
+  const q = answeredQuestions(sessions).find((perfectAnswer) => Number(perfectAnswer.score) === 100);
   return { unlocked: !!q, meta: q ? { topic: q.topic } : null };
 };
 
@@ -173,7 +173,7 @@ const checkWeaknessSlayer = ({ sessions }) => {
     for (let i = 0; i < scores.length; i++) {
       if (scores[i] < 50) {
         const later = scores.slice(i + 1);
-        if (later.some((s) => s >= 75)) {
+        if (later.some((score) => score >= 75)) {
           return { unlocked: true, meta: { topic, from: Math.round(scores[i]), to: Math.round(Math.max(...later)) } };
         }
       }
@@ -189,9 +189,9 @@ const checkTierJumper = ({ sessions }) => {
     const before = scores.slice(0, i).reduce((a, v) => a + v, 0) / i;
     const afterWindow = scores.slice(Math.max(0, i - 2), i + 1);
     const after = afterWindow.reduce((a, v) => a + v, 0) / afterWindow.length;
-    for (const t of THRESHOLDS) {
-      if (before < t && after >= t) {
-        return { unlocked: true, meta: { threshold: t, atSession: i + 1 } };
+    for (const threshold of THRESHOLDS) {
+      if (before < threshold && after >= threshold) {
+        return { unlocked: true, meta: { threshold: threshold, atSession: i + 1 } };
       }
     }
   }
@@ -253,3 +253,8 @@ const SIMPLE_BADGE_RULES = [
 ];
 
 module.exports = { evaluateBadges, BADGE_DEFS, SIMPLE_BADGE_RULES };
+
+
+
+
+

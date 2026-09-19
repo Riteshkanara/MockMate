@@ -123,11 +123,11 @@ const useCountUp = (target, duration = 1600, start = false) => {
   const [val, setVal] = useState(0);
   useEffect(() => {
     if (!start) return;
-    let startTs = null;
+    let startTime = null;
     const num = typeof target === 'number' ? target : parseFloat(target) || 0;
     const raf = requestAnimationFrame(function tick(ts) {
-      if (!startTs) startTs = ts;
-      const p = Math.min((ts - startTs) / duration, 1);
+      if (!startTime) startTime = ts;
+      const p = Math.min((ts - startTime) / duration, 1);
       const ease = 1 - Math.pow(1 - p, 3);
       setVal(Math.round(ease * num));
       if (p < 1) requestAnimationFrame(tick);
@@ -196,14 +196,14 @@ const AuroraCanvas = () => {
       ctx.clearRect(0, 0, W, H);
 
       // Draw aurora blobs
-      blobs.forEach((b, i) => {
-        const bx = (b.x + Math.sin(t * b.speed * 1000 + i * 2.1) * 0.12) * W;
-        const by = (b.y + Math.cos(t * b.speed * 800  + i * 1.7) * 0.09) * H;
-        const br = b.r * Math.max(W, H);
+      blobs.forEach((blob, i) => {
+        const bx = (blob.x + Math.sin(t * blob.speed * 1000 + i * 2.1) * 0.12) * W;
+        const by = (blob.y + Math.cos(t * blob.speed * 800  + i * 1.7) * 0.09) * H;
+        const br = blob.r * Math.max(W, H);
         const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
-        grad.addColorStop(0,   `rgba(${b.color.join(',')}, 0.13)`);
-        grad.addColorStop(0.5, `rgba(${b.color.join(',')}, 0.05)`);
-        grad.addColorStop(1,   `rgba(${b.color.join(',')}, 0)`);
+        grad.addColorStop(0,   `rgba(${blob.color.join(',')}, 0.13)`);
+        grad.addColorStop(0.5, `rgba(${blob.color.join(',')}, 0.05)`);
+        grad.addColorStop(1,   `rgba(${blob.color.join(',')}, 0)`);
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.ellipse(bx, by, br, br * 0.65, t * 0.05 + i, 0, Math.PI * 2);
@@ -211,16 +211,16 @@ const AuroraCanvas = () => {
       });
 
       // Draw + update particles
-      particles.forEach(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < -4) p.x = W + 4;
-        if (p.x > W + 4) p.x = -4;
-        if (p.y < -4) p.y = H + 4;
-        if (p.y > H + 4) p.y = -4;
+      particles.forEach(particle => {
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        if (particle.x < -4) particle.x = W + 4;
+        if (particle.x > W + 4) particle.x = -4;
+        if (particle.y < -4) particle.y = H + 4;
+        if (particle.y > H + 4) particle.y = -4;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(160, 210, 255, ${p.opacity})`;
+        ctx.arc(particle.x, particle.y, particle.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(160, 210, 255, ${particle.opacity})`;
         ctx.fill();
       });
 
@@ -404,12 +404,12 @@ const DemoSessionCard = ({ onStart }) => {
     }
   }, [phase]);
 
-  const s    = SESSIONS[idx];
-  const mode = MODES.find(m => m.label === s.mode);
-  const scoreColor = s.score >= 90 ? C.green : s.score >= 80 ? C.blue400 : C.cyan400;
+  const session    = SESSIONS[idx];
+  const mode = MODES.find(m => m.label === session.mode);
+  const scoreColor = session.score >= 90 ? C.green : session.score >= 80 ? C.blue400 : C.cyan400;
   const isVisible  = phase !== 'fading';
 
-  const { displayed: typedQ, done: qDone } = useTypewriter(s.question, 22, phase === 'typing');
+  const { displayed: typedQ, done: qDone } = useTypewriter(session.question, 22, phase === 'typing');
 
   useEffect(() => {
     if (qDone) setPhase('showing');
@@ -436,9 +436,9 @@ const DemoSessionCard = ({ onStart }) => {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 99, padding: '3px 10px' }}>
-          <span style={{ fontFamily: F.mono, fontSize: 9, color: 'rgba(255,255,255,0.45)' }}>⏱ {s.time}</span>
+          <span style={{ fontFamily: F.mono, fontSize: 9, color: 'rgba(255,255,255,0.45)' }}>⏱ {session.time}</span>
           <span style={{ width: 1, height: 9, background: 'rgba(255,255,255,0.15)', display: 'inline-block' }} />
-          <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: mode?.color || C.cyan400 }}>{s.mode}</span>
+          <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: mode?.color || C.cyan400 }}>{session.mode}</span>
         </div>
       </div>
 
@@ -466,18 +466,18 @@ const DemoSessionCard = ({ onStart }) => {
             <circle cx={34} cy={34} r={27} fill="none"
               stroke={scoreColor} strokeWidth={7} strokeLinecap="round"
               strokeDasharray={2 * Math.PI * 27}
-              strokeDashoffset={2 * Math.PI * 27 * (1 - s.score / 100)}
+              strokeDashoffset={2 * Math.PI * 27 * (1 - session.score / 100)}
               style={{ transition: 'stroke-dashoffset 0.7s ease, stroke 0.4s' }}
             />
           </svg>
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ fontFamily: F.display, fontSize: 18, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{s.score}</div>
+            <div style={{ fontFamily: F.display, fontSize: 18, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{session.score}</div>
             <div style={{ fontFamily: F.mono, fontSize: 7, color: 'rgba(255,255,255,0.40)', marginTop: 1 }}>/100</div>
           </div>
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: F.mono, fontSize: 8.5, fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 8 }}>AI Feedback</div>
-          {s.feedback.map((f, i) => (
+          {session.feedback.map((f, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 5 }}>
               <span style={{ color: C.cyan400, fontSize: 12, lineHeight: 1.3, flexShrink: 0 }}>›</span>
               <span style={{ fontFamily: F.body, fontSize: 11, color: 'rgba(255,255,255,0.68)', lineHeight: 1.4 }}>{f}</span>
@@ -488,7 +488,7 @@ const DemoSessionCard = ({ onStart }) => {
 
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isVisible ? 1 : 0, transition: 'opacity 0.35s ease 0.1s' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,173,224,0.15)', border: '1px solid rgba(0,200,240,0.25)', borderRadius: 99, padding: '4px 11px' }}>
-          <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.cyan400 }}>IRS {s.irs}/100</span>
+          <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.cyan400 }}>IRS {session.irs}/100</span>
           <span style={{ width: 1, height: 8, background: 'rgba(0,200,240,0.3)', display: 'inline-block' }} />
           <span style={{ fontFamily: F.mono, fontSize: 9, color: 'rgba(255,255,255,0.40)' }}>₹12–20 LPA</span>
         </div>

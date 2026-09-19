@@ -35,11 +35,7 @@ router.get(
   interviewController.getAnalytics
 );
 
-router.get(
-  '/performance',
-  authMiddleware,
-  interviewController.getPerformanceAnalytics
-);
+router.get('/performance', authMiddleware, interviewController.getPerformance);
 
 router.get(
   '/session/last/breakdown',
@@ -102,3 +98,8 @@ router.post(
 );
 
 module.exports = router;
+
+
+
+
+

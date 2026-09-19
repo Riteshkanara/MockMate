@@ -1,24 +1,24 @@
 const Session = require('../models/Session');
 const User = require('../models/User');
 const { evaluateBadges } = require('../utils/badgeEngine');
-  const {
-      buildDimensionProfile,
-      computeIRS,
-      computeIRSBreakdown,
-      tierForScore,
-      tierForScoreGated,
-      TIERS,
-      computeTierReadiness,
-      findBlockingDimension,
-      buildDimensionTimeSeries,
-      projectSessionsToUnlock,
-      resolveCanonicalTopic,
-    } = require('../utils/scoringModel');
+const {
+  buildDimensionProfile,
+  computeIRS,
+  computeIRSBreakdown  : irsBreakdown,
+  tierForScore,
+  tierForScoreGated,
+  TIERS,
+  computeTierReadiness  : tierReadiness,
+  findBlockingDimension : blockingDimension,
+  buildDimSeries,
+  projectSessionsToUnlock  : sessionsToUnlock,
+  resolveCanonicalTopic    : resolveTopic,
+} = require('../utils/scoringModel');
 
 // CANONICAL_TOPIC_TO_DIMENSIONS is not exported from scoringModel, so we
 // mirror the minimal mapping needed for scoreTrend enrichment here.
 // (This is display-only — IRS still uses the full buildDimensionProfile.)
-const CANONICAL_TOPIC_TO_DIMENSIONS = {
+const TOPIC_DIMENSIONS = {
   dsa:            ['technical', 'problemSolving'],
   oop:            ['technical', 'design', 'fundamentals'],
   dbms:           ['fundamentals', 'technical'],
@@ -33,303 +33,208 @@ const CANONICAL_TOPIC_TO_DIMENSIONS = {
   csfundamentals: ['fundamentals'],
 };
 
-// ─── Shared evidence extractor ──────────────────────────────────────────────
-// Pulls the richer signals the V2 scoring model needs (total answered
-// question count + difficulty mix) out of a set of completed sessions.
-// Kept here so every call site (getPerformanceAnalytics, getAICoach,
-// computeUserIRS, getAnalytics) feeds computeIRS the SAME evidence inputs —
-// same failure mode as the old scoringModel duplication this file's header
-// comment warns about, just one level up.
 const extractIRSEvidence = (sessions) => {
-  let totalAnsweredQuestions = 0;
+  let totalAnswered = 0;
   const difficultyMix = { easy: 0, medium: 0, hard: 0 };
-
   sessions.forEach((session) => {
     (session.questions || []).forEach((q) => {
       if (q.skipped || !q.userAnswer) return;
-      totalAnsweredQuestions += 1;
+      totalAnswered += 1;
       const d = String(q.difficulty || 'medium').toLowerCase();
       if (difficultyMix[d] != null) difficultyMix[d] += 1;
-      else difficultyMix.medium += 1; // unknown/legacy difficulty strings default to medium
+      else difficultyMix.medium += 1;
     });
   });
-
-  return { totalAnsweredQuestions, difficultyMix };
+  return { totalAnswered: totalAnswered, difficultyMix };
 };
 
 const {
   generateQuestions,
   evaluateOpenAnswer,
-  generateSkippedQuestionAnswer,
-  evaluateObjectiveAnswer,
+  getSkippedAnswer,
+  evalObjectiveAnswer,
 } = require('../services/aiServices');
 
 const BADGES = [
-  {
-    id: 'first',
-    label: 'First Rep',
-    check: user => user.totalInterviews >= 1,
-  },
-  {
-    id: 'trio',
-    label: 'Hat Trick',
-    check: user => user.totalInterviews >= 3,
-  },
-  {
-    id: 'ten',
-    label: 'The Grinder',
-    check: user => user.totalInterviews >= 10,
-  },
-  {
-    id: 'veteran',
-    label: 'Veteran',
-    check: user => user.totalInterviews >= 25,
-  },
-  {
-    id: 'hi80',
-    label: 'High Scorer',
-    check: user => user.bestScore >= 80,
-  },
-  {
-    id: 'elite',
-    label: 'Elite Pass',
-    check: user => user.bestScore >= 90,
-  },
-  {
-    id: 'streak_3',
-    label: 'On Fire',
-    check: user => user.streak.current >= 3,
-  },
-  {
-    id: 'streak_30',
-    label: '👑 Placement Ready',
-    check: user => user.streak.current >= 30,
-  },
+  { id: 'first',     label: 'First Rep',          check: u => u.totalInterviews >= 1 },
+  { id: 'trio',      label: 'Hat Trick',           check: u => u.totalInterviews >= 3 },
+  { id: 'ten',       label: 'The Grinder',         check: u => u.totalInterviews >= 10 },
+  { id: 'veteran',   label: 'Veteran',             check: u => u.totalInterviews >= 25 },
+  { id: 'hi80',      label: 'High Scorer',         check: u => u.bestScore >= 80 },
+  { id: 'elite',     label: 'Elite Pass',          check: u => u.bestScore >= 90 },
+  { id: 'streak_3',  label: 'On Fire',             check: u => u.streak.current >= 3 },
+  { id: 'streak_30', label: '👑 Placement Ready',  check: u => u.streak.current >= 30 },
 ];
+
+const EMPTY_IRS_RESPONSE = {
+  irs: 0,
+  irsBreakdown: null,
+  currentTier: null,
+  currentTierIsGated: false,
+  currentTierRaw: null,
+  sessionsNeededForRawTier: null,
+  totalAnswered: 0,
+  difficultyMix: { easy: 0, medium: 0, hard: 0 },
+  tiers: [],
+  dimensionProfile: [],
+  unmappedTopics: [],
+};
 
 const getUserId = req => req.user?._id || req.user?.id;
 
-const getNormalizedQuestionScore = question => {
+const getQuestionScore = question => {
   const currentScore = Number(question?.score);
-
-  // New schema: score is already 0–100.
-  // Only treat it as the current score when it is > 10.
-  if (
-    Number.isFinite(currentScore) &&
-    currentScore > 10
-  ) {
-    return Math.max(
-      0,
-      Math.min(100, currentScore)
-    );
+  if (Number.isFinite(currentScore) && currentScore > 10) {
+    return Math.max(0, Math.min(100, currentScore));
   }
-
-  // Legacy schema: aiFeedback.score was 0–10.
-  const legacyScore = Number(
-    question?.aiFeedback?.score
-  );
-
+  const legacyScore = Number(question?.aiFeedback?.score);
   if (Number.isFinite(legacyScore)) {
-    return Math.max(
-      0,
-      Math.min(100, Math.round(legacyScore * 10))
-    );
+    return Math.max(0, Math.min(100, Math.round(legacyScore * 10)));
   }
-
-  // New zero score / unanswered fallback.
   if (Number.isFinite(currentScore)) {
-    return Math.max(
-      0,
-      Math.min(100, currentScore)
-    );
+    return Math.max(0, Math.min(100, currentScore));
   }
-
   return 0;
 };
 
-const getNormalizedSessionScore = session => {
-  const averageScore = Number(
-    session?.averageScore
-  );
-
-  if (
-    Number.isFinite(averageScore) &&
-    averageScore >= 0 &&
-    averageScore <= 100
-  ) {
-    return Math.round(averageScore);
+const getSessionScore = session => {
+  const avg = Number(session?.averageScore);
+  if (Number.isFinite(avg) && avg >= 0 && avg <= 100) return Math.round(avg);
+  const total = Number(session?.totalScore);
+  if (Number.isFinite(total) && total >= 0) {
+    const count = Array.isArray(session?.questions) ? session.questions.length : 0;
+    if (count > 0 && total > 100) return Math.round(total / count);
+    return Math.round(Math.min(100, total));
   }
-
-  const totalScore = Number(
-    session?.totalScore
-  );
-
-  if (
-    Number.isFinite(totalScore) &&
-    totalScore >= 0
-  ) {
-    const questionCount =
-      Array.isArray(session?.questions)
-        ? session.questions.length
-        : 0;
-
-    // Legacy sessions may already store totalScore
-    // as 0–100. New sessions can store sum of
-    // question scores, so normalize when necessary.
-    if (
-      questionCount > 0 &&
-      totalScore > 100
-    ) {
-      return Math.round(
-        totalScore / questionCount
-      );
-    }
-
-    return Math.round(
-      Math.min(100, totalScore)
-    );
-  }
-
   return 0;
 };
 
 const getQuestionCount = mode => {
   if (mode === 'quick') return 5;
-
-  if (['mcq', 'aptitude'].includes(mode)) {
-    return 8;
-  }
-
-  if (mode === 'mixed') {
-    return 10;
-  }
-
-  return 10;
+  if (['mcq', 'aptitude'].includes(mode)) return 8;
+  return 10; // mixed + default
 };
 
-const calculateReadiness = ({
-  averageScore,
-  bestScore,
-  streak,
-  totalInterviews,
-}) => {
+const calculateReadiness = ({ averageScore, bestScore, streak, totalInterviews }) => {
   if (!totalInterviews) return 0;
-
   const base = averageScore || 0;
   const streakBonus = Math.min((streak || 0) * 1.5, 12);
   const bestBonus = bestScore >= 90 ? 5 : bestScore >= 80 ? 3 : 0;
-
-  return Math.max(
-    0,
-    Math.min(
-      100,
-      Math.round(base + streakBonus + bestBonus)
-    )
-  );
+  return Math.max(0, Math.min(100, Math.round(base + streakBonus + bestBonus)));
 };
 
-const updateUserStats = async ({
-  user,
-  score,
-}) => {
+const updateUserStats = async ({ user, score }) => {
   const now = new Date();
-
-  user.totalInterviews =
-    Number(user.totalInterviews || 0) + 1;
-
-    user.totalSessions = user.totalInterviews; // keep both fields in sync
-
-  const previousTotal =
-    user.totalInterviews - 1;
-
-  const previousAverage =
-    Number(user.averageScore || 0);
-
-  user.averageScore =
-    previousTotal > 0
-      ? Math.round(
-          ((previousAverage * previousTotal) + score) /
-            user.totalInterviews
-        )
-      : Math.round(score);
-
-  user.bestScore = Math.max(
-    Number(user.bestScore || 0),
-    Number(score || 0)
-  );
-
-  if (!user.streak) {
-    user.streak = {
-      current: 0,
-      longest: 0,
-      lastPracticeDate: null,
-    };
-  }
-
+  user.totalInterviews = Number(user.totalInterviews || 0) + 1;
+  user.totalSessions = user.totalInterviews;
+  const prevTotal = user.totalInterviews - 1;
+  const prevAvg = Number(user.averageScore || 0);
+  user.averageScore = prevTotal > 0
+    ? Math.round(((prevAvg * prevTotal) + score) / user.totalInterviews)
+    : Math.round(score);
+  user.bestScore = Math.max(Number(user.bestScore || 0), Number(score || 0));
+  if (!user.streak) user.streak = { current: 0, longest: 0, lastPracticeDate: null };
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
-
   const lastPractice = user.streak.lastPracticeDate
     ? new Date(user.streak.lastPracticeDate)
     : null;
-
   if (lastPractice) {
     lastPractice.setHours(0, 0, 0, 0);
-
-    const diffDays = Math.round(
-      (today - lastPractice) /
-        (1000 * 60 * 60 * 24)
-    );
-
-    if (diffDays === 1) {
-      user.streak.current += 1;
-    } else if (diffDays > 1) {
-      user.streak.current = 1;
-    }
+    const diffDays = Math.round((today - lastPractice) / (1000 * 60 * 60 * 24));
+    if (diffDays === 1) user.streak.current += 1;
+    else if (diffDays > 1) user.streak.current = 1;
   } else {
     user.streak.current = 1;
   }
-
-  user.streak.longest = Math.max(
-    Number(user.streak.longest || 0),
-    Number(user.streak.current || 0)
-  );
-
+  user.streak.longest = Math.max(Number(user.streak.longest || 0), Number(user.streak.current || 0));
   user.streak.lastPracticeDate = now;
   user.streak.lastActive = now;
-
   user.readinessScore = calculateReadiness({
     averageScore: user.averageScore,
     bestScore: user.bestScore,
     streak: user.streak.current,
     totalInterviews: user.totalInterviews,
   });
-
   await user.save();
-
   return user;
 };
+
+const buildWeakAreas = (recentSessions) => {
+  const topicScores = {};
+  recentSessions.forEach(s => {
+    (s.questions || []).forEach(q => {
+      if (q.skipped || !q.score) return;
+      if (!topicScores[q.topic]) topicScores[q.topic] = [];
+      topicScores[q.topic].push(q.score);
+    });
+  });
+  return Object.entries(topicScores)
+    .map(([topic, scores]) => ({ topic, avg: scores.reduce((a, b) => a + b, 0) / scores.length }))
+    .filter(t => t.avg < 60)
+    .sort((a, b) => a.avg - b.avg)
+    .slice(0, 3)
+    .map(t => t.topic);
+};
+
+const buildSessionSummary = (questions) => {
+  const topicScores = {};
+  questions.forEach(q => {
+    const topic = q.topic || 'General';
+    if (!topicScores[topic]) topicScores[topic] = [];
+    topicScores[topic].push(Number(q.score || 0));
+  });
+  const strengths = [];
+  const weaknesses = [];
+  Object.entries(topicScores).forEach(([topic, scores]) => {
+    const avg = Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length);
+    if (avg >= 80) strengths.push(topic);
+    if (avg < 60) weaknesses.push(topic);
+  });
+  return { strengths, weaknesses };
+};
+
+// Shared tier-map builder used by getAnalytics and getAnalytics.
+// currentTier is always the gated tier; isUnlocked respects minSessions.
+const buildTierMap = ({ irs, sessionCount, dimProfile, dimTimeSeries, currentTierGated }) =>
+  TIERS.map((tier) => {
+    const readiness = tierReadiness(dimProfile, tier, sessionCount);
+    const blocker   = blockingDimension(readiness);
+    const eta       = sessionsToUnlock(blocker, dimTimeSeries);
+    return {
+      label: tier.label,
+      color: tier.color,
+      desc: tier.desc,
+      advice: tier.advice,
+      minIRS: tier.minIRS,
+      isCurrentTier: tier.label === currentTierGated.label,
+      isUnlocked: irs >= tier.minIRS && sessionCount >= tier.minSessions,
+      readinessPct: readiness.readinessPct,
+      confidenceGate: readiness.confidenceGate,
+      minSessionsRequired: tier.minSessions,
+      perDimension: readiness.perDimension,
+      blockingDimensions: readiness.blockingDimensions,
+      provisional: readiness.provisional,
+      primaryBlocker: blocker
+        ? { key: blocker.key, label: blocker.label, userScore: blocker.userScore, requiredMin: blocker.requiredMin, gap: blocker.gap }
+        : null,
+      eta,
+    };
+  });
 
 const startInterview = async (req, res) => {
   try {
     const userId = getUserId(req);
-
-    const {
-      mode = 'quick',
-      company = '',
-      topic = '',
-      difficulty = 'mixed',
-    } = req.body || {};
-
+    const { mode = 'quick', company = '', topic = '', difficulty = 'mixed' } = req.body || {};
     const count = getQuestionCount(mode);
 
     // Fetch last 10 completed sessions once — used for BOTH the
     // previous-questions exclusion list AND the weak-areas signal below.
     const recentSessions = await Session.find(
-  { $or: [{ user: userId }, { userId }], status: 'completed' },
-  { 'questions.text': 1, 'questions.topic': 1, 'questions.score': 1, 'questions.skipped': 1 },
-  { sort: { createdAt: -1 }, limit: 10 }
-).lean();
+      { $or: [{ user: userId }, { userId }], status: 'completed' },
+      { 'questions.text': 1, 'questions.topic': 1, 'questions.score': 1, 'questions.skipped': 1 },
+      { sort: { createdAt: -1 }, limit: 10 }
+    ).lean();
 
     const previousQuestions = recentSessions
       .flatMap(s => s.questions || [])
@@ -337,36 +242,10 @@ const startInterview = async (req, res) => {
       .filter(Boolean)
       .slice(0, 20); // cap at 20 — enough signal without bloating the prompt
 
-    // Build weakAreas from per-topic average scores across recent sessions.
-    // Topics averaging below 60 are treated as weak and prioritized by
-    // generateQuestions (see the "Prioritize weak areas" rule in aiServices.js).
-    const topicScores = {};
-    recentSessions.forEach(s => {
-      (s.questions || []).forEach(q => {
-        if (q.skipped || !q.score) return;
-        if (!topicScores[q.topic]) topicScores[q.topic] = [];
-        topicScores[q.topic].push(q.score);
-      });
-    });
-
-    const weakAreas = Object.entries(topicScores)
-      .map(([topic, scores]) => ({
-        topic,
-        avg: scores.reduce((a, b) => a + b, 0) / scores.length,
-      }))
-      .filter(t => t.avg < 60)
-      .sort((a, b) => a.avg - b.avg)
-      .slice(0, 3)
-      .map(t => t.topic);
+    const weakAreas = buildWeakAreas(recentSessions);
 
     const questions = await generateQuestions({
-      mode,
-      company,
-      topic,
-      weakAreas,
-      difficulty,
-      count,
-      previousQuestions,
+      mode, company, topic, weakAreas, difficulty, count, previousQuestions,
     });
 
     const session = await Session.create({
@@ -393,32 +272,15 @@ const startInterview = async (req, res) => {
       text: q.text,
       topic: q.topic,
       difficulty: q.difficulty,
-      timeLimit:
-        q.timeLimit ||
-        (q.questionType === 'aptitude'
-          ? 60
-          : q.questionType === 'mcq'
-            ? 45
-            : 120),
+      timeLimit: q.timeLimit || (q.questionType === 'aptitude' ? 60 : q.questionType === 'mcq' ? 45 : 120),
       questionType: q.questionType || 'open',
-      options:
-        q.questionType === 'open'
-          ? []
-          : q.options || [],
+      options: q.questionType === 'open' ? [] : q.options || [],
     }));
 
-    return res.status(201).json({
-      sessionId: session._id,
-      mode,
-      questions: publicQuestions,
-    });
+    return res.status(201).json({ sessionId: session._id, mode, questions: publicQuestions });
   } catch (error) {
     console.error('startInterview error:', error);
-
-    return res.status(500).json({
-      message: 'Failed to start interview.',
-      error: error.message,
-    });
+    return res.status(500).json({ message: 'Failed to start interview.', error: error.message });
   }
 };
 
@@ -426,18 +288,10 @@ const getInterviewSession = async (req, res) => {
   try {
     const userId = getUserId(req);
     const { sessionId } = req.params;
-
-    const session = await Session.findOne({
-      _id: sessionId,
-      user: userId,
-    });
-
+    const session = await Session.findOne({ _id: sessionId, user: userId });
     if (!session) {
-      return res.status(404).json({
-        message: 'Interview session not found.',
-      });
+      return res.status(404).json({ message: 'Interview session not found.' });
     }
-
     return res.json({
       sessionId: session._id,
       mode: session.mode,
@@ -449,20 +303,13 @@ const getInterviewSession = async (req, res) => {
         difficulty: q.difficulty,
         timeLimit: q.timeLimit,
         questionType: q.questionType,
-        options:
-          q.questionType === 'open'
-            ? []
-            : q.options,
+        options: q.questionType === 'open' ? [] : q.options,
       })),
       currentQuestion: session.currentQuestion,
     });
   } catch (error) {
     console.error('getInterviewSession error:', error);
-
-    return res.status(500).json({
-      message: 'Failed to load interview session.',
-      error: error.message,
-    });
+    return res.status(500).json({ message: 'Failed to load interview session.', error: error.message });
   }
 };
 
@@ -470,78 +317,28 @@ const answerQuestion = async (req, res) => {
   try {
     const userId = getUserId(req);
     const { sessionId } = req.params;
-
-    const {
-      questionId,
-      answer = '',
-      answerIndex = null,
-      timeTaken = 0,
-      skipped = false,
-    } = req.body || {};
-
-    const session = await Session.findOne({
-      _id: sessionId,
-      user: userId,
-      status: 'active',
-    });
-
+    const { questionId, answer = '', answerIndex = null, timeTaken = 0, skipped = false } = req.body || {};
+    const session = await Session.findOne({ _id: sessionId, user: userId, status: 'active' });
     if (!session) {
-      return res.status(404).json({
-        message: 'Active interview session not found.',
-      });
+      return res.status(404).json({ message: 'Active interview session not found.' });
     }
-
-    const question = session.questions.find(
-      q => q.id === questionId
-    );
-
+    const question = session.questions.find(q => q.id === questionId);
     if (!question) {
-      return res.status(404).json({
-        message: 'Question not found.',
-      });
+      return res.status(404).json({ message: 'Question not found.' });
     }
-
     question.timeTaken = Number(timeTaken) || 0;
     question.skipped = Boolean(skipped);
-
     if (['mcq', 'aptitude'].includes(question.questionType)) {
-      question.userAnswerIndex =
-        answerIndex === null ||
-        answerIndex === undefined
-          ? null
-          : Number(answerIndex);
-
-      question.userAnswer =
-        answer ||
-        (question.userAnswerIndex !== null
-          ? question.options?.[question.userAnswerIndex] || ''
-          : '');
-
-      const result = evaluateObjectiveAnswer({
-        question,
-        answerIndex: question.userAnswerIndex,
-      });
-
+      question.userAnswerIndex = answerIndex === null || answerIndex === undefined ? null : Number(answerIndex);
+      question.userAnswer = answer || (question.userAnswerIndex !== null ? question.options?.[question.userAnswerIndex] || '' : '');
+      const result = evalObjectiveAnswer({ question, answerIndex: question.userAnswerIndex });
       question.score = result.score;
       question.feedback = result.feedback;
     } else {
       question.userAnswer = String(answer || '');
-
       if (skipped) {
         question.score = 0;
-        // Calls a dedicated generator that writes a real, question-specific
-        // model answer (75-100 words, point-wise) — not the generic
-        // "start with the main definition" placeholder evaluateOpenAnswer's
-        // empty-answer branch returns for every skipped question regardless
-        // of topic. Must still match the same feedback JSON shape as a real
-        // AI evaluation, or the frontend's JSON.parse(feedback) throws and
-        // shows a misleading "AI evaluation failed" toast for what was
-        // actually just a skip.
-        const result = await generateSkippedQuestionAnswer({
-          question,
-          topic: question.topic,
-        });
-
+        const result = await getSkippedAnswer({ question, topic: question.topic });
         question.feedback = JSON.stringify({
           good: '',
           missing: 'Question skipped — no answer submitted.',
@@ -552,75 +349,37 @@ const answerQuestion = async (req, res) => {
           fallback: result.fallback === true,
         });
       } else {
-       const result = await evaluateOpenAnswer({
-  question,
-  answer: question.userAnswer,
-  topic: question.topic,
-});
-
-question.score = Number(result.score || 0);
-
-question.feedback = JSON.stringify({
-  good: result.good || '',
-  missing: result.missing || '',
-  idealHint: result.idealHint || '',
-  tip: result.tip || '',
-  sampleAnswer: result.sampleAnswer || '',
-  aiAvailable: result.aiAvailable !== false,
-  fallback: result.fallback === true,
-});
+        const result = await evaluateOpenAnswer({ question, answer: question.userAnswer, topic: question.topic });
+        question.score = Number(result.score || 0);
+        question.feedback = JSON.stringify({
+          good: result.good || '',
+          missing: result.missing || '',
+          idealHint: result.idealHint || '',
+          tip: result.tip || '',
+          sampleAnswer: result.sampleAnswer || '',
+          aiAvailable: result.aiAvailable !== false,
+          fallback: result.fallback === true,
+        });
       }
     }
-
-    const currentIndex = session.questions.findIndex(
-      q => q.id === questionId
-    );
-
-    session.currentQuestion = Math.min(
-      currentIndex + 1,
-      session.questions.length - 1
-    );
-
+    const currentIndex = session.questions.findIndex(q => q.id === questionId);
+    session.currentQuestion = Math.min(currentIndex + 1, session.questions.length - 1);
     await session.save();
-
-    const isObjectiveQuestion = ['mcq', 'aptitude'].includes(question.questionType);
-
+    const isObjective = ['mcq', 'aptitude'].includes(question.questionType);
     return res.json({
       success: true,
       questionId,
       score: question.score,
       feedback: question.feedback,
       skipped: Boolean(question.skipped),
-      correct:
-        isObjectiveQuestion
-          ? question.score === 100
-          : null,
-      // Only safe to reveal once this question has actually been answered
-      // (or skipped) — startInterview's publicQuestions deliberately omits
-      // both fields for the same question so the answer can't be read off
-      // the network tab mid-question. Without these, the frontend's
-      // McqExplanation had no correct index/explanation to render at all
-      // during a live session, which is what caused the correct answer to
-      // never highlight green even when the right option was picked.
-      correctAnswerIndex:
-        isObjectiveQuestion
-          ? question.correctAnswerIndex
-          : null,
-      explanation:
-        isObjectiveQuestion
-          ? (question.explanation || '')
-          : '',
-      nextQuestion:
-        session.currentQuestion <
-        session.questions.length - 1,
+      correct: isObjective ? question.score === 100 : null,
+      correctAnswerIndex: isObjective ? question.correctAnswerIndex : null,
+      explanation: isObjective ? (question.explanation || '') : '',
+      nextQuestion: session.currentQuestion < session.questions.length - 1,
     });
   } catch (error) {
     console.error('answerQuestion error:', error);
-
-    return res.status(500).json({
-      message: 'Failed to submit answer.',
-      error: error.message,
-    });
+    return res.status(500).json({ message: 'Failed to submit answer.', error: error.message });
   }
 };
 
@@ -628,119 +387,36 @@ const completeInterview = async (req, res) => {
   try {
     const userId = getUserId(req);
     const { sessionId } = req.params;
-
-    const session = await Session.findOne({
-      _id: sessionId,
-      user: userId,
-      status: 'active',
-    });
-
+    const session = await Session.findOne({ _id: sessionId, user: userId, status: 'active' });
     if (!session) {
-      return res.status(404).json({
-        message: 'Active interview session not found.',
-      });
+      return res.status(404).json({ message: 'Active interview session not found.' });
     }
-
-    const questionScores = session.questions.map(
-      q => Number(q.score || 0)
-    );
-
-    const totalScore = questionScores.reduce(
-      (sum, score) => sum + score,
-      0
-    );
-
+    const questionScores = session.questions.map(q => Number(q.score || 0));
+    const totalScore = questionScores.reduce((sum, s) => sum + s, 0);
     const averageScore = session.questions.length
-      ? Math.round(
-          totalScore / session.questions.length
-        )
+      ? Math.round(totalScore / session.questions.length)
       : 0;
-
-    const objectiveQuestions =
-      session.questions.filter(q =>
-        ['mcq', 'aptitude'].includes(q.questionType)
-      );
-
-    const objectiveCorrect =
-      objectiveQuestions.filter(
-        q => q.score === 100
-      ).length;
-
-    const openQuestions =
-      session.questions.filter(
-        q => q.questionType === 'open'
-      );
-
-    const strengths = [];
-    const weaknesses = [];
-
-    const topicScores = {};
-
-    session.questions.forEach(q => {
-      const topic = q.topic || 'General';
-
-      if (!topicScores[topic]) {
-        topicScores[topic] = [];
-      }
-
-      topicScores[topic].push(
-        Number(q.score || 0)
-      );
-    });
-
-    Object.entries(topicScores).forEach(
-      ([topic, scores]) => {
-        const avg = Math.round(
-          scores.reduce(
-            (sum, score) => sum + score,
-            0
-          ) / scores.length
-        );
-
-        if (avg >= 80) {
-          strengths.push(topic);
-        }
-
-        if (avg < 60) {
-          weaknesses.push(topic);
-        }
-      }
-    );
-
+    const objectiveQuestions = session.questions.filter(q => ['mcq', 'aptitude'].includes(q.questionType));
+    const objectiveCorrect = objectiveQuestions.filter(q => q.score === 100).length;
+    const { strengths, weaknesses } = buildSessionSummary(session.questions);
     session.totalScore = totalScore;
     session.averageScore = averageScore;
     session.objectiveCorrect = objectiveCorrect;
-    session.objectiveTotal =
-      objectiveQuestions.length;
+    session.objectiveTotal = objectiveQuestions.length;
     session.strengths = strengths;
     session.weaknesses = weaknesses;
     session.status = 'completed';
     session.completedAt = new Date();
-    session.duration =
-      Math.round(
-        (session.completedAt -
-          session.startedAt) /
-          1000
-      );
-
+    session.duration = Math.round((session.completedAt - session.startedAt) / 1000);
     session.readinessScore = calculateReadiness({
       averageScore,
       bestScore: averageScore,
       streak: 0,
       totalInterviews: 1,
     });
-
     await session.save();
-
     const user = await User.findById(userId);
-
-    if (user) {
-      await updateUserStats({
-        user,
-        score: averageScore,
-      });
-    }
-
+    if (user) await updateUserStats({ user, score: averageScore });
     return res.json({
       success: true,
       sessionId: session._id,
@@ -758,16 +434,10 @@ const completeInterview = async (req, res) => {
         topic: q.topic,
         difficulty: q.difficulty,
         questionType: q.questionType,
-        options:
-          q.questionType === 'open'
-            ? []
-            : q.options,
+        options: q.questionType === 'open' ? [] : q.options,
         userAnswer: q.userAnswer,
         userAnswerIndex: q.userAnswerIndex,
-        correctAnswerIndex:
-          q.questionType === 'open'
-            ? null
-            : q.correctAnswerIndex,
+        correctAnswerIndex: q.questionType === 'open' ? null : q.correctAnswerIndex,
         score: q.score,
         feedback: q.feedback,
         skipped: q.skipped,
@@ -776,56 +446,25 @@ const completeInterview = async (req, res) => {
     });
   } catch (error) {
     console.error('completeInterview error:', error);
-
-    return res.status(500).json({
-      message: 'Failed to complete interview.',
-      error: error.message,
-    });
+    return res.status(500).json({ message: 'Failed to complete interview.', error: error.message });
   }
 };
 
-// Re-evaluates an already-submitted open answer with a fresh AI call.
-// Useful when the first evaluation fell back due to AI being unavailable,
-// or the user just wants a second pass. Does not change the question order
-// or session progress — only the stored score/feedback for that question.
 const retryQuestion = async (req, res) => {
   try {
     const userId = getUserId(req);
     const { sessionId, questionId } = req.params;
-
-    const session = await Session.findOne({
-      _id: sessionId,
-      user: userId,
-    });
-
-    if (!session) {
-      return res.status(404).json({ message: 'Session not found.' });
-    }
-
+    const session = await Session.findOne({ _id: sessionId, user: userId });
+    if (!session) return res.status(404).json({ message: 'Session not found.' });
     const question = session.questions.find(q => q.id === questionId);
-
-    if (!question) {
-      return res.status(404).json({ message: 'Question not found.' });
-    }
-
+    if (!question) return res.status(404).json({ message: 'Question not found.' });
     if (['mcq', 'aptitude'].includes(question.questionType)) {
-      return res.status(400).json({
-        message: 'Only open-ended questions can be retried.',
-      });
+      return res.status(400).json({ message: 'Only open-ended questions can be retried.' });
     }
-
     if (!question.userAnswer) {
-      return res.status(400).json({
-        message: 'This question has no submitted answer to re-evaluate.',
-      });
+      return res.status(400).json({ message: 'This question has no submitted answer to re-evaluate.' });
     }
-
-    const result = await evaluateOpenAnswer({
-      question,
-      answer: question.userAnswer,
-      topic: question.topic,
-    });
-
+    const result = await evaluateOpenAnswer({ question, answer: question.userAnswer, topic: question.topic });
     question.score = Number(result.score || 0);
     question.feedback = JSON.stringify({
       good: result.good || '',
@@ -836,84 +475,37 @@ const retryQuestion = async (req, res) => {
       aiAvailable: result.aiAvailable !== false,
       fallback: result.fallback === true,
     });
-
     await session.save();
-
-    return res.json({
-      success: true,
-      questionId,
-      score: question.score,
-      feedback: question.feedback,
-    });
+    return res.json({ success: true, questionId, score: question.score, feedback: question.feedback });
   } catch (error) {
     console.error('retryQuestion error:', error);
-
-    return res.status(500).json({
-      message: 'Failed to retry question.',
-      error: error.message,
-    });
+    return res.status(500).json({ message: 'Failed to retry question.', error: error.message });
   }
 };
 
 const getInterviewHistory = async (req, res) => {
   try {
     const userId = getUserId(req);
-
-    const sessions = await Session.find({
-      $or: [
-        { user: userId },
-        { userId: userId },
-      ],
+    const rawSessions = await Session.find({
+      $or: [{ user: userId }, { userId }],
       status: 'completed',
     })
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();
-
-    const normalizedSessions = sessions.map(
-      session => {
-        const score =
-          getNormalizedSessionScore(session);
-
-        return {
-          ...session,
-
-          score,
-
-          averageScore:
-            Number.isFinite(
-              Number(session.averageScore)
-            )
-              ? Number(
-                  session.averageScore
-                )
-              : score,
-
-          questionCount:
-            Array.isArray(
-              session.questions
-            )
-              ? session.questions.length
-              : 0,
-        };
-      }
-    );
-
-    return res.json({
-      success: true,
-      sessions: normalizedSessions,
+    const sessions = rawSessions.map(session => {
+      const score = getSessionScore(session);
+      return {
+        ...session,
+        score,
+        averageScore: Number.isFinite(Number(session.averageScore)) ? Number(session.averageScore) : score,
+        questionCount: Array.isArray(session.questions) ? session.questions.length : 0,
+      };
     });
+    return res.json({ success: true, sessions });
   } catch (error) {
-    console.error(
-      'getInterviewHistory error:',
-      error
-    );
-
-    return res.status(500).json({
-      message:
-        'Failed to load interview history.',
-      error: error.message,
-    });
+    console.error('getInterviewHistory error:', error);
+    return res.status(500).json({ message: 'Failed to load interview history.', error: error.message });
   }
 };
 
@@ -921,28 +513,12 @@ const getInterviewResult = async (req, res) => {
   try {
     const userId = getUserId(req);
     const { sessionId } = req.params;
-
-    const session = await Session.findOne({
-      _id: sessionId,
-      user: userId,
-    });
-
-    if (!session) {
-      return res.status(404).json({
-        message: 'Interview result not found.',
-      });
-    }
-
-    return res.json({
-      session,
-    });
+    const session = await Session.findOne({ _id: sessionId, user: userId });
+    if (!session) return res.status(404).json({ message: 'Interview result not found.' });
+    return res.json({ session });
   } catch (error) {
     console.error('getInterviewResult error:', error);
-
-    return res.status(500).json({
-      message: 'Failed to load result.',
-      error: error.message,
-    });
+    return res.status(500).json({ message: 'Failed to load result.', error: error.message });
   }
 };
 
@@ -950,113 +526,56 @@ const abandonInterview = async (req, res) => {
   try {
     const userId = getUserId(req);
     const { sessionId } = req.params;
-
     const session = await Session.findOneAndUpdate(
-      {
-        _id: sessionId,
-        $or: [{ user: userId }, { userId: userId }],
-        status: 'active',
-      },
-      {
-        $set: {
-          status: 'abandoned',
-        },
-      },
-      {
-        new: true,
-      }
+      { _id: sessionId, $or: [{ user: userId }, { userId }], status: 'active' },
+      { $set: { status: 'abandoned' } },
+      { new: true }
     );
-
-    if (!session) {
-      return res.status(404).json({
-        message: 'Active session not found.',
-      });
-    }
-
-    return res.json({
-      success: true,
-    });
+    if (!session) return res.status(404).json({ message: 'Active session not found.' });
+    return res.json({ success: true });
   } catch (error) {
     console.error('abandonInterview error:', error);
-
-    return res.status(500).json({
-      message: 'Failed to abandon interview.',
-      error: error.message,
-    });
+    return res.status(500).json({ message: 'Failed to abandon interview.', error: error.message });
   }
 };
 
 const getBadges = async (req, res) => {
   try {
     const userId = getUserId(req);
-
     const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({
-        message: 'User not found.',
-      });
-    }
-
-    const totalInterviews =
-      Number(user.totalInterviews || 0);
-
+    if (!user) return res.status(404).json({ message: 'User not found.' });
     const badgeUser = {
-      totalInterviews,
+      totalInterviews: Number(user.totalInterviews || 0),
       bestScore: Number(user.bestScore || 0),
-      streak: {
-        current: Number(
-          user.streak?.current || 0
-        ),
-      },
+      streak: { current: Number(user.streak?.current || 0) },
     };
-
     const badges = BADGES.map(badge => ({
       id: badge.id,
       label: badge.label,
       unlocked: badge.check(badgeUser),
     }));
-
-    return res.json({
-      badges,
-    });
+    return res.json({ badges });
   } catch (error) {
     console.error('getBadges error:', error);
-
-    return res.status(500).json({
-      message: 'Failed to load badges.',
-      error: error.message,
-    });
+    return res.status(500).json({ message: 'Failed to load badges.', error: error.message });
   }
 };
 
-// ─── Shared IRS computation ────────────────────────────────────────────────
-// Single source of truth used by /me (navbar) and getPerformanceAnalytics
-// (dashboard/analytics). Both call this so the number is always identical.
 const computeUserIRS = async (userId) => {
   const sessions = await Session.find({
     $or: [{ user: userId }, { userId }],
     status: 'completed',
   }).sort({ createdAt: 1 }).lean();
-
   if (!sessions.length) return { irs: 0, averageScore: 0, tierLabel: '₹3–6 LPA' };
-
-  const chronological = sessions; // already sorted oldest→newest
-  const scores = chronological.map(s => getNormalizedSessionScore(s));
+  const scores = sessions.map(s => getSessionScore(s));
   const averageScore = Math.round(scores.reduce((a, v) => a + v, 0) / scores.length);
-
-  const scoreTrend = chronological.map((s, i) => ({
-    interview: i + 1,
-    score: scores[i],
-    date: s.createdAt,
-  }));
-
+  const scoreTrend = sessions.map((s, i) => ({ interview: i + 1, score: scores[i], date: s.createdAt }));
   const topicStats = {};
-  chronological.forEach(session => {
+  sessions.forEach(session => {
     (session.questions || []).forEach(q => {
       if (!q.userAnswer || q.userAnswer === 'Skipped') return;
       const topic = q.topic || 'General';
-      const score = getNormalizedQuestionScore(q);
+      const score = getQuestionScore(q);
       if (!topicStats[topic]) topicStats[topic] = { topic, totalScore: 0, count: 0 };
       topicStats[topic].totalScore += score;
       topicStats[topic].count += 1;
@@ -1067,31 +586,19 @@ const computeUserIRS = async (userId) => {
     averageScore: Math.round(t.totalScore / t.count),
     attempts: t.count,
   }));
-
-  const { profile: dimensionProfile } = buildDimensionProfile(topicPerformance);
-  const { totalAnsweredQuestions, difficultyMix } = extractIRSEvidence(chronological);
-  const irs = computeIRS({
-    dimensionProfile,
-    scoreTrend,
-    topicPerformance,
-    averageScore,
-    totalAnsweredQuestions,
-    difficultyMix,
-  });
+  const { profile: dimProfile } = buildDimensionProfile(topicPerformance);
+  const { totalAnswered, difficultyMix } = extractIRSEvidence(sessions);
+  const irs = computeIRS({ dimensionProfile: dimProfile, scoreTrend, topicPerformance, averageScore, totalAnswered, difficultyMix });
   const { tier: gatedTier } = tierForScoreGated(irs, sessions.length);
-
   return { irs, averageScore, tierLabel: gatedTier.label };
 };
+
 
 const getAnalytics = async (req, res) => {
   try {
     const userId = getUserId(req);
-
     const sessions = await Session.find({
-      $or: [
-        { user: userId },
-        { userId: userId },
-      ],
+      $or: [{ user: userId }, { userId }],
       status: 'completed',
       'questions.0': { $exists: true }, // exclude sessions with zero answered questions
     })
@@ -1109,56 +616,25 @@ const getAnalytics = async (req, res) => {
         scoreTrend: [],
         topicPerformance: [],
         weakTopics: [],
-        timePerformance: {
-          averageTimePerQuestion: 0,
-          totalTime: 0,
-        },
-        irs: 0,
-        currentTier: null,
-        tiers: [],
-        dimensionProfile: [],
-        unmappedTopics: [],
+        timePerformance: { avgTimePerQuestion: 0, totalTime: 0 },
+        ...EMPTY_IRS_RESPONSE,
       });
     }
 
-    const scores = sessions.map(
-      session =>
-        getNormalizedSessionScore(
-          session
-        )
-    );
+    const scores = sessions.map(s => getSessionScore(s));
+    const totalSessions = sessions.length;
+    const averageScore = Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length);
+    const highestScore = Math.max(...scores);
+    const lowestScore = Math.min(...scores);
 
-    const totalSessions =
-      sessions.length;
-
-    const averageScore = Math.round(
-      scores.reduce(
-        (sum, score) =>
-          sum + score,
-        0
-      ) / scores.length
-    );
-
-    const highestScore = Math.max(
-      ...scores
-    );
-
-    const lowestScore = Math.min(
-      ...scores
-    );
-
-    // Build scoreTrend with per-dimension scores for the Skill Velocity graph.
-    // For each session we compute a quick dimension average from its questions —
-    // same synonym resolver as buildDimensionProfile, but lightweight (no shrinkage)
-    // because this is only used for relative trend lines, not for IRS computation.
     const scoreTrend = sessions.map(session => {
-      const sessionScore = getNormalizedSessionScore(session);
+      const sessionScore = getSessionScore(session);
       const dimTotals = {};
       (session.questions || []).forEach(q => {
         if (!q.userAnswer || q.userAnswer === 'Skipped') return;
-        const canonical = resolveCanonicalTopic(q.topic);
-        const dims = CANONICAL_TOPIC_TO_DIMENSIONS[canonical] || [];
-        const score = getNormalizedQuestionScore(q);
+        const canonical = resolveTopic(q.topic);
+        const dims = TOPIC_DIMENSIONS[canonical] || [];
+        const score = getQuestionScore(q);
         dims.forEach(dimKey => {
           if (!dimTotals[dimKey]) dimTotals[dimKey] = { sum: 0, count: 0 };
           dimTotals[dimKey].sum += score;
@@ -1169,159 +645,58 @@ const getAnalytics = async (req, res) => {
       Object.entries(dimTotals).forEach(([key, { sum, count }]) => {
         if (count > 0) topicScores[key] = Math.round(sum / count);
       });
-      return {
-        date: session.createdAt,
-        score: sessionScore,
-        mode: session.mode,
-        topicScores, // { technical: 72, problemSolving: 65, … } — only dims with data this session
-      };
+      return { date: session.createdAt, score: sessionScore, mode: session.mode, topicScores };
     });
 
-    const allQuestions =
-      sessions.flatMap(
-        session =>
-          session.questions || []
-      );
-
-    const answeredQuestions =
-      allQuestions.filter(
-        question =>
-          question.userAnswer &&
-          question.userAnswer !==
-            'Skipped'
-      );
+    const answeredQuestions = sessions
+      .flatMap(s => s.questions || [])
+      .filter(q => q.userAnswer && q.userAnswer !== 'Skipped');
 
     const topicMap = {};
-
-    answeredQuestions.forEach(
-      question => {
-        const topic =
-          question.topic ||
-          'General';
-
-        const score =
-          getNormalizedQuestionScore(
-            question
-          );
-
-        if (!topicMap[topic]) {
-          topicMap[topic] = {
-            topic,
-            totalScore: 0,
-            count: 0,
-          };
-        }
-
-        topicMap[
-          topic
-        ].totalScore += score;
-
-        topicMap[
-          topic
-        ].count += 1;
-      }
-    );
-
-    const topicPerformance =
-      Object.values(topicMap)
-        .map(item => ({
-          topic: item.topic,
-
-          averageScore:
-            Math.round(
-              item.totalScore /
-                item.count
-            ),
-
-          attempts: item.count,
-        }))
-        .sort(
-          (a, b) =>
-            b.averageScore -
-            a.averageScore
-        );
-
-    const weakTopics =
-      topicPerformance
-        .filter(
-          topic =>
-            topic.averageScore < 70
-        )
-        .sort(
-          (a, b) =>
-            a.averageScore -
-            b.averageScore
-        )
-        .slice(0, 3)
-        .map(topic =>
-          topic.topic
-        );
-
-    const totalTime =
-      answeredQuestions.reduce(
-        (sum, question) =>
-          sum +
-          Number(
-            question.timeTaken ||
-              0
-          ),
-        0
-      );
-
-    const averageTimePerQuestion =
-      answeredQuestions.length
-        ? Math.round(
-            totalTime /
-              answeredQuestions.length
-          )
-        : 0;
-
-    // ── IRS + dimension profile — same engine as getPerformanceAnalytics
-    const { profile: dimensionProfile, unmapped: unmappedTopics } =
-      buildDimensionProfile(topicPerformance);
-
-    const { totalAnsweredQuestions, difficultyMix } = extractIRSEvidence(sessions);
-
-    const irsBreakdown = computeIRSBreakdown({
-      dimensionProfile,
-      scoreTrend,
-      topicPerformance,
-      averageScore,
-      totalAnsweredQuestions,
-      difficultyMix,
+    answeredQuestions.forEach(q => {
+      const topic = q.topic || 'General';
+      const score = getQuestionScore(q);
+      if (!topicMap[topic]) topicMap[topic] = { topic, totalScore: 0, count: 0 };
+      topicMap[topic].totalScore += score;
+      topicMap[topic].count += 1;
     });
-    const irs = irsBreakdown.finalScore;
 
+    const topicPerformance = Object.values(topicMap)
+      .map(item => ({ topic: item.topic, averageScore: Math.round(item.totalScore / item.count), attempts: item.count }))
+      .sort((a, b) => b.averageScore - a.averageScore);
+
+    const weakTopics = topicPerformance
+      .filter(t => t.averageScore < 70)
+      .sort((a, b) => a.averageScore - b.averageScore)
+      .slice(0, 3)
+      .map(t => t.topic);
+
+    const totalTime = answeredQuestions.reduce((sum, q) => sum + Number(q.timeTaken || 0), 0);
+    const avgTimePerQuestion = answeredQuestions.length
+      ? Math.round(totalTime / answeredQuestions.length)
+      : 0;
+
+    const { profile: dimProfile, unmapped: unmappedTopics } = buildDimensionProfile(topicPerformance);
+    const { totalAnswered, difficultyMix } = extractIRSEvidence(sessions);
+
+    const breakdown = irsBreakdown({
+      dimensionProfile: dimProfile, scoreTrend, topicPerformance, averageScore, totalAnswered, difficultyMix,
+    });
+    const irs = breakdown.finalScore;
     const currentTierRaw = tierForScore(irs);
-    const { tier: currentTierGated, isGated, sessionsNeededForRawTier } =
-      tierForScoreGated(irs, sessions.length);
+    const { tier: currentTierGated, isGated, sessionsNeededForRawTier } = tierForScoreGated(irs, sessions.length);
+    const dimTimeSeries = buildDimSeries(sessions);
+    const tiers = buildTierMap({ irs, sessionCount: sessions.length, dimProfile, dimTimeSeries, currentTierGated });
 
-    const dimensionTimeSeries = buildDimensionTimeSeries(sessions);
-
-    const tiers = TIERS.map((tier) => {
-      const readiness = computeTierReadiness(dimensionProfile, tier, sessions.length);
-      const blocker = findBlockingDimension(readiness);
-      const eta = projectSessionsToUnlock(blocker, dimensionTimeSeries);
-      return {
-        label: tier.label,
-        color: tier.color,
-        desc: tier.desc,
-        advice: tier.advice,
-        minIRS: tier.minIRS,
-        isCurrentTier: tier.label === currentTierGated.label,
-        isUnlocked: irs >= tier.minIRS && sessions.length >= tier.minSessions,
-        readinessPct: readiness.readinessPct,
-        confidenceGate: readiness.confidenceGate,
-        minSessionsRequired: tier.minSessions,
-        perDimension: readiness.perDimension,
-        blockingDimensions: readiness.blockingDimensions,
-        provisionalDimensions: readiness.provisionalDimensions,
-        primaryBlocker: blocker
-          ? { key: blocker.key, label: blocker.label, userScore: blocker.userScore, requiredMin: blocker.requiredMin, gap: blocker.gap }
-          : null,
-        eta,
-      };
-    });
+    // ── Badge hydration ───────────────────────────────────────────────────────
+    const userForBadges = await User.findById(userId).select('badges streak totalSessions bestScore').lean();
+    const evaluatedBadges = evaluateBadges({ user: userForBadges, sessions });
+    const badges = evaluatedBadges.map(b => ({
+      id: b.id,
+      unlocked: b.unlocked,
+      progress: b.progress,
+      meta: b.meta,
+    }));
 
     return res.json({
       totalSessions,
@@ -1333,42 +708,32 @@ const getAnalytics = async (req, res) => {
       scoreTrend,
       topicPerformance,
       weakTopics,
-      timePerformance: {
-        averageTimePerQuestion,
-        totalTime,
-      },
+      timePerformance: { avgTimePerQuestion, totalTime },
       irs,
-      irsBreakdown,
+      irsBreakdown: breakdown,
       currentTier: currentTierGated.label,
       currentTierIsGated: isGated,
       currentTierRaw: currentTierRaw.label,
       sessionsNeededForRawTier,
-      totalAnsweredQuestions,
+      totalAnswered,
       difficultyMix,
       tiers,
-      dimensionProfile,
+      dimensionProfile: dimProfile,
       unmappedTopics,
+      badges,
+      percentile: null,
     });
   } catch (error) {
-    console.error(
-      'getAnalytics error:',
-      error
-    );
-
-    return res.status(500).json({
-      error:
-        'Failed to load analytics.',
-    });
+    console.error('getAnalytics error:', error);
+    return res.status(500).json({ error: 'Failed to load analytics.' });
   }
 };
 
-
-const getPerformanceAnalytics = async (req, res) => {
+const getPerformance = async (req, res) => {
   try {
     const userId = getUserId(req);
-
     const sessions = await Session.find({
-      $or: [{ user: userId }, { userId: userId }],
+      $or: [{ user: userId }, { userId }],
       status: 'completed',
       'questions.0': { $exists: true }, // exclude sessions with zero answered questions
     })
@@ -1385,125 +750,58 @@ const getPerformanceAnalytics = async (req, res) => {
         topicPerformance: [],
         weakTopics: [],
         badges: [],
-        // NEW — always present, even when empty, so the frontend never
-        // has to special-case a missing field
-        irs: 0,
-        currentTier: null,
-        tiers: [],
-        dimensionProfile: [],
-        unmappedTopics: [],
+        ...EMPTY_IRS_RESPONSE,
       });
     }
 
-    const scores = sessions.map((session) => getNormalizedSessionScore(session));
-
-    const averageScore = Math.round(
-      scores.reduce((sum, score) => sum + score, 0) / scores.length
-    );
-
+    const scores = sessions.map(s => getSessionScore(s));
+    const averageScore = Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length);
     const bestScore = Math.max(...scores);
-
-    // chronological (oldest -> newest) for trend/slope/badge logic
     const chronological = [...sessions].reverse();
 
     const scoreTrend = chronological.map((session, index) => ({
       interview: index + 1,
-      score: getNormalizedSessionScore(session),
+      score: getSessionScore(session),
       date: session.createdAt,
     }));
 
-    // ── topicPerformance (unchanged from before — raw topic strings,
-    //    exactly as stored) ──────────────────────────────────────────
     const topicStats = {};
-
-    sessions.forEach((session) => {
-      (session.questions || []).forEach((question) => {
-        if (!question.userAnswer || question.userAnswer === 'Skipped') return;
-
-        const topic = question.topic || 'General';
-        const score = getNormalizedQuestionScore(question);
-
-        if (!topicStats[topic]) {
-          topicStats[topic] = { topic, totalScore: 0, count: 0 };
-        }
-
+    sessions.forEach(session => {
+      (session.questions || []).forEach(q => {
+        if (!q.userAnswer || q.userAnswer === 'Skipped') return;
+        const topic = q.topic || 'General';
+        const score = getQuestionScore(q);
+        if (!topicStats[topic]) topicStats[topic] = { topic, totalScore: 0, count: 0 };
         topicStats[topic].totalScore += score;
         topicStats[topic].count += 1;
       });
     });
 
     const topicPerformance = Object.values(topicStats)
-      .map((item) => ({
-        topic: item.topic,
-        averageScore: Math.round(item.totalScore / item.count),
-        attempts: item.count,
-      }))
+      .map(item => ({ topic: item.topic, averageScore: Math.round(item.totalScore / item.count), attempts: item.count }))
       .sort((a, b) => b.averageScore - a.averageScore);
 
     const weakTopics = topicPerformance
-      .filter((topic) => topic.averageScore < 70)
+      .filter(t => t.averageScore < 70)
       .sort((a, b) => a.averageScore - b.averageScore)
       .slice(0, 3)
-      .map((topic) => topic.topic);
+      .map(t => t.topic);
 
-    // ── NEW: real dimension profile, IRS, tier readiness ──────────────
-    const { profile: dimensionProfile, unmapped: unmappedTopics } =
-      buildDimensionProfile(topicPerformance);
+    const { profile: dimProfile, unmapped: unmappedTopics } = buildDimensionProfile(topicPerformance);
+    const { totalAnswered, difficultyMix } = extractIRSEvidence(chronological);
 
-    const { totalAnsweredQuestions, difficultyMix } = extractIRSEvidence(chronological);
-
-    const irsBreakdown = computeIRSBreakdown({
-      dimensionProfile,
-      scoreTrend,
-      topicPerformance,
-      averageScore,
-      totalAnsweredQuestions,
-      difficultyMix,
+    const breakdown = irsBreakdown({
+      dimensionProfile: dimProfile, scoreTrend, topicPerformance, averageScore, totalAnswered, difficultyMix,
     });
-    const irs = irsBreakdown.finalScore;
-
-    // currentTierRaw = pure IRS-math tier (for "points to next band" math).
-    // currentTierGated = what should be SHOWN as "you're eligible for X" —
-    // requires enough logged sessions to back the claim, not just the number.
+    const irs = breakdown.finalScore;
     const currentTierRaw = tierForScore(irs);
-    const { tier: currentTierGated, isGated, sessionsNeededForRawTier } =
-      tierForScoreGated(irs, sessions.length);
+    const { tier: currentTierGated, isGated, sessionsNeededForRawTier } = tierForScoreGated(irs, sessions.length);
+    const dimTimeSeries = buildDimSeries(chronological); 
 
-    // per-dimension time series, needed for honest ETA projection —
-    // built from raw sessions (questions[].topic/score/skipped), not
-    // from the lifetime topicPerformance averages above
-    const dimensionTimeSeries = buildDimensionTimeSeries(chronological);
+    // NOTE: uses currentTierGated (not raw) so isCurrentTier and isUnlocked are consistent
+    // between getAnalytics and getAnalytics.
+    const tiers = buildTierMap({ irs, sessionCount: sessions.length, dimProfile, dimTimeSeries, currentTierGated });
 
-    // compute readiness against ALL 4 tiers at once (not just "next tier") —
-    // this is the "how far to every milestone" view, cheap to compute since
-    // it's the same function looped
-    const tiers = TIERS.map((tier) => {
-      const readiness = computeTierReadiness(dimensionProfile, tier, sessions.length);
-      const blocker = findBlockingDimension(readiness);
-      const eta = projectSessionsToUnlock(blocker, dimensionTimeSeries);
-
-      return {
-        label: tier.label,
-        color: tier.color,
-        desc: tier.desc,
-        advice: tier.advice,
-        minIRS: tier.minIRS,
-        isCurrentTier: tier.label === currentTierRaw.label,
-        isUnlocked: irs >= tier.minIRS,
-        readinessPct: readiness.readinessPct,
-        confidenceGate: readiness.confidenceGate,
-        minSessionsRequired: tier.minSessions,
-        perDimension: readiness.perDimension,
-        blockingDimensions: readiness.blockingDimensions,
-        provisionalDimensions: readiness.provisionalDimensions,
-        primaryBlocker: blocker
-          ? { key: blocker.key, label: blocker.label, userScore: blocker.userScore, requiredMin: blocker.requiredMin, gap: blocker.gap }
-          : null,
-        eta, // { estimable, sessionsNeeded, slope, gap, dimension } OR { estimable:false, reason }
-      };
-    });
-
-    // ── badges (unchanged) ──────────────────────────────────────────
     const user = await User.findById(userId).lean();
     const badges = evaluateBadges({ user, sessions: chronological });
 
@@ -1516,135 +814,86 @@ const getPerformanceAnalytics = async (req, res) => {
       topicPerformance,
       weakTopics,
       badges,
-
-      // NEW fields — additive, nothing above this line changed shape
       irs,
-      irsBreakdown,
-      // currentTier is now the EVIDENCE-GATED tier — this is the field the
-      // dashboard shows as "you're eligible for X", so it can no longer
-      // claim a package tier without enough logged sessions to back it.
+      irsBreakdown: breakdown,
       currentTier: currentTierGated.label,
-      currentTierIsGated: isGated, // true if the raw IRS math actually points higher
-      currentTierRaw: currentTierRaw.label, // for transparency / "on track for" messaging
-      sessionsNeededForRawTier, // how many more sessions to unlock currentTierRaw's claim
-      totalAnsweredQuestions,
+      currentTierIsGated: isGated,
+      currentTierRaw: currentTierRaw.label,
+      sessionsNeededForRawTier,
+      totalAnswered,
       difficultyMix,
       tiers,
-      dimensionProfile,
-      unmappedTopics, // watch this in logs/response — non-empty means new topic drift appeared
+      dimensionProfile: dimProfile,
+      unmappedTopics,
     });
   } catch (error) {
-    console.error('getPerformanceAnalytics error:', error);
-
-    return res.status(500).json({
-      error: 'Failed to load performance analytics.',
-    });
+    console.error('getAnalytics error:', error);
+    return res.status(500).json({ error: 'Failed to load performance analytics.' });
   }
 };
 
 const getAICoach = async (req, res) => {
   try {
     const userId = getUserId(req);
-
     const user = await User.findById(userId).lean();
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found.' });
-    }
+    if (!user) return res.status(404).json({ error: 'User not found.' });
 
     const sessions = await Session.find({
-      $or: [{ user: userId }, { userId: userId }],
+      $or: [{ user: userId }, { userId }],
       status: 'completed',
     })
       .sort({ createdAt: -1 })
       .limit(30)
       .lean();
 
-    const scores = sessions.map((session) => getNormalizedSessionScore(session));
-
+    const scores = sessions.map(s => getSessionScore(s));
     const averageScore = scores.length
-      ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
+      ? Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length)
       : 0;
-
     const bestScore = scores.length ? Math.max(...scores) : 0;
 
     const topicStats = {};
-
-    sessions.forEach((session) => {
-      (session.questions || []).forEach((question) => {
-        if (!question.userAnswer || question.userAnswer === 'Skipped') return;
-
-        const topic = question.topic || 'General';
-        const score = getNormalizedQuestionScore(question);
-
-        if (!topicStats[topic]) {
-          topicStats[topic] = { topic, totalScore: 0, count: 0 };
-        }
-
+    sessions.forEach(session => {
+      (session.questions || []).forEach(q => {
+        if (!q.userAnswer || q.userAnswer === 'Skipped') return;
+        const topic = q.topic || 'General';
+        const score = getQuestionScore(q);
+        if (!topicStats[topic]) topicStats[topic] = { topic, totalScore: 0, count: 0 };
         topicStats[topic].totalScore += score;
         topicStats[topic].count += 1;
       });
     });
 
     const topicPerformance = Object.values(topicStats)
-      .map((item) => ({
-        topic: item.topic,
-        averageScore: Math.round(item.totalScore / item.count),
-        attempts: item.count,
-      }))
+      .map(item => ({ topic: item.topic, averageScore: Math.round(item.totalScore / item.count), attempts: item.count }))
       .sort((a, b) => b.averageScore - a.averageScore);
 
-    const weakest = topicPerformance
-      .slice()
-      .sort((a, b) => a.averageScore - b.averageScore)
-      .slice(0, 3)
-      .map((item) => item.topic);
-
+    const weakest  = topicPerformance.slice().sort((a, b) => a.averageScore - b.averageScore).slice(0, 3).map(t => t.topic);
     const strongest = topicPerformance[0]?.topic || 'N/A';
-
-    // ── NEW: real IRS + tier readiness, same engine getPerformanceAnalytics uses.
-    //    This is what fixes the "coach disagrees with the dashboard" bug —
-    //    the LLM now reasons over the SAME numbers the user sees on screen,
-    //    not raw topic averages it has to guess a verdict from. ─────────────
     const chronological = [...sessions].reverse();
-
-    const { profile: dimensionProfile } = buildDimensionProfile(topicPerformance);
+    const { profile: dimProfile } = buildDimensionProfile(topicPerformance);
 
     const scoreTrend = chronological.map((session, index) => ({
       interview: index + 1,
-      score: getNormalizedSessionScore(session),
+      score: getSessionScore(session),
       date: session.createdAt,
     }));
 
-    const { totalAnsweredQuestions, difficultyMix } = extractIRSEvidence(chronological);
-
+    const { totalAnswered, difficultyMix } = extractIRSEvidence(chronological);
     const irs = computeIRS({
-      dimensionProfile,
-      scoreTrend,
-      topicPerformance,
-      averageScore,
-      totalAnsweredQuestions,
-      difficultyMix,
+      dimensionProfile: dimProfile, scoreTrend, topicPerformance, averageScore, totalAnswered, difficultyMix,
     });
     const { tier: currentTier } = tierForScoreGated(irs, sessions.length);
     const currentTierIndex = TIERS.findIndex(t => t.label === currentTier.label);
-const nextTier = TIERS[currentTierIndex + 1] || null;
-
-    const dimensionTimeSeries = buildDimensionTimeSeries(chronological);
-    const nextTierReadiness = nextTier
-      ? computeTierReadiness(dimensionProfile, nextTier, sessions.length)
-      : null;
-    const blocker = nextTierReadiness ? findBlockingDimension(nextTierReadiness) : null;
-    const eta = blocker ? projectSessionsToUnlock(blocker, dimensionTimeSeries) : null;
+    const nextTier = TIERS[currentTierIndex + 1] || null;
+    const dimTimeSeries = dimensionTimeSeries(chronological);
+    const nextTierReadiness = nextTier ? tierReadiness(dimProfile, nextTier, sessions.length) : null;
+    const blocker = nextTierReadiness ? blockingDimension(nextTierReadiness) : null;
+    const eta = blocker ? sessionsToUnlock(blocker, dimTimeSeries) : null;
 
     const { generateCoachAdvice } = require('../services/aiServices');
-
     const analysis = await generateCoachAdvice({
-      profile: {
-        college: user.college,
-        branch: user.branch,
-        semester: user.semester,
-      },
+      profile: { college: user.college, branch: user.branch, semester: user.semester },
       totalSessions: sessions.length,
       averageScore,
       bestScore,
@@ -1652,8 +901,6 @@ const nextTier = TIERS[currentTierIndex + 1] || null;
       weakest,
       strongest,
       topicPerformance,
-
-      // NEW — the coach now gets the real, authoritative readiness picture
       irs,
       currentTierLabel: currentTier.label,
       nextTierLabel: nextTier?.label || null,
@@ -1666,51 +913,28 @@ const nextTier = TIERS[currentTierIndex + 1] || null;
     return res.json({ analysis });
   } catch (error) {
     console.error('getAICoach error:', error);
-
     return res.status(500).json({ error: 'AI coach unavailable.' });
   }
 };
 
-// POST /interview/ai-freeform
-// Authenticated Gemini proxy for dashboard/analytics AI copy.
 const getAIFreeform = async (req, res) => {
   try {
     const { prompt, maxTokens = 400 } = req.body || {};
-
     if (typeof prompt !== 'string' || !prompt.trim()) {
-      return res.status(400).json({
-        error: 'prompt is required.',
-      });
+      return res.status(400).json({ error: 'prompt is required.' });
     }
-
     if (prompt.length > 12000) {
-      return res.status(413).json({
-        error: 'prompt is too long.',
-      });
+      return res.status(413).json({ error: 'prompt is too long.' });
     }
-
     const { generateFreeform } = require('../services/aiServices');
-
-    const text = await generateFreeform(
-      prompt,
-      maxTokens
-    );
-
+    const text = await generateFreeform(prompt, maxTokens);
     return res.json({ text });
   } catch (error) {
     console.error('getAIFreeform error:', error);
-
-    return res.status(500).json({
-      error: 'AI unavailable.',
-    });
+    return res.status(500).json({ error: 'AI unavailable.' });
   }
 };
 
-
-// ── GET /interview/session/last/breakdown — Phase 1B ──────────────────────
-// Returns per-question breakdown for the user's most recent completed session.
-// Data used: timeTaken, score, skipped, topic, text (truncated).
-// No new DB fields needed — all data is in the existing Session model.
 const getLastSessionBreakdown = async (req, res) => {
   try {
     const userId = getUserId(req);
@@ -1720,32 +944,29 @@ const getLastSessionBreakdown = async (req, res) => {
     })
       .sort({ createdAt: -1 })
       .lean();
-
-    if (!session) {
-      return res.status(404).json({ message: 'No completed sessions found.' });
-    }
+    if (!session) return res.status(404).json({ message: 'No completed sessions found.' });
 
     const questions = (session.questions || []).map((q, idx) => ({
-      index:     idx + 1,
-      topic:     q.topic || 'General',
-      text:      q.text ? q.text.slice(0, 120) + (q.text.length > 120 ? '…' : '') : '',
-      score:     getNormalizedQuestionScore(q),
-      timeTaken: Number(q.timeTaken) || 0,
-      skipped:   Boolean(q.skipped) || !q.userAnswer,
+      index:      idx + 1,
+      topic:      q.topic || 'General',
+      text:       q.text ? q.text.slice(0, 120) + (q.text.length > 120 ? '…' : '') : '',
+      score:      getQuestionScore(q),
+      timeTaken:  Number(q.timeTaken) || 0,
+      skipped:    Boolean(q.skipped) || !q.userAnswer,
       difficulty: q.difficulty || 'medium',
     }));
 
-    const answered      = questions.filter(q => !q.skipped);
-    const avgTime       = answered.length ? Math.round(answered.reduce((a, q) => a + q.timeTaken, 0) / answered.length) : 0;
-    const skipRate      = questions.length ? Math.round((questions.filter(q => q.skipped).length / questions.length) * 100) : 0;
-    const sessionScore  = getNormalizedSessionScore(session);
+    const answered     = questions.filter(q => !q.skipped);
+    const avgTime      = answered.length ? Math.round(answered.reduce((a, q) => a + q.timeTaken, 0) / answered.length) : 0;
+    const skipRate     = questions.length ? Math.round((questions.filter(q => q.skipped).length / questions.length) * 100) : 0;
+    const sessionScore = getSessionScore(session);
 
     return res.json({
-      sessionId:   session._id,
-      sessionDate: session.createdAt,
-      sessionMode: session.mode,
+      sessionId:      session._id,
+      sessionDate:    session.createdAt,
+      sessionMode:    session.mode,
       sessionScore,
-      avgTimeTaken: avgTime,
+      avgTimeTaken:   avgTime,
       skipRate,
       totalQuestions: questions.length,
       questions,
@@ -1756,10 +977,6 @@ const getLastSessionBreakdown = async (req, res) => {
   }
 };
 
-
-// ── GET /interview/blind-spots — Phase 2 ─────────────────────────────────────
-// Aggregates weaknesses[] across the last 10 sessions to find topics that
-// appear as a weakness in 3+ sessions. Returns sorted by frequency.
 const getBlindSpots = async (req, res) => {
   try {
     const userId = getUserId(req);
@@ -1771,14 +988,11 @@ const getBlindSpots = async (req, res) => {
       .limit(10)
       .select('weaknesses createdAt')
       .lean();
-
-    if (!sessions.length) {
-      return res.json({ blindSpots: [] });
-    }
+    if (!sessions.length) return res.json({ blindSpots: [] });
 
     const freq = {};
     sessions.forEach(s => {
-      const seen = new Set(); // only count each topic once per session
+      const seen = new Set();
       (s.weaknesses || []).forEach(w => {
         const key = w.toLowerCase().trim();
         if (!key || seen.has(key)) return;
@@ -1788,7 +1002,7 @@ const getBlindSpots = async (req, res) => {
     });
 
     const blindSpots = Object.entries(freq)
-      .filter(([, count]) => count >= 2) // threshold: appeared as weakness in 2+ sessions
+      .filter(([, count]) => count >= 2)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([topic, count]) => ({
@@ -1804,11 +1018,6 @@ const getBlindSpots = async (req, res) => {
   }
 };
 
-
-// ── GET /interview/session-warmup — Phase 3 ───────────────────────────────────
-// Tags each user's sessions by their position within the same calendar day
-// (1st session of the day, 2nd, 3rd+), then computes average score by position.
-// Shows whether the student is a "cold start" performer or a "warm up" performer.
 const getSessionWarmup = async (req, res) => {
   try {
     const userId = getUserId(req);
@@ -1824,7 +1033,6 @@ const getSessionWarmup = async (req, res) => {
       return res.json({ available: false, reason: 'not_enough_sessions', minSessions: 4 });
     }
 
-    // Group sessions by calendar date (local date string)
     const byDate = {};
     sessions.forEach(s => {
       const dateKey = new Date(s.createdAt).toISOString().slice(0, 10);
@@ -1832,14 +1040,11 @@ const getSessionWarmup = async (req, res) => {
       byDate[dateKey].push(s);
     });
 
-    // Tag each session with its within-day position (1, 2, 3+)
     const positionTotals = { 1: { sum: 0, count: 0 }, 2: { sum: 0, count: 0 }, 3: { sum: 0, count: 0 } };
-
     Object.values(byDate).forEach(daySessions => {
       daySessions.forEach((s, idx) => {
         const pos = Math.min(idx + 1, 3);
-        const score = getNormalizedSessionScore(s);
-        positionTotals[pos].sum += score;
+        positionTotals[pos].sum += getSessionScore(s);
         positionTotals[pos].count += 1;
       });
     });
@@ -1857,10 +1062,12 @@ const getSessionWarmup = async (req, res) => {
       return res.json({ available: false, reason: 'needs_multi_session_days' });
     }
 
-    const first   = positions.find(p => p.position === 1);
-    const second  = positions.find(p => p.position === 2);
+    const first  = positions.find(p => p.position === 1);
+    const second = positions.find(p => p.position === 2);
     const pattern = (first && second)
-      ? (second.avgScore - first.avgScore > 5 ? 'warmup' : second.avgScore - first.avgScore < -5 ? 'coldstart' : 'consistent')
+      ? second.avgScore - first.avgScore > 5  ? 'warmup'
+      : second.avgScore - first.avgScore < -5 ? 'coldstart'
+      : 'consistent'
       : 'insufficient';
 
     return res.json({ available: true, positions, pattern });
@@ -1869,7 +1076,6 @@ const getSessionWarmup = async (req, res) => {
     return res.status(500).json({ error: 'Failed to compute warmup data.' });
   }
 };
-
 
 module.exports = {
   startInterview,
@@ -1882,7 +1088,7 @@ module.exports = {
   abandonInterview,
   getBadges,
   getAnalytics,
-  getPerformanceAnalytics,
+  getPerformance,
   getAICoach,
   computeUserIRS,
   getLastSessionBreakdown,
@@ -1890,3 +1096,8 @@ module.exports = {
   getSessionWarmup,
   getAIFreeform,
 };
+
+
+
+
+

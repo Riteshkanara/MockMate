@@ -6,3 +6,8 @@ const { getLeaderboard } = require('../controllers/leaderboardController');
 router.get('/', authMiddleware, getLeaderboard);
 
 module.exports = router;
+
+
+
+
+

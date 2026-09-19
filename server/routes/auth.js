@@ -7,7 +7,7 @@ const userController = require('../controllers/userController');
 const User = require('../models/User');
 const Session = require('../models/Session');
 const { buildDimensionProfile, computeIRS, tierForScore } = require('../utils/scoringModel');
-const { computeUserIRS } = require('../controllers/interviewController');
+const { computeUserIRS  } = require('../controllers/interviewController');
 const { SIMPLE_BADGE_RULES } = require('../utils/badgeEngine');
 
 // Step 1: Redirect user to Google
@@ -67,7 +67,7 @@ router.get('/me', authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     // Use the exact same IRS pipeline as Dashboard/Analytics
-    const { irs, averageScore, tierLabel } = await computeUserIRS(user._id).catch(() => ({
+    const { irs, averageScore, tierLabel } = await computeUserIRS (user._id).catch(() => ({
       irs: 0, averageScore: user.averageScore ?? 0, tierLabel: '₹3–6 LPA',
     }));
 
@@ -95,49 +95,30 @@ router.post('/fix-badges', authMiddleware, async (req, res) => {
     const userId = req.user._id;
     const user = await User.findById(userId);
 
-    const allSessions = await Session.find({
+    const sessions = await Session.find({
       $or: [{ userId }, { user: userId }],
       status: 'completed',
-    });
+    }).sort({ createdAt: 1 }).lean();
 
-    // Badge rules imported from badgeEngine — single source of truth
-    const BADGE_RULES = SIMPLE_BADGE_RULES;
+    // Use the full badge engine — not SIMPLE_BADGE_RULES
+    const { evaluateBadges } = require('../utils/badgeEngine');
+    const evaluated = evaluateBadges({ user, sessions });
+    const earnedIds = evaluated
+      .filter(b => b.unlocked)
+      .map(b => b.id);
 
-    const updatedUser = {
-      ...user.toObject(),
-      totalSessions: allSessions.length
-    };
-
-    const existingBadges = new Set(user.badges || []);
-    const newlyEarned = [];
-
-    BADGE_RULES.forEach(rule => {
-      if (
-        !existingBadges.has(rule.id) &&
-        rule.check(updatedUser, 0)
-      ) {
-        existingBadges.add(rule.id);
-        newlyEarned.push(rule.id);
-      }
-    });
-
-    await User.findByIdAndUpdate(userId, {
-      badges: [...existingBadges],
-      totalSessions: allSessions.length
-    });
+    await User.findByIdAndUpdate(userId, { badges: earnedIds });
 
     res.json({
       message: 'Badges fixed!',
-      totalSessions: allSessions.length,
-      newBadges: newlyEarned,
-      allBadges: [...existingBadges]
+      totalSessions: sessions.length,
+      newBadges: earnedIds,
+      allBadges: earnedIds,
     });
-
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
-
 router.post('/refresh', async (req, res) => {
     const token = req.cookies?.refreshToken;
 
@@ -181,3 +162,8 @@ router.post('/logout', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
+
+
+
+

@@ -11,7 +11,11 @@ router.get('/share-link', authMiddleware, publicProfileController.getShareLink);
 // "me" as a slug and route it into the public lookup instead.
 router.get('/me', authMiddleware, publicProfileController.getMyProfile);
 
-// Public — no auth — anyone with the link can view
 router.get('/:slug', publicProfileController.getPublicProfileBySlug);
 
 module.exports = router;
+
+
+
+
+

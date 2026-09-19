@@ -13,15 +13,11 @@ import {
   retryQuestion as retryQuestionApi,
 } from '../Services/interviewService';
 
+// ─── Pure helpers (no React, fully testable in isolation) ─────────────────
+
 const parseFeedback = feedback => {
-  if (!feedback) {
-    return {};
-  }
-
-  if (typeof feedback === 'object') {
-    return feedback;
-  }
-
+  if (!feedback) return {};
+  if (typeof feedback === 'object') return feedback;
   try {
     return JSON.parse(feedback);
   } catch {
@@ -37,12 +33,13 @@ const parseFeedback = feedback => {
   }
 };
 
+// Fills in safe defaults for every field a question object must have.
+// Runs once on data received from the server so the rest of the hook
+// can read q.timeLimit, q.options etc. without defensive checks everywhere.
 const normalizeQuestion = question => ({
-  id: question?.id,
-  text:
-    question?.text ||
-    'Please answer the interview question.',
-  topic: question?.topic || 'General',
+  id:         question?.id,
+  text:       question?.text || 'Please answer the interview question.',
+  topic:      question?.topic || 'General',
   difficulty: question?.difficulty || 'medium',
   timeLimit:
     Number(question?.timeLimit) > 0
@@ -52,11 +49,8 @@ const normalizeQuestion = question => ({
         : question?.questionType === 'mcq'
           ? 45
           : 90,
-  questionType:
-    question?.questionType || 'open',
-  options: Array.isArray(question?.options)
-    ? question.options
-    : [],
+  questionType:       question?.questionType || 'open',
+  options:            Array.isArray(question?.options) ? question.options : [],
   correctAnswerIndex:
     question?.correctAnswerIndex !== undefined
       ? Number(question.correctAnswerIndex)
@@ -67,140 +61,96 @@ const normalizeQuestion = question => ({
       : '',
 });
 
+// Shapes raw API response + parsed feedback into the feedback state object.
+// Used by both handleSubmit (full shape) and handleRetryQuestion (spread update).
+const buildFeedback = (data, parsed) => ({
+  score:        Number(data?.score) || 0,
+  correct:      data?.correct ?? null,
+  aiAvailable:  parsed.aiAvailable !== false,
+  fallback:     parsed.fallback === true,
+  good:         parsed.good || '',
+  missing:      parsed.missing || '',
+  idealHint:    parsed.idealHint || '',
+  tip:          parsed.tip || '',
+  sampleAnswer: parsed.sampleAnswer || '',
+  raw:          data?.feedback || '',
+});
+
+// Extracts the most useful error string from an Axios error or plain Error.
+const getErrorMessage = (err, fallback = 'Something went wrong.') =>
+  err?.response?.data?.error ||
+  err?.response?.data?.message ||
+  err?.message ||
+  fallback;
+
+// ─── Hook ─────────────────────────────────────────────────────────────────
+
 export const useInterview = ({ notify } = {}) => {
-  // n wraps the notify API passed from Interview.jsx's useNotif().
-  // It's assigned once at call time and stable across the session lifecycle.
+  // Silent no-op fallback so the hook works without a notify prop in tests
+  // or Storybook. In production, Interview.jsx always passes notify.
   const notifyFallback = {
-    loading: (m) => console.info('[notif loading]', m),
-    success: (m) => console.info('[notif success]', m),
-    error:   (m) => console.error('[notif error]', m),
-    info:    (m) => console.info('[notif info]', m),
+    loading: () => {},
+    success: () => {},
+    error:   () => {},
+    info:    () => {},
     dismiss: () => {},
   };
-  const n = notify || notifyFallback;
-  const navigate = useNavigate();
+  const notify_ = notify || notifyFallback;
+
+  const navigate     = useNavigate();
   const { refreshUser } = useAuth();
 
-  const [sessionId, setSessionId] =
-    useState(null);
+  // ── Session state ──────────────────────────────────────────────────────
+  const [sessionId,           setSessionId]           = useState(null);
+  const [questions,           setQuestions]           = useState([]);
+  const [currentIndex,        setCurrentIndex]        = useState(0);
+  const [feedback,            setFeedback]            = useState(null);
+  const [isSubmitted,         setIsSubmitted]         = useState(false);
+  const [isLoading,           setIsLoading]           = useState(false);
+  const [error,               setError]               = useState('');
+  const [sessionStarted,      setSessionStarted]      = useState(false);
+  const [selectedAnswerIndex, setSelectedAnswerIndex] = useState(null);
+  const [isAbandoning,        setIsAbandoning]        = useState(false);
 
-  const [questions, setQuestions] =
-    useState([]);
-
-  const [currentIndex, setCurrentIndex] =
-    useState(0);
-
-  const [feedback, setFeedback] =
-    useState(null);
-
-  const [isSubmitted, setIsSubmitted] =
-    useState(false);
-
-  const [isLoading, setIsLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState('');
-
-  const [sessionStarted, setSessionStarted] =
-    useState(false);
-
-  const [selectedAnswerIndex, setSelectedAnswerIndex] =
-    useState(null);
-
-  const [isAbandoning, setIsAbandoning] =
-    useState(false);
-
-  // Synchronous lock shared by EVERY path that can submit the current
-  // question — the "Submit answer" button, Enter key, Skip, AND the
-  // timer's time-up path. React state (isLoading/isSubmitted) only
-  // updates on the next render, so two calls fired in the same tick
-  // (e.g. user clicks Submit at the exact moment the timer hits zero)
-  // can both slip past an isLoading/isSubmitted check before either
-  // write commits. This ref can't be raced: it's set the instant a
-  // submit starts and cleared only in handleSubmit's finally.
+  // WHY: Synchronous lock shared by every submit path — button, Enter, Skip,
+  // and timer time-up. React state updates only commit on the next render,
+  // so two callers firing in the same tick can both pass an isLoading/isSubmitted
+  // check before either write lands. This ref is set the instant a submit starts
+  // and cleared only in finally.
   const submitInFlightRef = useRef(false);
 
-  const getErrorMessage = (
-    err,
-    fallback = 'Something went wrong.'
-  ) => {
-    return (
-      err?.response?.data?.error ||
-      err?.response?.data?.message ||
-      err?.message ||
-      fallback
-    );
-  };
+  // WHY: Same pattern for handleNext — guards against currentIndex being bumped
+  // twice for one user action (double-click, effect re-fire), which used to
+  // silently skip a question with no answer recorded.
+  const advanceLockRef = useRef(false);
 
-  // ─────────────────────────────────────────────────────────────
-  // START
-  // ─────────────────────────────────────────────────────────────
+  // ── START ──────────────────────────────────────────────────────────────
 
   const handleStart = useCallback(
-    async (
-      mode = 'quick',
-      company = '',
-      topic = '',
-      difficulty = 'mixed'
-    ) => {
-setIsLoading(true);
-setError('');
-
-n.loading('Generating your interview…');
-
-try {
-        const data =
-          await startInterview({
-            mode,
-            company,
-            topic,
-            difficulty,
-          });
-
-        const normalized =
-          Array.isArray(data?.questions)
-            ? data.questions.map(
-                normalizeQuestion
-              )
-            : [];
-
-        if (!data?.sessionId) {
-          throw new Error(
-            'The server did not return a session ID.'
-          );
-        }
-
-        if (!normalized.length) {
-          throw new Error(
-            'The server did not return any questions.'
-          );
-        }
-
-        setSessionId(
-          data.sessionId
-        );
-
+    async (mode = 'quick', company = '', topic = '', difficulty = 'mixed') => {
+      setIsLoading(true);
+      setError('');
+      notify_.loading('Generating your interview…');
+      try {
+        const data = await startInterview({ mode, company, topic, difficulty });
+        const normalized = Array.isArray(data?.questions)
+          ? data.questions.map(normalizeQuestion)
+          : [];
+        if (!data?.sessionId)    throw new Error('The server did not return a session ID.');
+        if (!normalized.length)  throw new Error('The server did not return any questions.');
+        setSessionId(data.sessionId);
         setQuestions(normalized);
         setCurrentIndex(0);
         setFeedback(null);
         setSelectedAnswerIndex(null);
         setIsSubmitted(false);
         setSessionStarted(true);
-
-        n.success('Interview ready — good luck!');
-
+        notify_.success('Interview ready — good luck!');
         return data;
       } catch (err) {
-        const message =
-          getErrorMessage(
-            err,
-            'Unable to start the interview.'
-          );
-
+        const message = getErrorMessage(err, 'Unable to start the interview.');
         setError(message);
-        n.error(message);
-
+        notify_.error(message);
         throw err;
       } finally {
         setIsLoading(false);
@@ -210,227 +160,93 @@ try {
     []
   );
 
-  // ─────────────────────────────────────────────────────────────
-  // DASHBOARD HYDRATION
-  // ─────────────────────────────────────────────────────────────
+  // ── DASHBOARD HYDRATION ────────────────────────────────────────────────
+  // Restores a session that was created from the Dashboard quick-launch.
+  // If questions are passed directly (fast path), skips the network fetch.
 
   const hydrateSession = useCallback(
-    async (sid, qs = []) => {
+    async (sessionId_, rawQuestions = []) => {
       setError('');
-
       try {
-        if (sid && qs?.length) {
-          setSessionId(sid);
-
-          setQuestions(
-            qs.map(normalizeQuestion)
-          );
-
+        if (sessionId_ && rawQuestions?.length) {
+          setSessionId(sessionId_);
+          setQuestions(rawQuestions.map(normalizeQuestion));
           setCurrentIndex(0);
           setFeedback(null);
           setSelectedAnswerIndex(null);
           setIsSubmitted(false);
           setSessionStarted(true);
-
           return;
         }
-
-        if (!sid) {
-          throw new Error(
-            'No interview session was provided.'
-          );
-        }
-
-        const data =
-          await getInterviewSession(
-            sid
-          );
-
-        const normalized =
-          Array.isArray(data?.questions)
-            ? data.questions.map(
-                normalizeQuestion
-              )
-            : [];
-
-        setSessionId(sid);
+        if (!sessionId_) throw new Error('No interview session was provided.');
+        const data       = await getInterviewSession(sessionId_);
+        const normalized = Array.isArray(data?.questions)
+          ? data.questions.map(normalizeQuestion)
+          : [];
+        setSessionId(sessionId_);
         setQuestions(normalized);
-
-        setCurrentIndex(
-          Number(data?.currentQuestion) || 0
-        );
-
+        setCurrentIndex(Number(data?.currentQuestion) || 0);
         setFeedback(null);
         setSelectedAnswerIndex(null);
         setIsSubmitted(false);
         setSessionStarted(true);
       } catch (err) {
-        const message =
-          getErrorMessage(
-            err,
-            'Unable to restore this interview session.'
-          );
-
+        const message = getErrorMessage(err, 'Unable to restore this interview session.');
         setError(message);
-        n.error(message);
+        notify_.error(message);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
-  // ─────────────────────────────────────────────────────────────
-  // SUBMIT CURRENT QUESTION
-  // ─────────────────────────────────────────────────────────────
+  // ── SUBMIT CURRENT QUESTION ────────────────────────────────────────────
 
   const handleSubmit = useCallback(
-    async (
-      answer = '',
-      answerIndex = null,
-      timeTaken = 0,
-      skipped = false
-    ) => {
-      if (!sessionId) {
-        setError(
-          'Interview session is missing.'
-        );
-        return null;
-      }
-
-      const question =
-        questions[currentIndex];
-
-      if (!question) {
-        setError(
-          'Current question is missing.'
-        );
-        return null;
-      }
-
-      // Hard, synchronous guard: only one submit can be in flight for the
-      // current question no matter how many callers race to trigger one —
-      // a manual click, Enter, and the timer's timeout path can all fire
-      // within the same tick. Whichever gets here first wins; every other
-      // caller (including the timer) is a no-op.
-      if (submitInFlightRef.current) {
-        return null;
-      }
+    async (answer = '', answerIndex = null, timeTaken = 0, skipped = false) => {
+      if (!sessionId) { setError('Interview session is missing.'); return null; }
+      const question = questions[currentIndex];
+      if (!question)  { setError('Current question is missing.');  return null; }
+      if (submitInFlightRef.current) return null;
       submitInFlightRef.current = true;
-
       setIsLoading(true);
       setError('');
-
-      n.loading(skipped ? 'Saving…' : 'Evaluating your answer…');
-
+      notify_.loading(skipped ? 'Saving…' : 'Evaluating your answer…');
       try {
-        const data =
-          await submitAnswer(
-            sessionId,
-            {
-              questionId:
-                question.id,
-
-              answer:
-                answer || '',
-
-              answerIndex:
-                answerIndex === null ||
-                answerIndex === undefined
-                  ? null
-                  : answerIndex,
-
-              timeTaken:
-                Number(timeTaken) || 0,
-
-              skipped:
-                Boolean(skipped),
-            }
-          );
-
-        const parsedFeedback =
-          parseFeedback(
-            data?.feedback
-          );
-
-        setFeedback({
-          score:
-            Number(data?.score) || 0,
-
-          correct:
-            data?.correct ?? null,
-
-          aiAvailable:
-            parsedFeedback.aiAvailable !==
-            false,
-
-          fallback:
-            parsedFeedback.fallback ===
-            true,
-
-          good:
-            parsedFeedback.good ||
-            '',
-
-          missing:
-            parsedFeedback.missing ||
-            '',
-
-          idealHint:
-            parsedFeedback.idealHint ||
-            '',
-
-          tip:
-            parsedFeedback.tip ||
-            '',
-
-          sampleAnswer:
-            parsedFeedback.sampleAnswer ||
-            '',
-
-          raw:
-            data?.feedback || '',
+        const data = await submitAnswer(sessionId, {
+          questionId:  question.id,
+          answer:      answer || '',
+          answerIndex: answerIndex ?? null,
+          timeTaken:   Number(timeTaken) || 0,
+          skipped:     Boolean(skipped),
         });
-
-        // Merge the now-safe-to-reveal correctAnswerIndex/explanation into
-        // this question's record in state. These are deliberately absent
-        // from the initial question list (see startInterview's
-        // publicQuestions) so the answer can't be read from the network
-        // tab before answering — the answer endpoint only sends them back
-        // for the question that was just submitted, so patch just that one
-        // entry rather than assuming every question now has them.
-        if (
-          data?.correctAnswerIndex !== undefined &&
-          data?.correctAnswerIndex !== null
-        ) {
+        const parsed = parseFeedback(data?.feedback);
+        setFeedback(buildFeedback(data, parsed));
+        // WHY: correctAnswerIndex and explanation are deliberately withheld from
+        // the initial question list (startInterview's publicQuestions) so the answer
+        // cannot be read from the network tab before answering. The submit endpoint
+        // sends them back only for the question just answered — patch that one entry.
+        if (data?.correctAnswerIndex != null) {
           setQuestions(prev =>
             prev.map(q =>
               q.id === question.id
                 ? {
                     ...q,
                     correctAnswerIndex: Number(data.correctAnswerIndex),
-                    explanation: data.explanation || q.explanation || '',
+                    explanation:        data.explanation || q.explanation || '',
                   }
                 : q
             )
           );
         }
-
         setIsSubmitted(true);
-        n.dismiss();
-
+        notify_.dismiss();
         return data;
       } catch (err) {
         setIsSubmitted(false);
-
-        const message =
-          getErrorMessage(
-            err,
-            'Unable to submit your answer.'
-          );
-
+        const message = getErrorMessage(err, 'Unable to submit your answer.');
         setError(message);
-        n.error(message);
-
+        notify_.error(message);
         return null;
       } finally {
         setIsLoading(false);
@@ -438,192 +254,99 @@ try {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      sessionId,
-      questions,
-      currentIndex,
-    ]
+    [sessionId, questions, currentIndex]
   );
 
-  // ─────────────────────────────────────────────────────────────
-  // SKIP
-  // ─────────────────────────────────────────────────────────────
+  // ── SKIP ───────────────────────────────────────────────────────────────
 
   const handleSkip = useCallback(
-    async timeTaken => {
-      return handleSubmit(
-        '',
-        null,
-        Number(timeTaken) || 0,
-        true
-      );
-    },
+    async timeTaken => handleSubmit('', null, Number(timeTaken) || 0, true),
     [handleSubmit]
   );
 
-  // ─────────────────────────────────────────────────────────────
-  // TIME UP
-  // ─────────────────────────────────────────────────────────────
+  // ── TIME UP ────────────────────────────────────────────────────────────
 
-  const handleTimeUp =
-    useCallback(
-      async timeTaken => {
-        if (
-          isSubmitted ||
-          isLoading ||
-          submitInFlightRef.current
-        ) {
-          return;
-        }
+  const handleTimeUp = useCallback(
+    async timeTaken => {
+      if (isSubmitted || isLoading || submitInFlightRef.current) return;
+      await handleSubmit(
+        '',
+        null,
+        Number(timeTaken) || questions[currentIndex]?.timeLimit || 0,
+        true
+      );
+    },
+    [isSubmitted, isLoading, handleSubmit, questions, currentIndex]
+  );
 
-        await handleSubmit(
-          '',
-          null,
-          Number(timeTaken) ||
-            questions[currentIndex]
-              ?.timeLimit ||
-            0,
-          true
-        );
-      },
-      [
-        isSubmitted,
-        isLoading,
-        handleSubmit,
-        questions,
-        currentIndex,
-      ]
-    );
+  // ── NEXT ───────────────────────────────────────────────────────────────
 
-  // ─────────────────────────────────────────────────────────────
-  // NEXT
-  // ─────────────────────────────────────────────────────────────
+  const handleNext = useCallback(async () => {
+    if (advanceLockRef.current) return null;
+    advanceLockRef.current = true;
+    setError('');
 
-  const advanceLockRef = useRef(false);
+    const isLastQuestion = currentIndex >= questions.length - 1;
 
-  const handleNext =
-    useCallback(async () => {
-      // Guards against currentIndex being bumped twice for one user action
-      // (e.g. a double Next click, or an effect re-firing) — which used to
-      // silently skip over the next question with no answer recorded.
-      if (advanceLockRef.current) return null;
-      advanceLockRef.current = true;
-
-      setError('');
-
-      const isLast =
-        currentIndex >=
-        questions.length - 1;
-
-      if (isLast) {
-        setIsLoading(true);
-
-        n.loading('Preparing your final report…');
-
-        try {
-          const data =
-            await completeInterview(
-              sessionId
-            );
-
-          // Refresh auth context so Navbar IRS/AVG update immediately
-          refreshUser().catch(() => {});
-
-          n.success('Interview completed!');
-
-          navigate('/result', {
-            state: {
-              result: data,
-            },
-          });
-
-          return data;
-        } catch (err) {
-          const message =
-            getErrorMessage(
-              err,
-              'Unable to complete the interview.'
-            );
-
-          setError(message);
-          n.error(message);
-
-          return null;
-        } finally {
-          setIsLoading(false);
-          advanceLockRef.current = false;
-        }
+    if (isLastQuestion) {
+      setIsLoading(true);
+      notify_.loading('Preparing your final report…');
+      try {
+        const data = await completeInterview(sessionId);
+        // Refresh auth so Navbar streak/score updates immediately without a page reload.
+        refreshUser().catch(() => {});
+        notify_.success('Interview completed!');
+        navigate('/result', { state: { result: data } });
+        return data;
+      } catch (err) {
+        const message = getErrorMessage(err, 'Unable to complete the interview.');
+        setError(message);
+        notify_.error(message);
+        return null;
+      } finally {
+        setIsLoading(false);
+        advanceLockRef.current = false;
       }
+    }
 
-      setCurrentIndex(
-        previous => previous + 1
-      );
-
-      setFeedback(null);
-      setSelectedAnswerIndex(
-        null
-      );
-      setIsSubmitted(false);
-      advanceLockRef.current = false;
+    setCurrentIndex(prev => prev + 1);
+    setFeedback(null);
+    setSelectedAnswerIndex(null);
+    setIsSubmitted(false);
+    advanceLockRef.current = false;
+    return null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-      currentIndex,
-      questions.length,
-      sessionId,
-      navigate,
-      refreshUser,
-    ]);
+  }, [currentIndex, questions.length, sessionId, navigate, refreshUser]);
 
-  const selectAnswer =
-    useCallback(index => {
-      setSelectedAnswerIndex(
-        index
-      );
-    }, []);
+  // ── SELECT MCQ OPTION ──────────────────────────────────────────────────
 
-  // ─────────────────────────────────────────────────────────────
-  // RETRY QUESTION — re-runs AI evaluation on an already-submitted
-  // open answer and merges the fresh score/feedback into state.
-  // ─────────────────────────────────────────────────────────────
+  const selectAnswer = useCallback(
+    index => setSelectedAnswerIndex(index),
+    []
+  );
+
+  // ── RETRY QUESTION ─────────────────────────────────────────────────────
+  // Re-runs AI evaluation on an already-submitted open answer and merges the
+  // fresh score/feedback into state without overwriting the correctness result.
 
   const handleRetryQuestion = useCallback(
     async questionId => {
       if (!sessionId || !questionId) return null;
-
       setIsLoading(true);
-
-      n.loading('Re-evaluating your answer…');
-
+      notify_.loading('Re-evaluating your answer…');
       try {
-        const data = await retryQuestionApi(sessionId, questionId);
-
-        const parsedFeedback = parseFeedback(data?.feedback);
-
-        setFeedback(previous => ({
-          ...previous,
-          score: Number(data?.score) || 0,
-          aiAvailable: parsedFeedback.aiAvailable !== false,
-          fallback: parsedFeedback.fallback === true,
-          good: parsedFeedback.good || '',
-          missing: parsedFeedback.missing || '',
-          idealHint: parsedFeedback.idealHint || '',
-          tip: parsedFeedback.tip || '',
-          sampleAnswer: parsedFeedback.sampleAnswer || '',
-          raw: data?.feedback || '',
-        }));
-
-        n.success('Re-evaluation complete!');
-
+        const data   = await retryQuestionApi(sessionId, questionId);
+        const parsed = parseFeedback(data?.feedback);
+        // WHY: Spread over prev so `correct` (set on first submit) is preserved —
+        // retry re-evaluates open answer quality, not the correctness determination.
+        const { correct: _correct, ...qualityUpdate } = buildFeedback(data, parsed);
+        setFeedback(prev => ({ ...prev, ...qualityUpdate }));
+        notify_.success('Re-evaluation complete!');
         return data;
       } catch (err) {
-        const message = getErrorMessage(
-          err,
-          'Unable to retry this question.'
-        );
-
+        const message = getErrorMessage(err, 'Unable to retry this question.');
         setError(message);
-        n.error(message);
-
+        notify_.error(message);
         return null;
       } finally {
         setIsLoading(false);
@@ -633,51 +356,46 @@ try {
     [sessionId]
   );
 
-  // Tab-close / page-unload abandon — fires sendBeacon so the backend marks
-  // the session abandoned even if the user closes the tab without clicking Exit.
-  // sendBeacon can't set headers, so the token goes in the query string; the
-  // auth middleware accepts ?token= specifically for this route.
-   useEffect(() => {
+  // ── TAB-CLOSE ABANDON ──────────────────────────────────────────────────
+  // WHY: sendBeacon fires on tab-close so the backend marks the session
+  // abandoned even when the user never clicks Exit. sendBeacon cannot set
+  // auth headers — the abandon route must accept the sessionId from the URL
+  // without requiring authMiddleware.
+
+  useEffect(() => {
     const handleUnload = () => {
       if (!sessionId || !sessionStarted) return;
-      // sendBeacon can't send cookies or headers, so we can't auth this call.
-      // The abandon route on the server must NOT use authMiddleware —
-      // it should only use sessionId from the URL to mark the session abandoned.
-      const url = `${API_BASE}/interview/${sessionId}/abandon`;
-      navigator.sendBeacon(url);
+      navigator.sendBeacon(`${API_BASE}/interview/${sessionId}/abandon`);
     };
-
     window.addEventListener('beforeunload', handleUnload);
     return () => window.removeEventListener('beforeunload', handleUnload);
   }, [sessionId, sessionStarted]);
 
-  // Marks the in-progress session as abandoned on the backend before
-  // navigating away, so it doesn't linger as a stale "in-progress" row
-  // that pollutes History/Analytics/streak calculations. Best-effort:
-  // if there's no active session, or the call fails, the caller still
-  // navigates — we never trap the user on this screen because a
-  // network call failed.
+  // ── EXPLICIT ABANDON (Exit button) ────────────────────────────────────
+  // WHY: Marks the session abandoned before navigating so it doesn't linger
+  // as a stale in-progress row in History/Analytics/streak calculations.
+  // Best-effort — a network failure never traps the user; we always navigate.
+
   const handleAbandon = useCallback(
     async (destination = '/dashboard') => {
       if (!sessionId || sessionStarted === false) {
         navigate(destination);
         return;
       }
-
       setIsAbandoning(true);
-
       try {
         await abandonInterview(sessionId);
       } catch (err) {
-        // Non-fatal — the exit shouldn't be blocked by this.
-        console.error('Abandon interview failed:', err);
+        notify_.error(getErrorMessage(err, 'Could not mark session as abandoned.'));
       } finally {
         setIsAbandoning(false);
         navigate(destination);
       }
     },
-    [sessionId, sessionStarted, navigate]
+    [sessionId, sessionStarted, navigate, notify_]
   );
+
+  // ── PUBLIC API ─────────────────────────────────────────────────────────
 
   return {
     sessionId,
@@ -690,7 +408,6 @@ try {
     sessionStarted,
     selectedAnswerIndex,
     isAbandoning,
-
     handleStart,
     hydrateSession,
     handleSubmit,

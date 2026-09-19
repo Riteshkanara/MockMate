@@ -69,7 +69,7 @@ const TOPIC_SYNONYMS = {
 
 // canonical topic key → which dimensions it feeds (mirrors old DIMENSIONS.topics,
 // but keyed to canonical strings instead of raw Gemini output)
-const CANONICAL_TOPIC_TO_DIMENSIONS = {
+const TOPIC_DIMENSION_MAP = {
   dsa:            ['technical', 'problemSolving'],
   oop:            ['technical', 'design', 'fundamentals'],
   dbms:           ['fundamentals', 'technical'],
@@ -199,11 +199,11 @@ const difficultyAdjustedScore = (rawScore, difficulty = 'medium') => {
 // 4. DIMENSION PROFILE BUILDER — replaces the frontend's exact-string topicMap
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MIN_ANSWERS_FOR_CONFIDENCE = 8; // per-dimension answered-question count before a dimension counts as non-provisional
+const MIN_EVIDENCE_COUNT = 8; // per-dimension answered-question count before a dimension counts as non-provisional
 // (raised from 5 → 8: 5 was letting single-session dimension coverage pass as "trustworthy")
 
 /**
- * @param {Array<{topic, averageScore, attempts}>} topicPerformance — from getAnalytics/getPerformanceAnalytics
+ * @param {Array<{topic, averageScore, attempts}>} topicPerformance — from getAnalytics/getAnalytics
  * @returns {{ profile: Array, unmapped: Array<{topic, attempts}> }}
  *   profile: DIMENSIONS shape + {score, rawScore, hasData, isProvisional, confidence,
  *            answeredCount, contributingTopics}
@@ -236,7 +236,7 @@ const buildDimensionProfile = (topicPerformance = []) => {
 
   const profile = DIMENSIONS.map((dim) => {
     // which canonical topics feed this dimension
-    const feedingCanonicals = Object.entries(CANONICAL_TOPIC_TO_DIMENSIONS)
+    const feedingCanonicals = Object.entries(TOPIC_DIMENSION_MAP)
       .filter(([, dims]) => dims.includes(dim.key))
       .map(([canonicalKey]) => canonicalKey);
 
@@ -261,7 +261,7 @@ const buildDimensionProfile = (topicPerformance = []) => {
       score: clamp(shrunkScore),
       rawScore: clamp(rawScore),
       hasData: totalAttempts > 0,
-      isProvisional: totalAttempts > 0 && totalAttempts < MIN_ANSWERS_FOR_CONFIDENCE,
+      isProvisional: totalAttempts > 0 && totalAttempts < MIN_EVIDENCE_COUNT,
       confidence: Math.round(confidence * 100) / 100,
       answeredCount: totalAttempts,
       contributingTopics: [...new Set(contributingTopics)],
@@ -316,8 +316,8 @@ const MATURITY_K = 40; // half-trust point: ~40 answered questions (≈4-6 full 
 const MATURITY_FLOOR = 0.35; // even with almost no data, don't crush the score to near-zero —
 // floor keeps early scores informative-but-humble rather than punitive
 
-const maturityMultiplier = (totalAnsweredQuestions = 0) => {
-  const raw = totalAnsweredQuestions / (totalAnsweredQuestions + MATURITY_K);
+const maturityMultiplier = (totalAnswered = 0) => {
+  const raw = totalAnswered / (totalAnswered + MATURITY_K);
   return MATURITY_FLOOR + (1 - MATURITY_FLOOR) * raw;
 };
 
@@ -326,7 +326,7 @@ const maturityMultiplier = (totalAnsweredQuestions = 0) => {
  * @param {Array<{score,date,interview}>} scoreTrend — chronological session scores
  * @param {Array<{topic,averageScore,attempts}>} topicPerformance
  * @param {number} averageScore — fallback mean if scoreTrend is empty
- * @param {number} totalAnsweredQuestions — evidence volume for the maturity gate.
+ * @param {number} totalAnswered — evidence volume for the maturity gate.
  *   Falls back to summing topicPerformance attempts if not passed explicitly,
  *   so older call sites that don't pass it yet still degrade gracefully
  *   rather than breaking (though callers SHOULD pass it — see interviewController).
@@ -355,13 +355,13 @@ const computeIRSBreakdown = ({
   scoreTrend = [],
   topicPerformance = [],
   averageScore = 0,
-  totalAnsweredQuestions = null,
+  totalAnswered = null,
   difficultyMix = null,
 }) => {
   // ── evidence volume (drives the maturity gate) ──────────────────────────
   const answeredQuestionCount =
-    totalAnsweredQuestions != null
-      ? totalAnsweredQuestions
+    totalAnswered != null
+      ? totalAnswered
       : topicPerformance.reduce((a, t) => a + (t.attempts || 0), 0);
 
   // ── 1. Dimension-weighted mastery (40%) — uses SHRUNK scores already ────
@@ -378,7 +378,7 @@ const computeIRSBreakdown = ({
 
   // ── 3. Topic breadth & depth (13%) — distinct dimensions with REAL depth,
   //      not just distinct topics touched once. A dimension only counts
-  //      toward breadth once it clears MIN_ANSWERS_FOR_CONFIDENCE; partial
+  //      toward breadth once it clears MIN_EVIDENCE_COUNT; partial
   //      credit below that, scaled by its own confidence, so one shallow
   //      topic can't fully count the same as a properly-practiced one.
   const breadthCredit = dimensionProfile.reduce((acc, d) => {
@@ -448,7 +448,7 @@ const computeIRSBreakdown = ({
  * @param {Array<{score,date,interview}>} scoreTrend — chronological session scores
  * @param {Array<{topic,averageScore,attempts}>} topicPerformance
  * @param {number} averageScore — fallback mean if scoreTrend is empty
- * @param {number} totalAnsweredQuestions — evidence volume for the maturity gate.
+ * @param {number} totalAnswered — evidence volume for the maturity gate.
  *   Falls back to summing topicPerformance attempts if not passed explicitly,
  *   so older call sites that don't pass it yet still degrade gracefully
  *   rather than breaking (though callers SHOULD pass it — see interviewController).
@@ -616,7 +616,7 @@ const findBlockingDimension = (tierReadiness) => tierReadiness.blockingDimension
 // ═══════════════════════════════════════════════════════════════════════════
 // 8. ETA PROJECTION — "how many more sessions until you unlock this tier"
 // Requires PER-DIMENSION time series, not just lifetime topic averages.
-// See buildDimensionTimeSeries() below — computed fresh from raw sessions,
+// See buildDimSeries() below — computed fresh from raw sessions,
 // since Session already has questions[].topic + questions[].score + createdAt.
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -626,7 +626,7 @@ const findBlockingDimension = (tierReadiness) => tierReadiness.blockingDimension
  *   with .questions[] containing {topic, score, skipped, userAnswer}
  * @returns {{ [dimensionKey]: Array<{ date, score }> }}
  */
-const buildDimensionTimeSeries = (sessions = []) => {
+const buildDimSeries = (sessions = []) => {
   const series = {};
   DIMENSION_KEYS.forEach((k) => { series[k] = []; });
 
@@ -639,7 +639,7 @@ const buildDimensionTimeSeries = (sessions = []) => {
     (session.questions || []).forEach((q) => {
       if (q.skipped || !q.userAnswer) return;
       const canonical = resolveCanonicalTopic(q.topic);
-      const dims = CANONICAL_TOPIC_TO_DIMENSIONS[canonical] || [];
+      const dims = TOPIC_DIMENSION_MAP[canonical] || [];
       const score = Number(q.score) || 0;
       dims.forEach((dimKey) => {
         sessionDimTotals[dimKey].sum += score;
@@ -698,7 +698,7 @@ module.exports = {
   DIMENSIONS,
   DIMENSION_KEYS,
   TIERS,
-  MIN_ANSWERS_FOR_CONFIDENCE,
+  MIN_EVIDENCE_COUNT,
   resolveCanonicalTopic,
   buildDimensionProfile,
   computeIRS,
@@ -707,7 +707,7 @@ module.exports = {
   tierForScoreGated,
   computeTierReadiness,
   findBlockingDimension,
-  buildDimensionTimeSeries,
+  buildDimSeries,
   projectSessionsToUnlock,
   // math helpers exported too — controller/badgeEngine may want them directly
   clamp,
@@ -720,3 +720,8 @@ module.exports = {
   difficultyAdjustedScore,
   maturityMultiplier,
 };
+
+
+
+
+

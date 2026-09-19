@@ -66,12 +66,12 @@ exports.saveOnboarding = async (req, res) => {
         : [];
 
     // ── Sanitize project URL ───────────────────────────────────────────────
-    let safeProjectUrl = '';
+    let cleanUrl = '';
     if (projectUrl && typeof projectUrl === 'string') {
       const trimmed = projectUrl.trim();
       // Accept github, linkedin, portfolio URLs — basic check
       if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-        safeProjectUrl = trimmed.slice(0, 500);
+        cleanUrl = trimmed.slice(0, 500);
       }
     }
 
@@ -98,7 +98,7 @@ exports.saveOnboarding = async (req, res) => {
         weeklyDays:        parsedWeeklyDays,
         preferredLanguage: safeEnum(preferredLanguage, VALID_LANGUAGES, 'javascript'),
         codingExperience:  safeEnum(codingExperience, VALID_EXPERIENCE, '1-2'),
-        ...(safeProjectUrl && { projectUrl: safeProjectUrl }),
+        ...(cleanUrl && { projectUrl: cleanUrl }),
       },
       { new: true }
     );
@@ -113,3 +113,8 @@ exports.saveOnboarding = async (req, res) => {
     res.status(500).json({ error: 'Failed to save onboarding' });
   }
 };
+
+
+
+
+

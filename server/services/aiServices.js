@@ -1,50 +1,38 @@
 const { GoogleGenAI } = require('@google/genai');
 
-// ---------------------------------------------------------
-// Gemini configuration
-// ---------------------------------------------------------
-
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// gemini-flash-latest is Google's auto-updating alias for its current
-// recommended Flash model — it won't 404 when Google retires a dated
-// version the way gemini-2.5-flash did. Override via .env if needed.
 const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
-// ---------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------
+const LIMITS = {
+  MAX_RETRIES: 2,
+  RETRY_DELAY: 2000,
+  MAX_DELAY: 10000,
+  MAX_QUESTIONS: 30,
+  MAX_TOKENS: 4096,
+  DEFAULT_TOKENS: 400,
+  TIME_OPEN: 120,
+  TIME_MCQ: 45,
+  TIME_APTITUDE: 60,
+  TIME_FALLBACK_OPEN: 90,
+};
 
-const MAX_RETRIES = 2;
-const INITIAL_RETRY_DELAY = 2000;
-const MAX_RETRY_DELAY = 10000;
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// ---------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------
+const getErrorMessage = error => {
+  const msg = error?.message || error?.error?.message || String(error || '');
+  if (!msg) console.warn('getErrorMessage: received empty or unrecognised error shape', error);
+  return msg;
+};
 
-const sleep = ms =>
-  new Promise(resolve => setTimeout(resolve, ms));
-
-const getErrorMessage = error =>
-  error?.message ||
-  error?.error?.message ||
-  String(error || '');
-
-const getStatus = error =>
-  error?.status ||
-  error?.code ||
-  error?.error?.status ||
-  error?.error?.code;
-
-// ---------------------------------------------------------
-// Error detection
-// ---------------------------------------------------------
+const getStatus = error => {
+  const status = error?.status ?? error?.code ?? error?.error?.status ?? error?.error?.code;
+  if (status === undefined) console.warn('getStatus: could not resolve status from error', error);
+  return status;
+};
 
 const isQuotaError = error => {
-  const message =
-    getErrorMessage(error).toLowerCase();
-
+  const message = getErrorMessage(error).toLowerCase();
   return (
     getStatus(error) === 429 ||
     message.includes('resource_exhausted') ||
@@ -54,105 +42,45 @@ const isQuotaError = error => {
   );
 };
 
-const isTemporaryError = error => {
-  const status = Number(getStatus(error));
+const isTemporaryError = error =>
+  [429, 500, 502, 503, 504].includes(Number(getStatus(error)));
 
-  return [
-    429,
-    500,
-    502,
-    503,
-    504,
-  ].includes(status);
-};
-
-// ---------------------------------------------------------
-// Retry delay
-// ---------------------------------------------------------
-
-const getRetryDelay = (
-  error,
-  attempt
-) => {
-  const retryInfo =
-    error?.details?.find?.(
-      detail =>
-        detail?.['@type']?.includes(
-          'RetryInfo'
-        ) ||
-        detail?.type?.includes(
-          'RetryInfo'
-        )
-    );
+const getRetryDelay = (error, attempt) => {
+  const retryInfo = error?.details?.find?.(
+    detail =>
+      detail?.['@type']?.includes('RetryInfo') ||
+      detail?.type?.includes('RetryInfo')
+  );
 
   if (retryInfo?.retryDelay) {
-    const retryDelay =
-      retryInfo.retryDelay;
-
-    if (
-      typeof retryDelay ===
-      'string'
-    ) {
-      const seconds =
-        parseFloat(retryDelay);
-
-      if (
-        !Number.isNaN(seconds)
-      ) {
-        return Math.min(
-          seconds * 1000,
-          MAX_RETRY_DELAY
-        );
-      }
-    }
+    const seconds = parseFloat(retryInfo.retryDelay);
+    if (!Number.isNaN(seconds)) return Math.min(seconds * 1000, LIMITS.MAX_DELAY);
   }
 
-  return Math.min(
-    INITIAL_RETRY_DELAY *
-      Math.pow(2, attempt),
-    MAX_RETRY_DELAY
-  );
+  return Math.min(LIMITS.RETRY_DELAY * Math.pow(2, attempt), LIMITS.MAX_DELAY);
 };
 
-// ---------------------------------------------------------
-// Gemini request
-// ---------------------------------------------------------
-
-const generateWithRetry = async (request, options = {}) => {
+const withRetry = async (request, options = {}) => {
   if (!process.env.GEMINI_API_KEY) {
-    throw new Error(
-      'GEMINI_API_KEY is not configured.'
-    );
+    throw new Error('GEMINI_API_KEY is not configured.');
   }
 
-  // Callers with a good local fallback (e.g. question generation, which
-  // falls back to getFallbackQuestions) can pass a lower maxRetries so a
-  // degraded Gemini API doesn't stall the whole interview-start flow for
-  // 6+ seconds. Callers where a fallback would be a worse user experience
-  // (e.g. scoring an actual submitted answer) keep the full retry budget.
-  const maxRetries =
-    Number.isInteger(options.maxRetries)
-      ? options.maxRetries
-      : MAX_RETRIES;
+  const maxRetries = Number.isInteger(options.maxRetries)
+    ? options.maxRetries
+    : LIMITS.MAX_RETRIES;
 
   let lastError = null;
 
-  for (
-    let attempt = 0;
-    attempt <= maxRetries;
-    attempt++
-  ) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const generationConfig = {};
 
       if (request.config?.responseMimeType) {
         generationConfig.responseMimeType = request.config.responseMimeType;
       }
-
       if (request.config?.responseJsonSchema) {
         generationConfig.responseSchema = request.config.responseJsonSchema;
       }
-
       if (request.config?.maxOutputTokens) {
         generationConfig.maxOutputTokens = request.config.maxOutputTokens;
       }
@@ -163,50 +91,26 @@ const generateWithRetry = async (request, options = {}) => {
         config: generationConfig,
       });
 
-      const responseText = response.text || '';
-
-      // Return object that matches the shape the rest of the code expects
       return {
-        text: responseText,
+        text: response.text || '',
         candidates: response.candidates,
       };
     } catch (error) {
       lastError = error;
 
       console.error(
-        `Gemini request failed. Attempt ${
-          attempt + 1
-        }/${maxRetries + 1}:`,
+        `Gemini request failed. Attempt ${attempt + 1}/${maxRetries + 1}:`,
         getErrorMessage(error)
       );
 
-      // Never waste retries on quota errors.
       if (isQuotaError(error)) {
+        console.error('Gemini quota error — aborting retries:', getErrorMessage(error));
         throw error;
       }
+      if (!isTemporaryError(error)) throw error;
+      if (attempt === maxRetries) break;
 
-      if (
-        !isTemporaryError(error)
-      ) {
-        throw error;
-      }
-
-      if (
-        attempt === maxRetries
-      ) {
-        break;
-      }
-
-      const delay =
-        getRetryDelay(
-          error,
-          attempt
-        );
-
-      console.log(
-        `Retrying Gemini request in ${delay}ms...`
-      );
-
+      const delay = getRetryDelay(error, attempt);
       await sleep(delay);
     }
   }
@@ -214,867 +118,477 @@ const generateWithRetry = async (request, options = {}) => {
   throw lastError;
 };
 
-// ---------------------------------------------------------
-// JSON parser
-// ---------------------------------------------------------
-
-const parseJsonResponse = responseText => {
-  if (!responseText) {
-    throw new Error(
-      'Gemini returned an empty response.'
-    );
-  }
+const parseJson = responseText => {
+  if (!responseText) throw new Error('Gemini returned an empty response.');
 
   try {
-    return JSON.parse(
-      responseText
-    );
-  } catch {
+    return JSON.parse(responseText);
+  } catch (firstError) {
     try {
-      const cleaned =
-        String(responseText)
-          .replace(
-            /^```json\s*/i,
-            ''
-          )
-          .replace(
-            /^```\s*/i,
-            ''
-          )
-          .replace(
-            /\s*```$/i,
-            ''
-          )
-          .trim();
-
-      return JSON.parse(
-        cleaned
-      );
+      const cleaned = String(responseText)
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      return JSON.parse(cleaned);
     } catch {
-      throw new Error(
-        'Gemini returned invalid JSON.'
-      );
+      console.error('parseJson: failed to parse Gemini response. Original error:', firstError.message, '\nRaw response:', responseText);
+      throw new Error('Gemini returned invalid JSON.');
     }
   }
 };
 
-// ---------------------------------------------------------
-// Question helpers
-// ---------------------------------------------------------
+const QUESTION_SCHEMA = {
+  type: 'object',
+  properties: {
+    questions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          text: { type: 'string' },
+          topic: { type: 'string' },
+          difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
+          questionType: { type: 'string', enum: ['open', 'mcq', 'aptitude'] },
+          options: { type: 'array', items: { type: 'string' } },
+          correctAnswerIndex: { type: 'integer' },
+          explanation: { type: 'string' },
+          timeLimit: { type: 'integer' },
+        },
+        required: [
+          'id', 'text', 'topic', 'difficulty', 'questionType',
+          'options', 'correctAnswerIndex', 'explanation', 'timeLimit',
+        ],
+      },
+    },
+  },
+  required: ['questions'],
+};
 
-const normalizeQuestionType = (
-  questionType,
-  mode
-) => {
-  if (
-    [
-      'open',
-      'mcq',
-      'aptitude',
-    ].includes(questionType)
-  ) {
-    return questionType;
-  }
+const VALID_MODES = ['quick', 'full', 'company', 'topic', 'mcq', 'aptitude', 'mixed'];
 
-  if (mode === 'mcq') {
-    return 'mcq';
-  }
-
-  if (mode === 'aptitude') {
-    return 'aptitude';
-  }
-
+const normalizeType = (questionType, mode) => {
+  if (['open', 'mcq', 'aptitude'].includes(questionType)) return questionType;
+  if (mode === 'mcq') return 'mcq';
+  if (mode === 'aptitude') return 'aptitude';
   return 'open';
 };
 
-const getDefaultTimeLimit = questionType => {
-  if (
-    questionType === 'mcq'
-  ) {
-    return 45;
-  }
-
-  if (
-    questionType ===
-    'aptitude'
-  ) {
-    return 60;
-  }
-
-  return 90; // 1 min 30 sec for open questions
+const defaultTimeLimit = questionType => {
+  if (questionType === 'mcq') return LIMITS.TIME_MCQ;
+  if (questionType === 'aptitude') return LIMITS.TIME_APTITUDE;
+  return LIMITS.TIME_OPEN;
 };
 
-const normalizeQuestion = (
-  question,
-  index,
-  mode
-) => {
-  const questionType =
-    normalizeQuestionType(
-      question?.questionType,
-      mode
-    );
+const normalizeQuestion = (question, index, mode) => {
+  const questionType = normalizeType(question?.questionType, mode);
 
   const options =
     questionType === 'open'
       ? []
-      : Array.isArray(
-          question?.options
-        )
-        ? question.options
-            .map(option =>
-              String(
-                option ?? ''
-              ).trim()
-            )
-            .filter(Boolean)
+      : Array.isArray(question?.options)
+        ? question.options.map(o => String(o ?? '').trim()).filter(Boolean)
         : [];
 
-  let correctAnswerIndex =
-    null;
-
-  if (
-    questionType !== 'open'
-  ) {
-    const candidate = Number(
-      question?.correctAnswerIndex
-    );
-
-    if (
-      Number.isInteger(
-        candidate
-      ) &&
-      candidate >= 0 &&
-      candidate < options.length
-    ) {
-      correctAnswerIndex =
-        candidate;
-    }
+  let correctAnswerIndex = null;
+  if (questionType !== 'open') {
+    const candidate = Number(question?.correctAnswerIndex);
+    correctAnswerIndex =
+      Number.isInteger(candidate) && candidate >= 0 && candidate < options.length
+        ? candidate
+        : -1;
   }
 
   return {
-    id:
-      question?.id ||
-      `q${index + 1}`,
-
-    text:
-      String(
-        question?.text ||
-          'Please answer the interview question.'
-      ).trim(),
-
-    topic:
-      String(
-        question?.topic ||
-          (questionType ===
-          'aptitude'
-            ? 'Aptitude'
-            : questionType ===
-                'mcq'
-              ? 'Technical MCQ'
-              : 'General')
-      ).trim(),
-
-    difficulty:
-      [
-        'easy',
-        'medium',
-        'hard',
-      ].includes(
-        question?.difficulty
-      )
-        ? question.difficulty
-        : 'medium',
-
+    id: question?.id || `q${index + 1}`,
+    text: String(question?.text || 'Please answer the interview question.').trim(),
+    topic: String(
+      question?.topic ||
+        (questionType === 'aptitude'
+          ? 'Aptitude'
+          : questionType === 'mcq'
+            ? 'Technical MCQ'
+            : 'General')
+    ).trim(),
+    difficulty: ['easy', 'medium', 'hard'].includes(question?.difficulty)
+      ? question.difficulty
+      : 'medium',
     questionType,
-
     options,
-
     correctAnswerIndex,
-
-    explanation:
-      questionType === 'open'
-        ? ''
-        : String(
-            question?.explanation ||
-              ''
-          ).trim(),
-
+    explanation: questionType === 'open' ? '' : String(question?.explanation || '').trim(),
     timeLimit:
-      Number.isFinite(
-        Number(
-          question?.timeLimit
-        )
-      ) &&
-      Number(
-        question.timeLimit
-      ) > 0
-        ? Math.round(
-            Number(
-              question.timeLimit
-            )
-          )
-        : getDefaultTimeLimit(
-            questionType
-          ),
+      Number.isFinite(Number(question?.timeLimit)) && Number(question.timeLimit) > 0
+        ? Math.round(Number(question.timeLimit))
+        : defaultTimeLimit(questionType),
   };
 };
 
-// ---------------------------------------------------------
-// Fallback questions
-// ---------------------------------------------------------
-
-const getFallbackOpenQuestions = (
-  topic,
-  count
-) => {
+const getFallbackOpen = (topic, count) => {
   let questions = [
     {
       id: 'q1',
-      text:
-        'Explain the difference between an Array and a Linked List.',
+      text: 'Explain the difference between an Array and a Linked List.',
       topic: 'DSA',
       difficulty: 'easy',
       questionType: 'open',
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 90,
+      timeLimit: LIMITS.TIME_FALLBACK_OPEN,
     },
-
     {
       id: 'q2',
-      text:
-        'What is OOP? Explain its four main principles with examples.',
+      text: 'What is OOP? Explain its four main principles with examples.',
       topic: 'OOP',
       difficulty: 'easy',
       questionType: 'open',
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 90,
+      timeLimit: LIMITS.TIME_FALLBACK_OPEN,
     },
-
     {
       id: 'q3',
-      text:
-        'What is the difference between a stack and a queue?',
+      text: 'What is the difference between a stack and a queue?',
       topic: 'DSA',
       difficulty: 'easy',
       questionType: 'open',
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 90,
+      timeLimit: LIMITS.TIME_FALLBACK_OPEN,
     },
-
     {
       id: 'q4',
-      text:
-        'Explain the difference between let, const, and var in JavaScript.',
+      text: 'Explain the difference between let, const, and var in JavaScript.',
       topic: 'JavaScript',
       difficulty: 'easy',
       questionType: 'open',
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 90,
+      timeLimit: LIMITS.TIME_FALLBACK_OPEN,
     },
-
     {
       id: 'q5',
-      text:
-        'What is a REST API and why is it commonly used?',
+      text: 'What is a REST API and why is it commonly used?',
       topic: 'Web Development',
       difficulty: 'easy',
       questionType: 'open',
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 90,
+      timeLimit: LIMITS.TIME_FALLBACK_OPEN,
     },
-
     {
       id: 'q6',
-      text:
-        'Explain the difference between SQL and NoSQL databases.',
+      text: 'Explain the difference between SQL and NoSQL databases.',
       topic: 'Database',
       difficulty: 'medium',
       questionType: 'open',
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 90,
+      timeLimit: LIMITS.TIME_FALLBACK_OPEN,
     },
-
     {
       id: 'q7',
-      text:
-        'What is inheritance in object-oriented programming?',
+      text: 'What is inheritance in object-oriented programming?',
       topic: 'OOP',
       difficulty: 'easy',
       questionType: 'open',
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 90,
+      timeLimit: LIMITS.TIME_FALLBACK_OPEN,
     },
-
     {
       id: 'q8',
-      text:
-        'What is binary search and what is its time complexity?',
+      text: 'What is binary search and what is its time complexity?',
       topic: 'DSA',
       difficulty: 'medium',
       questionType: 'open',
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 90,
+      timeLimit: LIMITS.TIME_FALLBACK_OPEN,
     },
-
     {
       id: 'q9',
-      text:
-        'What is a JavaScript Promise and when would you use one?',
+      text: 'What is a JavaScript Promise and when would you use one?',
       topic: 'JavaScript',
       difficulty: 'medium',
       questionType: 'open',
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 90,
+      timeLimit: LIMITS.TIME_FALLBACK_OPEN,
     },
-
     {
       id: 'q10',
-      text:
-        'Tell me about yourself and your technical background.',
+      text: 'Tell me about yourself and your technical background.',
       topic: 'HR',
       difficulty: 'easy',
       questionType: 'open',
       options: [],
       correctAnswerIndex: null,
       explanation: '',
-      timeLimit: 90,
+      timeLimit: LIMITS.TIME_FALLBACK_OPEN,
     },
   ];
 
   if (topic) {
-    const normalizedTopic =
-      String(topic)
-        .toLowerCase();
-
-    const matching =
-      questions.filter(
-        question =>
-          question.topic
-            .toLowerCase()
-            .includes(
-              normalizedTopic
-            )
-      );
-
-    const others =
-      questions.filter(
-        question =>
-          !question.topic
-            .toLowerCase()
-            .includes(
-              normalizedTopic
-            )
-      );
-
-    questions = [
-      ...matching,
-      ...others,
-    ];
+    const normalizedTopic = String(topic).toLowerCase();
+    const matching = questions.filter(q => q.topic.toLowerCase().includes(normalizedTopic));
+    const others = questions.filter(q => !q.topic.toLowerCase().includes(normalizedTopic));
+    questions = [...matching, ...others];
   }
 
-  return questions.slice(
-    0,
-    count
-  );
+  return questions.slice(0, count);
 };
 
-const getFallbackMCQQuestions = count => {
+const getFallbackMCQ = count => {
   const questions = [
     {
       id: 'mcq1',
-      text:
-        'Which data structure follows the FIFO principle?',
+      text: 'Which data structure follows the FIFO principle?',
       topic: 'Data Structures',
       difficulty: 'easy',
       questionType: 'mcq',
-      options: [
-        'Stack',
-        'Queue',
-        'Tree',
-        'Graph',
-      ],
+      options: ['Stack', 'Queue', 'Tree', 'Graph'],
       correctAnswerIndex: 1,
-      explanation:
-        'A queue follows First-In-First-Out (FIFO).',
-      timeLimit: 45,
+      explanation: 'A queue follows First-In-First-Out (FIFO).',
+      timeLimit: LIMITS.TIME_MCQ,
     },
-
     {
       id: 'mcq2',
-      text:
-        'What is the average time complexity of binary search on a sorted array?',
+      text: 'What is the average time complexity of binary search on a sorted array?',
       topic: 'Algorithms',
       difficulty: 'easy',
       questionType: 'mcq',
-      options: [
-        'O(n)',
-        'O(log n)',
-        'O(n²)',
-        'O(1)',
-      ],
+      options: ['O(n)', 'O(log n)', 'O(n²)', 'O(1)'],
       correctAnswerIndex: 1,
-      explanation:
-        'Binary search halves the search space at each step, giving O(log n) average time.',
-      timeLimit: 45,
+      explanation: 'Binary search halves the search space at each step, giving O(log n) average time.',
+      timeLimit: LIMITS.TIME_MCQ,
     },
-
     {
       id: 'mcq3',
-      text:
-        'Which keyword declares a block-scoped constant in JavaScript?',
+      text: 'Which keyword declares a block-scoped constant in JavaScript?',
       topic: 'JavaScript',
       difficulty: 'easy',
       questionType: 'mcq',
-      options: [
-        'var',
-        'let',
-        'const',
-        'static',
-      ],
+      options: ['var', 'let', 'const', 'static'],
       correctAnswerIndex: 2,
-      explanation:
-        'const declares a block-scoped binding that cannot be reassigned.',
-      timeLimit: 45,
+      explanation: 'const declares a block-scoped binding that cannot be reassigned.',
+      timeLimit: LIMITS.TIME_MCQ,
     },
-
     {
       id: 'mcq4',
-      text:
-        'Which HTTP status code normally represents a successful request?',
+      text: 'Which HTTP status code normally represents a successful request?',
       topic: 'Web Development',
       difficulty: 'easy',
       questionType: 'mcq',
-      options: [
-        '404',
-        '500',
-        '200',
-        '301',
-      ],
+      options: ['404', '500', '200', '301'],
       correctAnswerIndex: 2,
-      explanation:
-        'HTTP 200 means the request was successfully processed.',
-      timeLimit: 45,
+      explanation: 'HTTP 200 means the request was successfully processed.',
+      timeLimit: LIMITS.TIME_MCQ,
     },
-
     {
       id: 'mcq5',
-      text:
-        'Which SQL command is used to retrieve data from a table?',
+      text: 'Which SQL command is used to retrieve data from a table?',
       topic: 'Database',
       difficulty: 'easy',
       questionType: 'mcq',
-      options: [
-        'INSERT',
-        'SELECT',
-        'UPDATE',
-        'DELETE',
-      ],
+      options: ['INSERT', 'SELECT', 'UPDATE', 'DELETE'],
       correctAnswerIndex: 1,
-      explanation:
-        'SELECT retrieves data from one or more database tables.',
-      timeLimit: 45,
+      explanation: 'SELECT retrieves data from one or more database tables.',
+      timeLimit: LIMITS.TIME_MCQ,
     },
-
     {
       id: 'mcq6',
-      text:
-        'Which OOP principle allows an object to hide internal implementation details?',
+      text: 'Which OOP principle allows an object to hide internal implementation details?',
       topic: 'OOP',
       difficulty: 'medium',
       questionType: 'mcq',
-      options: [
-        'Inheritance',
-        'Encapsulation',
-        'Polymorphism',
-        'Recursion',
-      ],
+      options: ['Inheritance', 'Encapsulation', 'Polymorphism', 'Recursion'],
       correctAnswerIndex: 1,
-      explanation:
-        'Encapsulation hides internal state and implementation behind a public interface.',
-      timeLimit: 45,
+      explanation: 'Encapsulation hides internal state and implementation behind a public interface.',
+      timeLimit: LIMITS.TIME_MCQ,
     },
-
     {
       id: 'mcq7',
-      text:
-        'Which protocol is commonly used for secure HTTP communication?',
+      text: 'Which protocol is commonly used for secure HTTP communication?',
       topic: 'Networking',
       difficulty: 'easy',
       questionType: 'mcq',
-      options: [
-        'FTP',
-        'HTTP',
-        'HTTPS',
-        'SMTP',
-      ],
+      options: ['FTP', 'HTTP', 'HTTPS', 'SMTP'],
       correctAnswerIndex: 2,
-      explanation:
-        'HTTPS is HTTP secured using TLS.',
-      timeLimit: 45,
+      explanation: 'HTTPS is HTTP secured using TLS.',
+      timeLimit: LIMITS.TIME_MCQ,
     },
-
     {
       id: 'mcq8',
-      text:
-        'Which of the following is NOT a JavaScript primitive type?',
+      text: 'Which of the following is NOT a JavaScript primitive type?',
       topic: 'JavaScript',
       difficulty: 'medium',
       questionType: 'mcq',
-      options: [
-        'String',
-        'Boolean',
-        'Number',
-        'Array',
-      ],
+      options: ['String', 'Boolean', 'Number', 'Array'],
       correctAnswerIndex: 3,
-      explanation:
-        'Array is an object type in JavaScript, not a primitive type.',
-      timeLimit: 45,
+      explanation: 'Array is an object type in JavaScript, not a primitive type.',
+      timeLimit: LIMITS.TIME_MCQ,
     },
   ];
 
-  return questions.slice(
-    0,
-    count
-  );
+  return questions.slice(0, count);
 };
 
-const getFallbackAptitudeQuestions = count => {
+const getFallbackAptitude = count => {
   const questions = [
     {
       id: 'apt1',
-      text:
-        'A train travels 120 km in 2 hours. What is its average speed?',
-      topic:
-        'Quantitative Aptitude',
+      text: 'A train travels 120 km in 2 hours. What is its average speed?',
+      topic: 'Quantitative Aptitude',
       difficulty: 'easy',
       questionType: 'aptitude',
-      options: [
-        '40 km/h',
-        '50 km/h',
-        '60 km/h',
-        '80 km/h',
-      ],
+      options: ['40 km/h', '50 km/h', '60 km/h', '80 km/h'],
       correctAnswerIndex: 2,
-      explanation:
-        'Average speed = distance / time = 120 / 2 = 60 km/h.',
-      timeLimit: 60,
+      explanation: 'Average speed = distance / time = 120 / 2 = 60 km/h.',
+      timeLimit: LIMITS.TIME_APTITUDE,
     },
-
     {
       id: 'apt2',
-      text:
-        'If 20% of a number is 50, what is the number?',
+      text: 'If 20% of a number is 50, what is the number?',
       topic: 'Percentages',
       difficulty: 'easy',
       questionType: 'aptitude',
-      options: [
-        '100',
-        '150',
-        '200',
-        '250',
-      ],
+      options: ['100', '150', '200', '250'],
       correctAnswerIndex: 3,
-      explanation:
-        '20% of x = 50, so x = 50 / 0.20 = 250.',
-      timeLimit: 60,
+      explanation: '20% of x = 50, so x = 50 / 0.20 = 250.',
+      timeLimit: LIMITS.TIME_APTITUDE,
     },
-
     {
       id: 'apt3',
-      text:
-        'A product costs ₹800 and is sold at a 10% discount. What is the selling price?',
+      text: 'A product costs ₹800 and is sold at a 10% discount. What is the selling price?',
       topic: 'Percentages',
       difficulty: 'easy',
       questionType: 'aptitude',
-      options: [
-        '₹700',
-        '₹720',
-        '₹760',
-        '₹780',
-      ],
+      options: ['₹700', '₹720', '₹760', '₹780'],
       correctAnswerIndex: 1,
-      explanation:
-        '10% of ₹800 is ₹80. Therefore, selling price = ₹800 - ₹80 = ₹720.',
-      timeLimit: 60,
+      explanation: '10% of ₹800 is ₹80. Therefore, selling price = ₹800 - ₹80 = ₹720.',
+      timeLimit: LIMITS.TIME_APTITUDE,
     },
-
     {
       id: 'apt4',
-      text:
-        'The ratio of boys to girls in a class is 3:2. If there are 30 boys, how many girls are there?',
+      text: 'The ratio of boys to girls in a class is 3:2. If there are 30 boys, how many girls are there?',
       topic: 'Ratio',
       difficulty: 'easy',
       questionType: 'aptitude',
-      options: [
-        '15',
-        '20',
-        '25',
-        '30',
-      ],
+      options: ['15', '20', '25', '30'],
       correctAnswerIndex: 1,
-      explanation:
-        '3 parts correspond to 30, so one part is 10. Two parts correspond to 20 girls.',
-      timeLimit: 60,
+      explanation: '3 parts correspond to 30, so one part is 10. Two parts correspond to 20 girls.',
+      timeLimit: LIMITS.TIME_APTITUDE,
     },
-
     {
       id: 'apt5',
-      text:
-        'A number is increased by 25% and becomes 100. What was the original number?',
+      text: 'A number is increased by 25% and becomes 100. What was the original number?',
       topic: 'Percentages',
       difficulty: 'medium',
       questionType: 'aptitude',
-      options: [
-        '75',
-        '80',
-        '85',
-        '90',
-      ],
+      options: ['75', '80', '85', '90'],
       correctAnswerIndex: 1,
-      explanation:
-        'Original × 1.25 = 100, so original = 80.',
-      timeLimit: 60,
+      explanation: 'Original × 1.25 = 100, so original = 80.',
+      timeLimit: LIMITS.TIME_APTITUDE,
     },
-
     {
       id: 'apt6',
-      text:
-        'If 5 workers complete a task in 12 days, assuming equal productivity, how many days would 10 workers take?',
+      text: 'If 5 workers complete a task in 12 days, assuming equal productivity, how many days would 10 workers take?',
       topic: 'Time and Work',
       difficulty: 'medium',
       questionType: 'aptitude',
-      options: [
-        '3 days',
-        '5 days',
-        '6 days',
-        '10 days',
-      ],
+      options: ['3 days', '5 days', '6 days', '10 days'],
       correctAnswerIndex: 2,
-      explanation:
-        'Workers and time are inversely proportional. Doubling workers from 5 to 10 halves the time from 12 to 6 days.',
-      timeLimit: 60,
+      explanation: 'Workers and time are inversely proportional. Doubling workers from 5 to 10 halves the time from 12 to 6 days.',
+      timeLimit: LIMITS.TIME_APTITUDE,
     },
-
     {
       id: 'apt7',
-      text:
-        'What is the next number in the sequence: 2, 6, 12, 20, 30, ?',
+      text: 'What is the next number in the sequence: 2, 6, 12, 20, 30, ?',
       topic: 'Logical Reasoning',
       difficulty: 'medium',
       questionType: 'aptitude',
-      options: [
-        '36',
-        '40',
-        '42',
-        '44',
-      ],
+      options: ['36', '40', '42', '44'],
       correctAnswerIndex: 2,
-      explanation:
-        'The differences are 4, 6, 8, 10, so the next difference is 12. Therefore 30 + 12 = 42.',
-      timeLimit: 60,
+      explanation: 'The differences are 4, 6, 8, 10, so the next difference is 12. Therefore 30 + 12 = 42.',
+      timeLimit: LIMITS.TIME_APTITUDE,
     },
-
     {
       id: 'apt8',
-      text:
-        'A shopkeeper buys an item for ₹500 and sells it for ₹600. What is the profit percentage?',
-      topic:
-        'Profit and Loss',
+      text: 'A shopkeeper buys an item for ₹500 and sells it for ₹600. What is the profit percentage?',
+      topic: 'Profit and Loss',
       difficulty: 'easy',
       questionType: 'aptitude',
-      options: [
-        '10%',
-        '15%',
-        '20%',
-        '25%',
-      ],
+      options: ['10%', '15%', '20%', '25%'],
       correctAnswerIndex: 2,
-      explanation:
-        'Profit = ₹600 - ₹500 = ₹100. Profit percentage = 100 / 500 × 100 = 20%.',
-      timeLimit: 60,
+      explanation: 'Profit = ₹600 - ₹500 = ₹100. Profit percentage = 100 / 500 × 100 = 20%.',
+      timeLimit: LIMITS.TIME_APTITUDE,
     },
   ];
 
-  return questions.slice(
-    0,
-    count
-  );
+  return questions.slice(0, count);
 };
 
-const getFallbackMixedQuestions = count => {
-  const openQuestions =
-    getFallbackOpenQuestions(
-      '',
-      10
-    );
+const getFallbackMixed = count => {
+  const open = getFallbackOpen('', 10);
+  const mcq = getFallbackMCQ(8);
+  const aptitude = getFallbackAptitude(8);
 
-  const mcqQuestions =
-    getFallbackMCQQuestions(
-      8
-    );
+  const ratio = { mcq: 3, aptitude: 3, open: 4 };
+  const total = ratio.mcq + ratio.aptitude + ratio.open;
+  const cycles = Math.ceil(count / total);
 
-  const aptitudeQuestions =
-    getFallbackAptitudeQuestions(
-      8
-    );
-
-  const combined = [];
-
-  const maxLength =
-    Math.max(
-      openQuestions.length,
-      mcqQuestions.length,
-      aptitudeQuestions.length
-    );
-
-  for (
-    let index = 0;
-    index < maxLength;
-    index++
-  ) {
-    if (
-      combined.length <
-        count &&
-      mcqQuestions[index]
-    ) {
-      combined.push(
-        mcqQuestions[index]
-      );
-    }
-
-    if (
-      combined.length <
-        count &&
-      aptitudeQuestions[index]
-    ) {
-      combined.push(
-        aptitudeQuestions[index]
-      );
-    }
-
-    if (
-      combined.length <
-        count &&
-      openQuestions[index]
-    ) {
-      combined.push(
-        openQuestions[index]
-      );
-    }
+  const pool = [];
+  for (let i = 0; i < cycles; i++) {
+    pool.push(...mcq.slice(0, ratio.mcq), ...aptitude.slice(0, ratio.aptitude), ...open.slice(0, ratio.open));
   }
 
-  return combined.slice(
-    0,
-    count
-  );
+  return pool.slice(0, count);
 };
 
-const getFallbackQuestions = (
-  mode,
-  topic,
-  count
-) => {
-  if (mode === 'mcq') {
-    return getFallbackMCQQuestions(
-      count
-    );
-  }
-
-  if (
-    mode === 'aptitude'
-  ) {
-    return getFallbackAptitudeQuestions(
-      count
-    );
-  }
-
-  if (mode === 'mixed') {
-    return getFallbackMixedQuestions(
-      count
-    );
-  }
-
-  return getFallbackOpenQuestions(
-    topic,
-    count
-  );
+const getFallbackQuestions = (mode, topic, count) => {
+  if (mode === 'mcq') return getFallbackMCQ(count);
+  if (mode === 'aptitude') return getFallbackAptitude(count);
+  if (mode === 'mixed') return getFallbackMixed(count);
+  return getFallbackOpen(topic, count);
 };
 
-// ---------------------------------------------------------
-// Fallback evaluation
-// ---------------------------------------------------------
-
-const getFallbackEvaluation = ({ userAnswer,}) => {
-  const answer =
-    String(
-      userAnswer || ''
-    ).trim();
+const fallbackEval = ({ userAnswer }) => {
+  const answer = String(userAnswer || '').trim();
 
   if (!answer) {
     return {
       score: 0,
       aiAvailable: false,
       fallback: true,
-
-      good:
-        'No answer was provided.',
-
-      missing:
-        'The question was not answered.',
-
-      idealHint:
-        'Try to explain the main concept asked in the question.',
-
-      tip:
-        'Give a direct answer first, then support it with an example.',
-
-      sampleAnswer:
-        'Start with the definition or main idea, then briefly explain how it works.',
+      good: 'No answer was provided.',
+      missing: 'The question was not answered.',
+      idealHint: 'Try to explain the main concept asked in the question.',
+      tip: 'Give a direct answer first, then support it with an example.',
+      sampleAnswer: 'Start with the definition or main idea, then briefly explain how it works.',
     };
   }
 
-  if (
-    answer.length < 30
-  ) {
+  if (answer.length < 30) {
     return {
       score: 35,
       aiAvailable: false,
       fallback: true,
-
-      good:
-        'You attempted the question and gave a direct response.',
-
-      missing:
-        'The answer is quite short and may not contain enough explanation or supporting details.',
-
-      idealHint:
-        'Explain the main concept and include one relevant example.',
-
-      tip:
-        'Expand your answer with a definition, explanation, and example.',
-
-      sampleAnswer:
-        'Give the main definition, explain the key idea, and finish with a simple example.',
+      good: 'You attempted the question and gave a direct response.',
+      missing: 'The answer is quite short and may not contain enough explanation or supporting details.',
+      idealHint: 'Explain the main concept and include one relevant example.',
+      tip: 'Expand your answer with a definition, explanation, and example.',
+      sampleAnswer: 'Give the main definition, explain the key idea, and finish with a simple example.',
     };
   }
 
@@ -1082,29 +596,15 @@ const getFallbackEvaluation = ({ userAnswer,}) => {
     score: 60,
     aiAvailable: false,
     fallback: true,
-
-    good:
-      'You provided a substantive answer to the question.',
-
-    missing:
-      'Detailed AI evaluation is temporarily unavailable, so specific technical gaps could not be identified.',
-
-    idealHint:
-      'Make sure your answer directly addresses the question and covers the important technical concepts.',
-
-    tip:
-      'Structure your answer clearly: explain the concept, give the reasoning, and add an example where appropriate.',
-
-    sampleAnswer:
-      'A strong interview answer should directly address the question, explain the key technical idea, and provide a concise example.',
+    good: 'You provided a substantive answer to the question.',
+    missing: 'Detailed AI evaluation is temporarily unavailable, so specific technical gaps could not be identified.',
+    idealHint: 'Make sure your answer directly addresses the question and covers the important technical concepts.',
+    tip: 'Structure your answer clearly: explain the concept, give the reasoning, and add an example where appropriate.',
+    sampleAnswer: 'A strong interview answer should directly address the question, explain the key technical idea, and provide a concise example.',
   };
 };
 
-// ---------------------------------------------------------
-// Fallback coach advice
-// ---------------------------------------------------------
-
-const getFallbackCoachAdvice = ({
+const fallbackCoachAdvice = ({
   totalSessions = 0,
   averageScore = 0,
   bestScore = 0,
@@ -1117,23 +617,17 @@ const getFallbackCoachAdvice = ({
   primaryBlockerLabel = null,
   sessionsToUnlockNextTier = null,
 } = {}) => {
-  const weakestText = weakest.length
-    ? weakest.join(', ')
-    : 'not enough data yet to identify weak topics';
-
+  const weakestText = weakest.length ? weakest.join(', ') : 'not enough data yet to identify weak topics';
   const tierText = currentTierLabel
     ? `You're currently tracking toward the ${currentTierLabel} tier`
     : 'Your tier placement needs a few more sessions to be reliable';
-
   const nextTierText =
     nextTierLabel && nextTierReadinessPct !== null
       ? ` and are ${nextTierReadinessPct}% of the way to ${nextTierLabel}.`
       : '.';
-
   const blockerText = primaryBlockerLabel
     ? `Right now, ${primaryBlockerLabel} is your biggest blocker to leveling up.`
     : 'Keep practicing consistently to surface your biggest growth area.';
-
   const unlockText =
     sessionsToUnlockNextTier !== null
       ? `At your current pace, roughly ${sessionsToUnlockNextTier} more focused sessions could unlock the next tier.`
@@ -1141,24 +635,14 @@ const getFallbackCoachAdvice = ({
 
   return {
     verdict: `AI coaching is temporarily unavailable, so here's a snapshot based on your saved stats. Across ${totalSessions} session(s), you're averaging ${averageScore}/100 with a best of ${bestScore}/100. ${tierText}${nextTierText}`,
-
     criticalGaps: `Your weaker areas so far: ${weakestText}. ${blockerText}`,
-
     strengths: `Your strongest topic has been ${strongest}. A ${streak}-day streak shows you're building consistency, which matters as much as raw scores.`,
-
     battlePlan: `Keep sessions short but frequent, and prioritize your weak topics (${weakestText}) before broadening out. ${unlockText}`,
-
-    mindset:
-      'Placement prep is a marathon, not a sprint — steady, honest practice beats cramming. This detailed analysis will refresh automatically once AI coaching is back online.',
-
+    mindset: 'Placement prep is a marathon, not a sprint — steady, honest practice beats cramming. This detailed analysis will refresh automatically once AI coaching is back online.',
     aiAvailable: false,
     fallback: true,
   };
 };
-
-// ---------------------------------------------------------
-// Generate questions
-// ---------------------------------------------------------
 
 const generateQuestions = async ({
   mode = 'quick',
@@ -1169,33 +653,14 @@ const generateQuestions = async ({
   count = 10,
   previousQuestions = [],
 }) => {
-  const safeCount =
-    Math.max(
-      1,
-      Math.min(
-        Number(count) || 10,
-        30
-      )
-    );
-
-  const normalizedMode =
-    [
-      'quick',
-      'full',
-      'company',
-      'topic',
-      'mcq',
-      'aptitude',
-      'mixed',
-    ].includes(mode)
-      ? mode
-      : 'quick';
+  const safeCount = Math.max(1, Math.min(Number(count) || 10, LIMITS.MAX_QUESTIONS));
+  const normalizedMode = VALID_MODES.includes(mode) ? mode : 'quick';
 
   const exclusionBlock = previousQuestions.length > 0
-? `\nPREVIOUSLY SEEN QUESTIONS (do NOT repeat or closely paraphrase any of these):\n${previousQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n`
-: '';
+    ? `\nPREVIOUSLY SEEN QUESTIONS (do NOT repeat or closely paraphrase any of these):\n${previousQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n`
+    : '';
 
-const prompt = `
+  const prompt = `
 You are an expert interviewer and assessment designer.
 
 Generate exactly ${safeCount} questions for an Indian engineering student preparing for placements.
@@ -1207,11 +672,7 @@ Mode: ${normalizedMode}
 Company: ${company || 'General'}
 Topic: ${topic || 'Mixed'}
 Difficulty: ${difficulty || 'mixed'}
-Weak areas: ${
-    weakAreas?.length
-      ? weakAreas.join(', ')
-      : 'None'
-  }
+Weak areas: ${weakAreas?.length ? weakAreas.join(', ') : 'None'}
 
 MODE RULES
 
@@ -1222,15 +683,15 @@ MODE RULES
 - questionType must be "open".
 2. FULL MODE
 - Same as quick but broader topic coverage. 10 questions.
-- questionType must be \"open\".
+- questionType must be "open".
 
 3. COMPANY MODE
 - Questions tailored to the specified company's known interview patterns.
-- Mix technical and behavioral. questionType must be \"open\".
+- Mix technical and behavioral. questionType must be "open".
 
 4. TOPIC MODE
 - Deep dive into the specified topic only. All questions on that topic.
-- questionType must be \"open\".
+- questionType must be "open".
 
 5. MCQ MODE
 - Every question must be multiple choice.
@@ -1276,279 +737,102 @@ Aptitude: 60 seconds
 Return ONLY JSON.
 `;
 
+  const normalize = str =>
+    String(str || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
   try {
-    const result =
-      await generateWithRetry({
+    const result = await withRetry(
+      {
         contents: prompt,
-
         config: {
-          responseMimeType:
-            'application/json',
-
-          responseJsonSchema: {
-            type: 'object',
-
-            properties: {
-              questions: {
-                type: 'array',
-
-                items: {
-                  type: 'object',
-
-                  properties: {
-                    id: {
-                      type: 'string',
-                    },
-
-                    text: {
-                      type: 'string',
-                    },
-
-                    topic: {
-                      type: 'string',
-                    },
-
-                    difficulty: {
-                      type: 'string',
-                      enum: [
-                        'easy',
-                        'medium',
-                        'hard',
-                      ],
-                    },
-
-                    questionType: {
-                      type: 'string',
-                      enum: [
-                        'open',
-                        'mcq',
-                        'aptitude',
-                      ],
-                    },
-
-                    options: {
-                      type: 'array',
-                      items: {
-                        type: 'string',
-                      },
-                    },
-
-                   correctAnswerIndex: {
-                    type: 'integer',
-                  },
-
-                    explanation: {
-                      type: 'string',
-                    },
-
-                    timeLimit: {
-                      type: 'integer',
-                    },
-                  },
-
-                  required: [
-                    'id',
-                    'text',
-                    'topic',
-                    'difficulty',
-                    'questionType',
-                    'options',
-                    'correctAnswerIndex',
-                    'explanation',
-                    'timeLimit',
-                  ],
-                },
-              },
-            },
-
-            required: [
-              'questions',
-            ],
-          },
+          responseMimeType: 'application/json',
+          responseJsonSchema: QUESTION_SCHEMA,
         },
-      }, { maxRetries: 1}); // fail fast to getFallbackQuestions instead of stalling interview start for 6+s
-
-    const parsed = parseJsonResponse(
-      result.text
+      },
+      { maxRetries: 1 }
     );
 
-    if (
-      !parsed.questions ||
-      !Array.isArray(
-        parsed.questions
-      ) ||
-      parsed.questions.length <
-        safeCount
-    ) {
-      throw new Error(
-        'Gemini returned fewer questions than requested.'
-      );
+    const parsed = parseJson(result.text);
+
+    if (!parsed.questions || !Array.isArray(parsed.questions) || parsed.questions.length < safeCount) {
+      throw new Error('Gemini returned fewer questions than requested.');
     }
 
-    const normalized =
-      parsed.questions
-        .slice(
-          0,
-          safeCount
-        )
-        .map(
-          (
-            question,
-            index
-          ) =>
-            normalizeQuestion(
-              question,
-              index,
-              normalizedMode
-            )
-        );
+    const normalized = parsed.questions
+      .slice(0, safeCount)
+      .map((question, index) => normalizeQuestion(question, index, normalizedMode));
 
-    // Post-generation dedup: catches the rare case where Gemini returns a
-    // question that's identical or near-identical to one in previousQuestions
-    // despite the exclusion instruction, or repeats a question within the
-    // batch itself. Uses a normalised lowercase key (strip punctuation,
-    // collapse whitespace) so "What is polymorphism?" and "what is
-    // polymorphism" are treated as the same question.
-    const normalise = str =>
-      String(str || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+    const previousSet = new Set(previousQuestions.map(normalize));
+    const deduped = [];
 
-    const previousSet = new Set(
-      previousQuestions.map(normalise)
-    );
-
-    const dedupedNormalized = [];
     for (const q of normalized) {
-      const key = normalise(q.text);
+      const key = normalize(q.text);
       if (!previousSet.has(key)) {
-        previousSet.add(key); // also dedup within this batch
-        dedupedNormalized.push(q);
-      } else {
-        console.warn(
-          '[generateQuestions] Gemini repeated a question despite exclusion list — dropped:',
-          q.text?.slice(0, 60)
-        );
+        previousSet.add(key);
+        deduped.push(q);
       }
     }
 
-    // If dedup removed too many, log it — the remaining questions are still
-    // valid and the session should proceed rather than fail entirely.
-    if (dedupedNormalized.length < normalized.length) {
-      console.warn(
-        `[generateQuestions] ${normalized.length - dedupedNormalized.length} duplicate(s) removed. Proceeding with ${dedupedNormalized.length} questions.`
-      );
-    }
+    const hasInvalidObjective = deduped.some(q => {
+      if (q.questionType === 'open') return false;
+      return q.options.length !== 4 || q.correctAnswerIndex === null || q.correctAnswerIndex === -1;
+    });
 
-    const hasInvalidObjective =
-      dedupedNormalized.some(
-        question => {
-          if (
-            question.questionType ===
-            'open'
-          ) {
-            return false;
-          }
+    if (hasInvalidObjective) throw new Error('Gemini returned an invalid objective question.');
 
-          return (
-            question.options.length !==
-              4 ||
-            question.correctAnswerIndex ===
-              null
-          );
-        }
-      );
-
-    if (
-      hasInvalidObjective
-    ) {
-      throw new Error(
-        'Gemini returned an invalid objective question.'
-      );
-    }
-
-    return dedupedNormalized;
+    return deduped;
   } catch (error) {
-console.error(
-  'Gemini generateQuestions error:',
-  getErrorMessage(error)
-);
+    console.error('Gemini generateQuestions error:', getErrorMessage(error));
 
-// On 503, try again once more before falling back to static questions
-if (getStatus(error) === 503) {
-  try {
-    const retryResult = await generateWithRetry({
-      contents: prompt,
-      config: { responseMimeType: 'application/json' },
-    }, { maxRetries: 1 });
-
-    const retryParsed = parseJsonResponse(retryResult.text);
-    if (retryParsed.questions?.length >= safeCount) {
-      return retryParsed.questions.slice(0, safeCount).map((q, i) => normalizeQuestion(q, i, normalizedMode));
+    if (getStatus(error) === 503) {
+      try {
+        const retryResult = await withRetry(
+          {
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+              responseJsonSchema: QUESTION_SCHEMA,
+            },
+          },
+          { maxRetries: 1 }
+        );
+        const retryParsed = parseJson(retryResult.text);
+        if (retryParsed.questions?.length >= safeCount) {
+          return retryParsed.questions
+            .slice(0, safeCount)
+            .map((q, i) => normalizeQuestion(q, i, normalizedMode));
+        }
+      } catch (_) {
+        // fall through to static fallback
+      }
     }
-  } catch (_) {
-    // fall through to static fallback below
-  }
-}
 
-return getFallbackQuestions(
-  normalizedMode,
-      topic,
-      safeCount
-    );
+    return getFallbackQuestions(normalizedMode, topic, safeCount);
   }
 };
 
-// ---------------------------------------------------------
-// Evaluate open answer
-// ---------------------------------------------------------
+const evaluateOpenAnswer = async ({ question, answer, topic }) => {
+  const questionText = typeof question === 'string' ? question : question?.text || '';
+  const userAnswer = String(answer || '').trim();
+  const questionTopic = topic || (typeof question === 'string' ? 'General' : question?.topic) || 'General';
 
-const evaluateOpenAnswer = async ({
-  question,
-  answer,
-  topic,
-}) => {
-  const questionText =
-    typeof question ===
-    'string'
-      ? question
-      : question?.text || '';
-
-  const userAnswer =
-    String(
-      answer || ''
-    ).trim();
-
-  const questionTopic =
-    topic ||
-    (typeof question ===
-    'string'
-      ? 'General'
-      : question?.topic) ||
-    'General';
-
- if (!userAnswer) {
-return {
-  score: 0,
-
-  feedback:
-    'No answer was provided. Try to answer the question directly and explain your reasoning.',
-
-  good: 'No answer was provided.',
-  missing: 'The question was not answered.',
-  idealHint:
-    'Start with the main concept or definition asked by the question.',
-  tip:
-    'Answer the question directly first, then explain your reasoning.',
-  sampleAnswer:
-    'Start with the main definition or idea, explain it briefly, and give an example if appropriate.',
-
-  aiAvailable: true,
-  fallback: false,
-};
-}
+  if (!userAnswer) {
+    return {
+      score: 0,
+      feedback: 'No answer was provided. Try to answer the question directly and explain your reasoning.',
+      good: 'No answer was provided.',
+      missing: 'The question was not answered.',
+      idealHint: 'Start with the main concept or definition asked by the question.',
+      tip: 'Answer the question directly first, then explain your reasoning.',
+      sampleAnswer: 'Start with the main definition or idea, explain it briefly, and give an example if appropriate.',
+      aiAvailable: true,
+      fallback: false,
+    };
+  }
 
   const prompt = `
 You are a strict but fair technical placement interviewer.
@@ -1586,165 +870,68 @@ Return ONLY JSON.
 `;
 
   try {
-    const result =
-      await generateWithRetry({
-        contents: prompt,
-
-        config: {
-          responseMimeType:
-            'application/json',
-
-          responseJsonSchema: {
-            type: 'object',
-
-            properties: {
-              score: {
-                type: 'number',
-              },
-
-              good: {
-                type: 'string',
-              },
-
-              missing: {
-                type: 'string',
-              },
-
-              idealHint: {
-                type: 'string',
-              },
-
-              tip: {
-                type: 'string',
-              },
-
-              sampleAnswer: {
-                type: 'string',
-              },
-            },
-
-            required: [
-              'score',
-              'good',
-              'missing',
-              'idealHint',
-              'tip',
-              'sampleAnswer',
-            ],
+    const result = await withRetry({
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: {
+          type: 'object',
+          properties: {
+            score: { type: 'number' },
+            good: { type: 'string' },
+            missing: { type: 'string' },
+            idealHint: { type: 'string' },
+            tip: { type: 'string' },
+            sampleAnswer: { type: 'string' },
           },
+          required: ['score', 'good', 'missing', 'idealHint', 'tip', 'sampleAnswer'],
         },
-      });
+      },
+    });
 
-    const parsed =
-      parseJsonResponse(
-        result.text
-      );
+    const parsed = parseJson(result.text);
+    let score = Number(parsed.score);
 
-    let score =
-      Number(parsed.score);
+    if (!Number.isFinite(score)) throw new Error('Gemini returned an invalid score.');
 
-    if (
-      !Number.isFinite(score)
-    ) {
-      throw new Error(
-        'Gemini returned an invalid score.'
-      );
-    }
-
-    score = Math.max(
-      0,
-      Math.min(
-        100,
-        Math.round(score)
-      )
-    );
+    score = Math.max(0, Math.min(100, Math.round(score)));
 
     const feedback = {
-      good:
-        String(
-          parsed.good || ''
-        ).trim(),
-
-      missing:
-        String(
-          parsed.missing || ''
-        ).trim(),
-
-      idealHint:
-        String(
-          parsed.idealHint ||
-            ''
-        ).trim(),
-
-      tip:
-        String(
-          parsed.tip || ''
-        ).trim(),
-
-      sampleAnswer:
-        String(
-          parsed.sampleAnswer ||
-            ''
-        ).trim(),
+      good: String(parsed.good || '').trim(),
+      missing: String(parsed.missing || '').trim(),
+      idealHint: String(parsed.idealHint || '').trim(),
+      tip: String(parsed.tip || '').trim(),
+      sampleAnswer: String(parsed.sampleAnswer || '').trim(),
     };
 
     return {
       score,
-
-      feedback:
-        JSON.stringify(
-          feedback
-        ),
-
+      feedback: JSON.stringify(feedback),
       ...feedback,
-
       aiAvailable: true,
       fallback: false,
     };
   } catch (error) {
-    console.error(
-      'Gemini evaluateOpenAnswer error:',
-      getErrorMessage(error)
-    );
+    console.error('Gemini evaluateOpenAnswer error:', getErrorMessage(error));
 
-    const fallback =
-      getFallbackEvaluation({
-        userAnswer,
-      });
+    const fb = fallbackEval({ userAnswer });
 
     return {
-      ...fallback,
-
-      feedback:
-        JSON.stringify({
-          good: fallback.good,
-          missing:
-            fallback.missing,
-          idealHint:
-            fallback.idealHint,
-          tip: fallback.tip,
-          sampleAnswer:
-            fallback.sampleAnswer,
-        }),
+      ...fb,
+      feedback: JSON.stringify({
+        good: fb.good,
+        missing: fb.missing,
+        idealHint: fb.idealHint,
+        tip: fb.tip,
+        sampleAnswer: fb.sampleAnswer,
+      }),
     };
   }
 };
 
-// ---------------------------------------------------------
-// Generate a model answer for a SKIPPED open-ended question.
-// Distinct from evaluateOpenAnswer's empty-answer fallback (which is a
-// static, generic placeholder identical for every question) — this asks
-// the AI to actually write a real, question-specific ideal answer, so a
-// skip still teaches the student something concrete instead of the same
-// boilerplate sentence regardless of what was asked.
-// ---------------------------------------------------------
-const generateSkippedQuestionAnswer = async ({ question, topic }) => {
-  const questionText =
-    typeof question === 'string' ? question : question?.text || '';
-  const questionTopic =
-    topic ||
-    (typeof question === 'string' ? 'General' : question?.topic) ||
-    'General';
+const getSkippedAnswer = async ({ question, topic }) => {
+  const questionText = typeof question === 'string' ? question : question?.text || '';
+  const questionTopic = topic || (typeof question === 'string' ? 'General' : question?.topic) || 'General';
 
   const prompt = `
 You are a senior technical interviewer writing a model answer for a placement-interview
@@ -1775,7 +962,7 @@ Return ONLY JSON.
 `;
 
   try {
-    const result = await generateWithRetry({
+    const result = await withRetry({
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -1791,15 +978,12 @@ Return ONLY JSON.
       },
     });
 
-    const parsed = parseJsonResponse(result.text);
-
+    const parsed = parseJson(result.text);
     const modelAnswer = String(parsed.modelAnswer || '').trim();
     const keyIdea = String(parsed.keyIdea || '').trim();
     const commonMistake = String(parsed.commonMistake || '').trim();
 
-    if (!modelAnswer) {
-      throw new Error('Gemini returned an empty model answer.');
-    }
+    if (!modelAnswer) throw new Error('Gemini returned an empty model answer.');
 
     return {
       idealHint: keyIdea,
@@ -1809,14 +993,8 @@ Return ONLY JSON.
       fallback: false,
     };
   } catch (error) {
-    console.error(
-      'Gemini generateSkippedQuestionAnswer error:',
-      getErrorMessage(error)
-    );
+    console.error('Gemini getSkippedAnswer error:', getErrorMessage(error));
 
-    // Only reached if the AI call itself fails (network/quota/parse error) —
-    // still better than nothing, but honestly labeled as a fallback so the
-    // frontend/ops can tell the difference from a real generated answer.
     return {
       idealHint: 'Start with the core definition or concept the question is testing.',
       tip: 'Answer the question directly first, then support it with reasoning or an example.',
@@ -1830,124 +1008,56 @@ Return ONLY JSON.
   }
 };
 
-// ---------------------------------------------------------
-// Evaluate MCQ / aptitude
-// ---------------------------------------------------------
+const evalObjectiveAnswer = ({ question, answerIndex }) => {
+  const selectedIndex =
+    answerIndex === null || answerIndex === undefined || answerIndex === ''
+      ? null
+      : Number(answerIndex);
 
-const evaluateObjectiveAnswer =
-  ({
-    question,
-    answerIndex,
-  }) => {
-    const selectedIndex =
-      answerIndex === null ||
-      answerIndex === undefined ||
-      answerIndex === ''
-        ? null
-        : Number(answerIndex);
+  const correctIndex =
+    question?.correctAnswerIndex === null || question?.correctAnswerIndex === undefined
+      ? null
+      : Number(question.correctAnswerIndex);
 
-    const correctIndex =
-      question?.correctAnswerIndex ===
-        null ||
-      question?.correctAnswerIndex ===
-        undefined
-        ? null
-        : Number(
-            question.correctAnswerIndex
-          );
+  if (selectedIndex === null || !Number.isInteger(selectedIndex)) {
+    return { score: 0, feedback: 'No option was selected.', correct: false };
+  }
 
-    if (
-      selectedIndex === null ||
-      !Number.isInteger(
-        selectedIndex
-      )
-    ) {
-      return {
-        score: 0,
-        feedback:
-          'No option was selected.',
-        correct: false,
-      };
-    }
-
-    if (
-      correctIndex === null ||
-      !Number.isInteger(
-        correctIndex
-      )
-    ) {
-      return {
-        score: 0,
-        feedback:
-          'The correct answer was not available for this question.',
-        correct: false,
-      };
-    }
-
-    const correct =
-      selectedIndex ===
-      correctIndex;
-
-    if (correct) {
-      return {
-        score: 100,
-        feedback:
-          question?.explanation ||
-          'Correct answer.',
-        correct: true,
-      };
-    }
-
-    const correctOption =
-      question?.options?.[
-        correctIndex
-      ];
-
+  if (correctIndex === null || !Number.isInteger(correctIndex) || correctIndex === -1) {
     return {
       score: 0,
-
-      feedback: correctOption
-        ? `Incorrect. The correct answer is: ${correctOption}. ${
-            question?.explanation ||
-            ''
-          }`
-        : 'Incorrect answer.',
-
+      feedback: 'The correct answer was not available for this question.',
       correct: false,
     };
-  };
+  }
 
-// ---------------------------------------------------------
-// Backward compatibility
-// ---------------------------------------------------------
-const evaluateAnswer = async ({
-  question,
-  userAnswer,
-  topic,
-}) => {
-  const result =
-    await evaluateOpenAnswer({
-      question,
-      answer: userAnswer,
-      topic,
-    });
+  if (selectedIndex === correctIndex) {
+    return {
+      score: 100,
+      feedback: question?.explanation || 'Correct answer.',
+      correct: true,
+    };
+  }
+
+  const correctOption = question?.options?.[correctIndex];
 
   return {
-    ...result,
-
-    // Old code can still use score10.
-    score10:
-      Math.round(
-        Number(
-          result.score || 0
-        ) / 10
-      ),
+    score: 0,
+    feedback: correctOption
+      ? `Incorrect. The correct answer is: ${correctOption}. ${question?.explanation || ''}`
+      : 'Incorrect answer.',
+    correct: false,
   };
 };
 
-// ---------------------------------------------------------
-// Coach advice
-// ---------------------------------------------------------
+const evaluateAnswer = async ({ question, userAnswer, topic }) => {
+  const result = await evaluateOpenAnswer({ question, answer: userAnswer, topic });
+
+  return {
+    ...result,
+    score10: Math.round(Number(result.score || 0) / 10),
+  };
+};
 
 const generateCoachAdvice = async ({
   profile = {},
@@ -1958,8 +1068,6 @@ const generateCoachAdvice = async ({
   weakest = [],
   strongest = 'N/A',
   topicPerformance = [],
-
-  // Authoritative readiness data, same numbers the dashboard shows
   irs = null,
   currentTierLabel = null,
   nextTierLabel = null,
@@ -2028,15 +1136,12 @@ readiness numbers above.
 `;
 
   try {
-    const result = await generateWithRetry({
+    const result = await withRetry({
       contents: prompt,
-
       config: {
         responseMimeType: 'application/json',
-
         responseJsonSchema: {
           type: 'object',
-
           properties: {
             verdict: { type: 'string' },
             criticalGaps: { type: 'string' },
@@ -2044,29 +1149,18 @@ readiness numbers above.
             battlePlan: { type: 'string' },
             mindset: { type: 'string' },
           },
-
           required: ['verdict', 'criticalGaps', 'strengths', 'battlePlan', 'mindset'],
         },
       },
     });
 
-    const parsed = parseJsonResponse(result.text);
+    const parsed = parseJson(result.text);
 
-    return {
-      ...parsed,
-      aiAvailable: true,
-      fallback: false,
-    };
+    return { ...parsed, aiAvailable: true, fallback: false };
   } catch (error) {
-    console.error(
-      'Gemini generateCoachAdvice error:',
-      getErrorMessage(error)
-    );
+    console.error('Gemini generateCoachAdvice error:', getErrorMessage(error));
 
-    // Same resilience pattern as the rest of this file: never let a
-    // temporarily-down or rate-limited Gemini API turn into a broken
-    // coach board. Fall back to a stats-only summary instead of throwing.
-    return getFallbackCoachAdvice({
+    return fallbackCoachAdvice({
       totalSessions,
       averageScore,
       bestScore,
@@ -2082,24 +1176,15 @@ readiness numbers above.
   }
 };
 
-// ---------------------------------------------------------
-// Freeform Gemini generation
-// Used for authenticated AI UI features that need plain text
-// rather than the structured JSON returned by generateCoachAdvice.
-// ---------------------------------------------------------
-
-const generateFreeform = async (prompt, maxTokens = 400) => {
+const generateFreeform = async (prompt, maxTokens = LIMITS.DEFAULT_TOKENS) => {
   if (typeof prompt !== 'string' || !prompt.trim()) {
     throw new Error('AI prompt is required.');
   }
 
-  const safeMaxTokens = Math.min(
-    Math.max(Number(maxTokens) || 400, 16),
-    4096
-  );
+  const safeMaxTokens = Math.min(Math.max(Number(maxTokens) || LIMITS.DEFAULT_TOKENS, 16), LIMITS.MAX_TOKENS);
 
   try {
-    const result = await generateWithRetry({
+    const result = await withRetry({
       contents: prompt.trim(),
       config: {
         responseMimeType: 'text/plain',
@@ -2107,40 +1192,27 @@ const generateFreeform = async (prompt, maxTokens = 400) => {
       },
     });
 
-    const text = (result?.text || '').trim();
-
-    // Don't throw on empty — the coach board or DNA panel handles gracefully.
-    return text;
+    return (result?.text || '').trim();
   } catch (error) {
-    console.error(
-      'Gemini generateFreeform error:',
-      getErrorMessage(error)
-    );
+    console.error('Gemini generateFreeform error:', getErrorMessage(error));
 
-    // Quota (429) and temporary unavailability (503) are expected on the
-    // free tier under normal use — return a friendly placeholder instead
-    // of throwing, so the frontend gets a 200 with usable text instead of
-    // a 500 / generic Axios error toast.
     if (isQuotaError(error) || isTemporaryError(error)) {
-      return "AI insights are temporarily busy — please try again in a moment.";
+      return 'AI insights are temporarily busy — please try again in a moment.';
     }
 
-    // Anything else (bad request, invalid key, etc.) is a real bug —
-    // still surface it so it doesn't get silently swallowed.
     throw error;
   }
 };
 
-
 module.exports = {
   generateQuestions,
   evaluateOpenAnswer,
-  generateSkippedQuestionAnswer,
-  evaluateObjectiveAnswer,
+  getSkippedAnswer,
+  evalObjectiveAnswer,
   evaluateAnswer,
   getFallbackQuestions,
-  getFallbackEvaluation,
-  getFallbackCoachAdvice,
+  fallbackEval,
+  fallbackCoachAdvice,
   generateCoachAdvice,
   generateFreeform,
 };

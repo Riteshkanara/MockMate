@@ -1,26 +1,4 @@
-/**
- * MockMate — Candidate Report ("Mission Report")  v9
- * ─────────────────────────────────────────────
- * v8 fixed the real bug (getMyProfile hit a route that never existed)
- * and got the information architecture right — one hero percentile,
- * archetype identity, honest tier gap, one real badge, skill
- * fingerprint. What it got wrong was color and type: it invented a
- * warm-paper/seal-red/serif-heavy palette instead of using MockMate's
- * own system.
- *
- * This version keeps v8's data model and layout hierarchy, rebuilt
- * entirely on the same C/F tokens Result.jsx already defines and
- * calls "the v5 instrument-panel palette" — signal blue, pulse cyan,
- * green/amber/red semantics, Fraunces + Inter + JetBrains Mono, the
- * same Card/Pill/SectionLabel idiom used by every other section on
- * this page. Result.jsx mounts this inside a white Card labeled
- * "mission report" — so this card now actually looks like it belongs
- * there, instead of like a document from a different product.
- *
- * Zero new dependencies: framer-motion, html-to-image, react-hot-toast,
- * useAuth, getMyProfile — all already used by the app.
- */
-
+import PropTypes from 'prop-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { toPng } from 'html-to-image';
@@ -29,10 +7,8 @@ import useAuth from '../hooks/useAuth';
 import { getMyProfile } from '../Services/profileServices';
 import { C as TOKENS, F as TOKENS_F } from '../styles/token';
 
-// ─── Font injection (runs once) ──────────────────────────────────────────────
-// Same three families Result.jsx already loads for this exact page —
-// injected here too only so ScoreCard also renders correctly the rare
-// time it's used somewhere that hasn't already loaded them.
+// WHY: Same three families Result.jsx already loads — injected here so
+// ScoreCard also renders correctly when used outside that page context.
 const FONT_HREF =
   'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap';
 if (typeof document !== 'undefined' && !document.getElementById('mm9-fonts')) {
@@ -43,11 +19,9 @@ if (typeof document !== 'undefined' && !document.getElementById('mm9-fonts')) {
   document.head.appendChild(link);
 }
 
-// ─── Design tokens — mapped onto the shared token file ──────────────────────
-// This card keeps its own "instrument-panel" names (ink/signal/pulse/navy)
-// because they read better in this file's dense inline styles, but every
-// value below is pulled from styles/token.js instead of a separate hardcoded
-// copy — so this card can't quietly drift from the rest of the app again.
+// WHY: Local "instrument-panel" aliases read better in this file's dense
+// inline styles, but every value is pulled from styles/token.js so this
+// card can't silently drift from the rest of the app.
 const C = {
   paper:        TOKENS.surfaceAlt,
   surface:      TOKENS.surface,
@@ -62,33 +36,27 @@ const C = {
   signal:       TOKENS.brand600,
   signalDeep:   TOKENS.brand700,
   signalTint:   TOKENS.brand50,
-  signalSoft:   TOKENS.brand400,
   pulse:        TOKENS.accent400,
-  pulseDeep:    TOKENS.accent600,
-  pulseTint:    TOKENS.accentTint,
   green:        TOKENS.success,
-  greenTint:    TOKENS.successTint,
   amber:        TOKENS.warning,
   amberTint:    TOKENS.warningTint,
   red:          TOKENS.danger,
   redTint:      TOKENS.dangerTint,
-  navy1: '#060E20', navy2: '#0A1A38', navy3: '#0C2242', navy4: '#0E3358', // dark gradient stops unique to this card
+  navy1: '#060E20', navy2: '#0A1A38', navy3: '#0C2242', navy4: '#0E3358',
   shadow:   TOKENS.shadow,
-  shadowMd: '0 4px 14px rgba(15,45,120,0.08)',
   shadowLg: TOKENS.shadowLg,
 };
 
 const F = {
-  serif: "'Fraunces', 'Georgia', serif", // unique to this card's report look
+  serif: "'Fraunces', 'Georgia', serif",
   body:  TOKENS_F.body,
   mono:  TOKENS_F.mono,
 };
 
 const CARD_W = 420;
 
-// Same score→color mapping Result.jsx already uses (scoreColor/scoreTint) —
-// reimplemented locally so this file has no import-order dependency on
-// Result.jsx, but the thresholds and colors are identical on purpose.
+// WHY: Same thresholds and colors as Result.jsx's scoreColor/scoreTint —
+// reimplemented locally to avoid import-order dependency on Result.jsx.
 const scoreColor = (s) => {
   const n = clamp(s);
   if (n >= 80) return C.green;
@@ -97,7 +65,6 @@ const scoreColor = (s) => {
   return C.red;
 };
 
-// ─── Static fallbacks (only used if the live profile fetch fails entirely) ──
 const DEFAULT_DIMENSIONS = [
   { key: 'technical',      label: 'Technical Depth', score: 0, hasData: false },
   { key: 'problemSolving', label: 'Problem Solving', score: 0, hasData: false },
@@ -112,7 +79,7 @@ const ARCHETYPE_COPY = {
   consistentClimber:  { icon: '↗', line: 'Steady, upward, compounding — the trend that gets noticed.' },
   speedRunner:        { icon: '⚡', line: 'Fast and sharp under pressure. Depth is the next frontier.' },
   deepThinker:        { icon: '◈', line: 'Thorough and deliberate. Speed will follow with reps.' },
-  pressureCooker:      { icon: '◆', line: 'Holds up in the tough rounds. Consistency is next.' },
+  pressureCooker:     { icon: '◆', line: 'Holds up in the tough rounds. Consistency is next.' },
 };
 
 const clamp = (v) => Math.max(0, Math.min(100, Number(v) || 0));
@@ -124,7 +91,6 @@ const shortLabel = (label) =>
   : label === 'System Design' ? 'Sys. Design'
   : label;
 
-// ─── Global CSS ──────────────────────────────────────────────────────────────
 const GlobalStyles = () => (
   <style>{`
     @keyframes mm9-riseIn  { from { opacity:0; transform:translateY(6px);} to {opacity:1; transform:translateY(0);} }
@@ -139,7 +105,6 @@ const GlobalStyles = () => (
   `}</style>
 );
 
-// ─── Count-up (respects reduced motion) ──────────────────────────────────────
 const CountUp = ({ value, duration = 1.1, style }) => {
   const reduced = useReducedMotion();
   const [disp, setDisp] = useState(round(value));
@@ -160,14 +125,22 @@ const CountUp = ({ value, duration = 1.1, style }) => {
   return <span style={style}>{disp}</span>;
 };
 
-// ─── Section micro-label — identical idiom to Result.jsx's SectionLabel ─────
+CountUp.propTypes = {
+  value: PropTypes.number.isRequired,
+  duration: PropTypes.number,
+  style: PropTypes.object,
+};
+
 const SectionLabel = ({ children }) => (
   <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 500, letterSpacing: '0.8px', color: C.signal, marginBottom: 8 }}>
     {children}
   </div>
 );
 
-// ─── Pill — identical idiom to Result.jsx's Pill ────────────────────────────
+SectionLabel.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
 const Pill = ({ children, color = C.signal, background = C.signalTint }) => (
   <span style={{
     display: 'inline-flex', alignItems: 'center', borderRadius: 999,
@@ -179,7 +152,12 @@ const Pill = ({ children, color = C.signal, background = C.signalTint }) => (
   </span>
 );
 
-// ─── Skill fingerprint — six thin bars, textural rather than a full radar ───
+Pill.propTypes = {
+  children: PropTypes.node.isRequired,
+  color: PropTypes.string,
+  background: PropTypes.string,
+};
+
 const SkillFingerprint = ({ dims }) => {
   const hasAny = dims.some((d) => d.hasData);
   return (
@@ -219,7 +197,15 @@ const SkillFingerprint = ({ dims }) => {
   );
 };
 
-// ─── Trend sparkline — small, footer-weight ─────────────────────────────────
+SkillFingerprint.propTypes = {
+  dims: PropTypes.arrayOf(PropTypes.shape({
+    key: PropTypes.string.isRequired,
+    label: PropTypes.string.isRequired,
+    score: PropTypes.number.isRequired,
+    hasData: PropTypes.bool.isRequired,
+  })).isRequired,
+};
+
 const Sparkline = ({ trend }) => {
   const ref = useRef(null);
   useEffect(() => {
@@ -227,8 +213,10 @@ const Sparkline = ({ trend }) => {
     if (!canvas || !trend || trend.length < 2) return;
     const W = 100, H = 28;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
     const scores = trend.slice(-10).map((s) => clamp(s.score));
@@ -252,7 +240,10 @@ const Sparkline = ({ trend }) => {
   return <canvas ref={ref} style={{ display: 'block' }} />;
 };
 
-// ─── Loading / empty / error states — on-palette, quiet ─────────────────────
+Sparkline.propTypes = {
+  trend: PropTypes.arrayOf(PropTypes.shape({ score: PropTypes.number })),
+};
+
 const LoadingCard = () => (
   <div style={{
     width: '100%', maxWidth: CARD_W, minHeight: 240, borderRadius: 16,
@@ -279,9 +270,10 @@ const EmptyCard = ({ totalScore }) => (
   </div>
 );
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// THE REPORT — single panel, everything in one hierarchy, this IS the export
-// ═══════════════════════════════════════════════════════════════════════════════
+EmptyCard.propTypes = {
+  totalScore: PropTypes.number.isRequired,
+};
+
 const ReportPanel = ({ profile, user }) => {
   const {
     name, college, totalInterviews, tier, tierGated, nextTier,
@@ -302,9 +294,8 @@ const ReportPanel = ({ profile, user }) => {
         fontFamily: F.body, color: C.ink,
       }}
     >
-      {/* ── Deep-navy header band — same gradient language as the page's
-          hero + CTA banner, so this card reads as part of the same
-          product instead of a plain white box ── */}
+      {/* WHY: Deep-navy header uses same gradient language as the page's
+          hero + CTA banner so this card reads as part of the same product. */}
       <div style={{
         position: 'relative', overflow: 'hidden', padding: '18px 22px 16px',
         background: `linear-gradient(150deg, ${C.navy1} 0%, ${C.navy2} 38%, ${C.navy3} 66%, ${C.navy4} 100%)`,
@@ -324,7 +315,6 @@ const ReportPanel = ({ profile, user }) => {
           </div>
         </div>
 
-        {/* Hero percentile lives in the navy band, like the score gauge does up top */}
         <div style={{ position: 'relative', marginTop: 14 }}>
           {percentile != null && rank != null ? (
             <>
@@ -348,11 +338,7 @@ const ReportPanel = ({ profile, user }) => {
         </div>
       </div>
 
-      {/* ── Light body — same C.surface/C.surfaceSunk register as every
-          other Card on the page ── */}
       <div style={{ padding: '18px 22px 20px' }}>
-
-        {/* Archetype identity block */}
         {archetype && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
@@ -376,7 +362,6 @@ const ReportPanel = ({ profile, user }) => {
           </div>
         )}
 
-        {/* Tier progress */}
         {tier && (
           <div style={{ marginBottom: 16 }}>
             <SectionLabel>package track</SectionLabel>
@@ -414,8 +399,7 @@ const ReportPanel = ({ profile, user }) => {
           </div>
         )}
 
-        {/* Hero badge — one medal, using the same amber-tile idiom as
-            the streak tile on the page (icon square + serif value) */}
+        {/* WHY: Amber tile idiom matches the streak tile on the page — icon square + serif value. */}
         {heroBadge && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
@@ -435,7 +419,6 @@ const ReportPanel = ({ profile, user }) => {
           </div>
         )}
 
-        {/* Skill fingerprint + trend */}
         <SectionLabel>skill profile</SectionLabel>
         <SkillFingerprint dims={dims} />
 
@@ -449,7 +432,6 @@ const ReportPanel = ({ profile, user }) => {
         )}
       </div>
 
-      {/* Footer */}
       <div style={{
         padding: '9px 22px', borderTop: `1px solid ${C.line}`, background: C.surfaceSunk,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -461,13 +443,62 @@ const ReportPanel = ({ profile, user }) => {
   );
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ROOT COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════════
-// Result.jsx also passes `questions` (this session's raw question set) for
-// backward compatibility with the old card's API, but this version renders
-// from the live, cross-session profile fetch instead — accepted via props
-// but deliberately not read here.
+ReportPanel.propTypes = {
+  profile: PropTypes.shape({
+    name: PropTypes.string,
+    college: PropTypes.string,
+    totalInterviews: PropTypes.number,
+    tier: PropTypes.shape({ label: PropTypes.string }),
+    tierGated: PropTypes.bool,
+    nextTier: PropTypes.shape({
+      label: PropTypes.string,
+      readinessPct: PropTypes.number,
+      blockingDimension: PropTypes.shape({ label: PropTypes.string }),
+      confidenceGate: PropTypes.bool,
+    }),
+    archetype: PropTypes.shape({ id: PropTypes.string, label: PropTypes.string }),
+    heroBadge: PropTypes.shape({ icon: PropTypes.string, label: PropTypes.string, desc: PropTypes.string }),
+    dimensionProfile: PropTypes.array,
+    scoreTrend: PropTypes.array,
+    rank: PropTypes.number,
+    totalCandidates: PropTypes.number,
+    percentile: PropTypes.number,
+    irs: PropTypes.number,
+    averageScore: PropTypes.number,
+  }).isRequired,
+  user: PropTypes.shape({ name: PropTypes.string }),
+};
+
+const buildShareText = (profile) => {
+  const pct = profile.percentile != null ? `Top ${Math.max(1, 100 - profile.percentile)}%` : null;
+  return [
+    '📋 My MockMate Mission Report',
+    pct ? `${pct} — ranked #${profile.rank} of ${profile.totalCandidates} candidates` : null,
+    profile.archetype ? `Archetype: ${profile.archetype.label}` : null,
+    profile.tier ? `Tracking for ${profile.tier.label}${profile.tierGated ? ' (on track)' : ''}` : null,
+    profile.heroBadge ? `🏅 ${profile.heroBadge.label} — ${profile.heroBadge.desc}` : null,
+    '',
+    'mockmate.app',
+  ].filter(Boolean).join('\n');
+};
+
+const captureCard = async (node) => {
+  if (!node) throw new Error('ScoreCard: card ref not mounted');
+  await new Promise((r) => setTimeout(r, 900));
+  await toPng(node, { skipFonts: true }).catch(() => {});
+  return toPng(node, {
+    skipFonts: true, 
+    cacheBust: false,
+    pixelRatio: 2.5,
+    backgroundColor: C.surface,
+    width: node.offsetWidth,
+    height: node.offsetHeight,
+  });
+};
+
+// WHY: Result.jsx passes `questions` for backward compatibility with the old
+// card's API, but this version renders from the live cross-session profile
+// fetch — accepted via props but deliberately not read here.
 const ScoreCard = (props) => {
   const { totalScore = 0 } = props;
   const { user } = useAuth();
@@ -478,7 +509,7 @@ const ScoreCard = (props) => {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       try {
         const data = await getMyProfile();
         if (cancelled) return;
@@ -488,45 +519,18 @@ const ScoreCard = (props) => {
         console.error('ScoreCard: profile fetch failed', err);
         if (!cancelled) setLoadState('error');
       }
-    })();
+    };
+    load();
     return () => { cancelled = true; };
   }, []);
 
-  const shareText = useMemo(() => {
-    if (!profile) return '';
-    const pct = profile.percentile != null ? `Top ${Math.max(1, 100 - profile.percentile)}%` : null;
-    const lines = [
-      '📋 My MockMate Mission Report',
-      pct ? `${pct} — ranked #${profile.rank} of ${profile.totalCandidates} candidates` : null,
-      profile.archetype ? `Archetype: ${profile.archetype.label}` : null,
-      profile.tier ? `Tracking for ${profile.tier.label}${profile.tierGated ? ' (on track)' : ''}` : null,
-      profile.heroBadge ? `🏅 ${profile.heroBadge.label} — ${profile.heroBadge.desc}` : null,
-      '',
-      'mockmate.app',
-    ].filter(Boolean);
-    return lines.join('\n');
-  }, [profile]);
-
-  const generateImage = async () => {
-    if (!cardRef.current) throw new Error('Card not mounted');
-    await new Promise((r) => setTimeout(r, 900));
-    const node = cardRef.current;
-    // Warm pass first — loads embedded images into the clone's cache
-    await toPng(node, { skipFonts: true }).catch(() => {});
-    return toPng(node, {
-      skipFonts: true,   // prevents SecurityError from cross-origin Google Fonts
-      cacheBust: false,
-      pixelRatio: 2.5,
-      backgroundColor: C.surface,
-      width: node.offsetWidth,
-      height: node.offsetHeight,
-    });
-  };
+  const shareText = useMemo(() => profile ? buildShareText(profile) : '', [profile]);
 
   const handleDownload = async () => {
+    if (!cardRef.current) return;
     const id = toast.loading('Preparing your report…');
     try {
-      const url = await generateImage();
+      const url = await captureCard(cardRef.current);
       const link = document.createElement('a');
       link.download = `mockmate-report-${Date.now()}.png`;
       link.href = url;
@@ -541,9 +545,10 @@ const ScoreCard = (props) => {
   };
 
   const handleShare = async () => {
+    if (!cardRef.current) return;
     setSharing(true);
     try {
-      const url = await generateImage();
+      const url = await captureCard(cardRef.current);
       if (navigator.share && window.File) {
         const blob = await (await fetch(url)).blob();
         const file = new File([blob], 'mockmate-report.png', { type: 'image/png' });

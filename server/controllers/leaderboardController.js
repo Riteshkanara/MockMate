@@ -2,72 +2,42 @@ const Session = require('../models/Session');
 const User = require('../models/User');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Get start of current week — Monday 12:00 AM in server local time
+// Start of current week — Monday 12:00 AM, server local time
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getWeekStart = () => {
   const now = new Date();
-
   const day = now.getDay(); // 0 = Sunday, 1 = Monday
   const diff = day === 0 ? -6 : 1 - day;
-
   const monday = new Date(now);
-
   monday.setDate(now.getDate() + diff);
   monday.setHours(0, 0, 0, 0);
-
   return monday;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Build leaderboard statistics
+// Leaderboard aggregation
 //
-// Weekly:
-//   completed sessions created from current week start onward
-//
-// Overall:
-//   all completed sessions
+// WHY resolvedUser: newer sessions use `user`; older ones may still have
+// `userId`. We coalesce at query time rather than running a migration.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const getLeaderboardStats = async (match) => {
+const leaderboardStats = async (match) => {
   return Session.aggregate([
-    {
-      $match: match,
-    },
-
-    // New sessions use `user`.
-    // Older sessions may still use `userId`.
+    { $match: match },
     {
       $addFields: {
-        resolvedUser: {
-          $ifNull: ['$user', '$userId'],
-        },
+        resolvedUser: { $ifNull: ['$user', '$userId'] },
       },
     },
-
-    // Ignore malformed sessions that have no owner.
-    {
-      $match: {
-        resolvedUser: {
-          $ne: null,
-        },
-      },
-    },
-
-    // One leaderboard entry per user.
+    { $match: { resolvedUser: { $ne: null } } },
     {
       $group: {
         _id: '$resolvedUser',
-        avgScore: {
-          $avg: '$averageScore',
-        },
-        sessionCount: {
-          $sum: 1,
-        },
+        avgScore: { $avg: '$averageScore' },
+        sessionCount: { $sum: 1 },
       },
     },
-
-    // Attach user information.
     {
       $lookup: {
         from: 'users',
@@ -76,18 +46,11 @@ const getLeaderboardStats = async (match) => {
         as: 'user',
       },
     },
-
-    {
-      $unwind: '$user',
-    },
-
-    // Shape the final leaderboard entry.
+    { $unwind: '$user' },
     {
       $project: {
         _id: 1,
-        avgScore: {
-          $round: ['$avgScore', 1],
-        },
+        avgScore: { $round: ['$avgScore', 1] },
         sessionCount: 1,
         name: '$user.name',
         college: '$user.college',
@@ -95,133 +58,70 @@ const getLeaderboardStats = async (match) => {
         streak: '$user.streak.current',
       },
     },
-
-    // Highest average score first.
-    {
-      $sort: {
-        avgScore: -1,
-      },
-    },
+    { $sort: { avgScore: -1 } },
   ]);
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Add ranking information
+// Attach 1-based rank and isCurrentUser flag to every entry
 // ─────────────────────────────────────────────────────────────────────────────
 
-const rankEntries = (entries, userId) => {
-  return entries.map((entry, index) => ({
+const rankEntries = (entries, userId) =>
+  entries.map((entry, index) => ({
     ...entry,
     rank: index + 1,
-    isCurrentUser:
-      entry._id.toString() === userId.toString(),
+    isCurrentUser: entry._id.toString() === userId.toString(),
   }));
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Build one period of leaderboard data
+// Build one period (weekly / overall) of leaderboard data
+//
+// WHY rank globally before slicing: users outside the top 50 still need
+// an accurate global rank returned in currentUser, not a capped one.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const buildPeriodLeaderboard = (
-  stats,
-  userId,
-  college
-) => {
-  // Rank the entire dataset first.
-  // This allows users outside the displayed top 50
-  // to still have an accurate rank.
-  const globalRanked = rankEntries(
-    stats,
-    userId
-  );
-
+const buildLeaderboard = (stats, userId, college) => {
+  const globalRanked = rankEntries(stats, userId);
   const global = globalRanked.slice(0, 50);
 
-  // College leaderboard.
   const collegeRanked = rankEntries(
-    stats.filter(
-      (entry) => entry.college === college
-    ),
+    stats.filter((entry) => entry.college === college),
     userId
   );
+  const collegeBoard = collegeRanked.slice(0, 50);
 
-  const collegeLeaderboard =
-    collegeRanked.slice(0, 50);
+  const globalIndex = globalRanked.findIndex((e) => e.isCurrentUser);
+  const globalRank = globalIndex >= 0 ? globalIndex + 1 : null;
 
-  // Current user's global rank.
-  const globalIndex = globalRanked.findIndex(
-    (entry) => entry.isCurrentUser
+  const collegeIndex = collegeRanked.findIndex((e) => e.isCurrentUser);
+  const collegeRank = collegeIndex >= 0 ? collegeIndex + 1 : null;
+
+  const userEntry = stats.find(
+    (e) => e._id.toString() === userId.toString()
   );
 
-  const globalRank =
-    globalIndex >= 0
-      ? globalIndex + 1
-      : null;
+  const globalRival =
+    globalRank && globalRank > 1 ? globalRanked[globalRank - 2] : null;
 
-  // Current user's college rank.
-  const collegeIndex =
-    collegeRanked.findIndex(
-      (entry) => entry.isCurrentUser
-    );
-
-  const collegeRank =
-    collegeIndex >= 0
-      ? collegeIndex + 1
-      : null;
-
-  // Current user's statistics.
-  const currentUserEntry = stats.find(
-    (entry) =>
-      entry._id.toString() ===
-      userId.toString()
-  );
-
-  // User immediately above current user globally.
-  const globalAheadOfUser =
-    globalRank && globalRank > 1
-      ? globalRanked[globalRank - 2]
-      : null;
-
-  // User immediately above current user in college.
   const collegeAheadOfUser =
-    collegeRank && collegeRank > 1
-      ? collegeRanked[collegeRank - 2]
-      : null;
+    collegeRank && collegeRank > 1 ? collegeRanked[collegeRank - 2] : null;
 
   return {
     global,
-    college: collegeLeaderboard,
-
+    college: collegeBoard,
     globalTotal: globalRanked.length,
     collegeTotal: collegeRanked.length,
-
     currentUser: {
       globalRank,
       collegeRank,
-
-      avgScore:
-        currentUserEntry?.avgScore ?? null,
-
-      sessionCount:
-        currentUserEntry?.sessionCount ?? 0,
-
-      globalAheadOfUser:
-        globalAheadOfUser
-          ? {
-              name: globalAheadOfUser.name,
-              avgScore:
-                globalAheadOfUser.avgScore,
-            }
-          : null,
-
-      collegeAheadOfUser:
-        collegeAheadOfUser
-          ? {
-              name: collegeAheadOfUser.name,
-              avgScore:
-                collegeAheadOfUser.avgScore,
-            }
-          : null,
+      avgScore: userEntry?.avgScore ?? null,
+      sessionCount: userEntry?.sessionCount ?? 0,
+      globalRival: globalRival
+        ? { name: globalRival.name, avgScore: globalRival.avgScore }
+        : null,
+      collegeAheadOfUser: collegeAheadOfUser
+        ? { name: collegeAheadOfUser.name, avgScore: collegeAheadOfUser.avgScore }
+        : null,
     },
   };
 };
@@ -232,62 +132,25 @@ const buildPeriodLeaderboard = (
 
 const getLeaderboard = async (req, res) => {
   try {
-    const userId =
-      req.user?._id ||
-      req.user?.id;
-
+    const userId = req.user?._id || req.user?.id;
     if (!userId) {
-      return res.status(401).json({
-        message: 'Unauthorized',
-      });
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const currentUser = await User.findById(userId).select('college name');
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
     }
 
     const weekStart = getWeekStart();
 
-    // Current user's basic information.
-    const currentUser =
-      await User.findById(userId)
-        .select('college name');
-
-    if (!currentUser) {
-      return res.status(404).json({
-        message: 'User not found',
-      });
-    }
-
-    // Fetch weekly and overall statistics in parallel.
-    const [
-      weeklyStats,
-      overallStats,
-    ] = await Promise.all([
-      // ── Weekly ──────────────────────────────────────────────
-      getLeaderboardStats({
-        status: 'completed',
-        createdAt: {
-          $gte: weekStart,
-        },
-      }),
-
-      // ── Overall ─────────────────────────────────────────────
-      getLeaderboardStats({
-        status: 'completed',
-      }),
+    const [weeklyStats, overallStats] = await Promise.all([
+      leaderboardStats({ status: 'completed', createdAt: { $gte: weekStart } }),
+      leaderboardStats({ status: 'completed' }),
     ]);
 
-    // Build both periods.
-    const weekly =
-      buildPeriodLeaderboard(
-        weeklyStats,
-        userId,
-        currentUser.college
-      );
-
-    const overall =
-      buildPeriodLeaderboard(
-        overallStats,
-        userId,
-        currentUser.college
-      );
+    const weekly = buildLeaderboard(weeklyStats, userId, currentUser.college);
+    const overall = buildLeaderboard(overallStats, userId, currentUser.college);
 
     return res.json({
       weekly: {
@@ -296,39 +159,31 @@ const getLeaderboard = async (req, res) => {
         globalTotal: weekly.globalTotal,
         collegeTotal: weekly.collegeTotal,
       },
-
       overall: {
         global: overall.global,
         college: overall.college,
         globalTotal: overall.globalTotal,
         collegeTotal: overall.collegeTotal,
       },
-
       currentUser: {
         name: currentUser.name,
         college: currentUser.college,
-
         weekly: weekly.currentUser,
-
         overall: overall.currentUser,
       },
-
-      weekStart:
-        weekStart.toISOString(),
+      weekStart: weekStart.toISOString(),
     });
   } catch (err) {
-    console.error(
-      'Leaderboard error:',
-      err
-    );
-
-    return res.status(500).json({
-      message:
-        'Failed to load leaderboard',
-    });
+    console.error('Leaderboard error:', err);
+    return res.status(500).json({ message: 'Failed to load leaderboard' });
   }
 };
 
 module.exports = {
   getLeaderboard,
 };
+
+
+
+
+

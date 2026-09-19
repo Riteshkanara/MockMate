@@ -11,8 +11,6 @@ import { C, F } from '../styles/token';
 // product is built around.
 // ═══════════════════════════════════════════════════════════════════════════
 
-
-
 const scoreColor = (s) =>
   s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.orange;
 
@@ -26,7 +24,6 @@ const verdictCopy = (s) => {
   return { label: 'Off target', icon: '○', sub: "Let's rebuild this one from the sample answer." };
 };
 
-// ─── Score ring — same gauge language as the Navbar logomark ───────────────
 const ScoreRing = ({ score = 0, size = 108, mounted }) => {
   const r = size / 2 - 8;
   const circ = 2 * Math.PI * r;
@@ -69,7 +66,6 @@ const ScoreRing = ({ score = 0, size = 108, mounted }) => {
   );
 };
 
-// ─── One diagnostic readout row ─────────────────────────────────────────────
 const ReadoutSection = ({ icon, label, tone, tint, border, content, accent, delay, mounted }) => (
   <div
     className="fb-section"
@@ -235,7 +231,6 @@ const FeedbackCard = ({
         position: 'relative',
         overflow: 'hidden',
       }}>
-        {/* ambient corner wash, echoes hero gradient without competing */}
         <div style={{
           position: 'absolute', top: -80, right: -80, width: 220, height: 220,
           borderRadius: '50%',
@@ -243,7 +238,6 @@ const FeedbackCard = ({
           opacity: 0.7, pointerEvents: 'none',
         }} />
 
-        {/* ── Diagnostic strip ─────────────────────────────────────────── */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           marginBottom: 20, position: 'relative',
@@ -266,7 +260,6 @@ const FeedbackCard = ({
 
         {aiAvailable ? (
           <>
-            {/* ── Score header: ring + verdict ─────────────────────────── */}
             <div className="fb-head" style={{
               display: 'flex', alignItems: 'center', gap: 24,
               padding: '4px 4px 22px',
@@ -297,7 +290,6 @@ const FeedbackCard = ({
               </div>
             </div>
 
-            {/* ── Readout sections ─────────────────────────────────────── */}
             {sections.map((s, i) => (
               <ReadoutSection
                 key={s.key}
@@ -368,7 +360,6 @@ const FeedbackCard = ({
           </div>
         )}
 
-        {/* ── Next button ───────────────────────────────────────────────── */}
         <button
           className="fb-next-btn"
           onClick={onNext}

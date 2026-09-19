@@ -101,81 +101,30 @@ const GoogleG = ({ size = 18 }) => (
   </svg>
 );
 
-// ─── Logomark ─────────────────────────────────────────────────────────────
-
-const Logomark = ({ size = 36, uid = 'default' }) => {
-  const barId    = `lm-bar-${uid}`;
-  const pinId    = `lm-pin-${uid}`;
-  const clipId   = `lm-clip-${uid}`;
-  const shadowId = `lm-pinshadow-${uid}`;
-
-  return (
-    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-      <svg width={size} height={size} viewBox="0 0 40 40">
-        <defs>
-          <linearGradient id={barId} x1="15%" y1="0%" x2="75%" y2="100%">
-            <stop offset="0%"   stopColor="#F2FAFE"/>
-            <stop offset="30%"  stopColor="#8FCBEC"/>
-            <stop offset="100%" stopColor="#0198F4"/>
-          </linearGradient>
-          <linearGradient id={pinId} x1="30%" y1="0%" x2="70%" y2="100%">
-            <stop offset="0%"   stopColor="#C3DAF5"/>
-            <stop offset="45%"  stopColor="#4099EA"/>
-            <stop offset="100%" stopColor="#0059F9"/>
-          </linearGradient>
-          <filter id={shadowId} x="-60%" y="-20%" width="220%" height="180%">
-            <feGaussianBlur stdDeviation="0.9"/>
-          </filter>
-          <clipPath id={clipId}>
-            <rect x="1.2" y="1.2" width="37.6" height="37.6" rx="6.5"/>
-          </clipPath>
-        </defs>
-
-        <rect x="1.2" y="1.2" width="37.6" height="37.6" rx="6.5"
-          fill="#F5F9FE" stroke="#1D6FD1" strokeOpacity="0.45" strokeWidth="0.6"/>
-
-        <g clipPath={`url(#${clipId})`}>
-          <rect x="6" y="6" width="28" height="28" rx="4" fill="none"
-            stroke="#1D6FD1" strokeOpacity="0.42" strokeWidth="0.45" strokeDasharray="0.45 1"/>
-          <circle cx="20" cy="20" r="14.5" fill="none"
-            stroke="#1D6FD1" strokeOpacity="0.38" strokeWidth="0.4" strokeDasharray="0.4 0.95"/>
-          <circle cx="20" cy="20" r="9" fill="none"
-            stroke="#1D6FD1" strokeOpacity="0.28" strokeWidth="0.35" strokeDasharray="0.35 0.9"/>
-          <line x1="20" y1="1.2" x2="20" y2="38.8"
-            stroke="#1D6FD1" strokeOpacity="0.32" strokeWidth="0.4" strokeDasharray="0.4 0.95"/>
-          <line x1="1.2" y1="20" x2="38.8" y2="20"
-            stroke="#1D6FD1" strokeOpacity="0.32" strokeWidth="0.4" strokeDasharray="0.4 0.95"/>
-        </g>
-
-        <ellipse cx="24.2" cy="27.2" rx="3.7" ry="5.8"
-          fill="#0059F9" opacity="0.4" filter={`url(#${shadowId})`}/>
-
-        <path
-          d="M11.7 13.8 L22.4 11.7 C23.3 11.55 24 12.2 23.7 13.1 L21.5 17.15 L23.05 18.1
-             C23.7 18.5 23.85 19.3 23.4 19.9 L16 30.5 C15.2 31.6 13.6 31 13.45 29.7
-             L10.75 15.4 C10.6 14.6 10.9 13.9 11.7 13.8 Z"
-          fill={`url(#${barId})`}/>
-        <path
-          d="M12.3 14.35 L21.85 12.35 C22.3 12.28 22.6 12.6 22.45 13 L20.4 16.3"
-          fill="none" stroke="#FFFFFF" strokeOpacity="0.7" strokeWidth="1" strokeLinecap="round"/>
-
-        <path
-          d="M24.6 14.15 C27.7 14.15 30 16.35 30 19 C30 21.5 26.7 24.4 24.75 27.65
-             C22.8 24.4 19.5 21.5 19.5 19 C19.5 16.35 21.5 14.15 24.6 14.15 Z"
-          fill={`url(#${pinId})`}/>
-        <ellipse cx="22.6" cy="17.05" rx="2" ry="1.4" fill="#FFFFFF" opacity="0.5"
-          transform="rotate(-25 22.6 17.05)"/>
-      </svg>
-    </div>
-  );
-};
-
+const Logomark = ({ size = 36 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 42 42"
+    fill="none"
+    aria-hidden="true"
+  >
+    <rect width="42" height="42" rx="10" fill="#0057E8" />
+    <path
+      d="M11 30V14l10 9 10-9v16"
+      stroke="#ffffff"
+      strokeWidth="3.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 // ─── Score Ring ────────────────────────────────────────────────────────────
 
 const ScoreRing = ({ value = 0, size = 20, strokeW = 2, id = 'sr' }) => {
-  const r     = (size - strokeW * 2) / 2;
-  const circ  = 2 * Math.PI * r;
-  const pct   = Math.max(0, Math.min(100, Number(value) || 0));
+  const radius = (size - strokeW * 2) / 2;
+  const circ   = 2 * Math.PI * radius;
+  const pct    = Math.max(0, Math.min(100, Number(value) || 0));
   const offset = circ - (pct / 100) * circ;
   const accent = scoreColor(pct);
   return (
@@ -187,8 +136,8 @@ const ScoreRing = ({ value = 0, size = 20, strokeW = 2, id = 'sr' }) => {
           <stop offset="100%" stopColor={accent}/>
         </linearGradient>
       </defs>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.border} strokeWidth={strokeW}/>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={`url(#sg-${id})`}
+      <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={C.border} strokeWidth={strokeW}/>
+      <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={`url(#sg-${id})`}
         strokeWidth={strokeW} strokeDasharray={circ}
         strokeDashoffset={pct > 0 ? offset : circ} strokeLinecap="round"
         style={{ transition: 'stroke-dashoffset 1.1s cubic-bezier(.16,1,.3,1)' }}/>
@@ -207,7 +156,6 @@ const NAVBAR_CSS = `
   @keyframes mmDropIn    { from { opacity:0; transform:translateY(-8px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
   @keyframes mmSlideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
   @keyframes mmSheen     { 0% { transform:translateX(-120%) skewX(-14deg); } 100% { transform:translateX(260%) skewX(-14deg); } }
-  @keyframes mmMeshDrift { 0%,100% { transform: translate(0,0) rotate(0deg); } 50% { transform: translate(-3%,3%) rotate(6deg); } }
   @keyframes mmItemRise  { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
   @keyframes mmPulseRing { 0% { box-shadow: 0 0 0 0 rgba(26,110,255,.35); } 70% { box-shadow: 0 0 0 6px rgba(26,110,255,0); } 100% { box-shadow: 0 0 0 0 rgba(26,110,255,0); } }
   @keyframes mmLogoBreathe { 0%,100% { filter: drop-shadow(0 0 0px rgba(26,110,255,0)); } 50% { filter: drop-shadow(0 0 5px rgba(26,110,255,.4)); } }
@@ -245,30 +193,12 @@ const NAVBAR_CSS = `
     backdrop-filter: blur(36px) saturate(200%);
     -webkit-backdrop-filter: blur(36px) saturate(200%);
     box-shadow:
-      0 1px 0 rgba(255,255,255,.95) inset,
-      0 2px 10px rgba(0,31,107,.05),
-      0 8px 28px rgba(0,31,107,.05);
+  0 1px 0 rgba(255,255,255,.95) inset,
+  0 2px 8px rgba(0,31,107,.04),
+  0 4px 20px rgba(0,31,107,.06);
     transition: box-shadow .4s cubic-bezier(.22,1,.36,1), background .4s ease, border-color .4s ease;
     pointer-events: auto;
   }
-
-  .mm-capsule.scrolled {
-    background: rgba(255,255,255,0.97);
-    border-color: rgba(190,206,240,0.95);
-    box-shadow:
-      0 1px 0 rgba(255,255,255,1) inset,
-      0 4px 16px rgba(0,31,107,.08),
-      0 16px 48px rgba(0,31,107,.12);
-    min-height: 60px;
-  }
-
-  .mm-capsule.scrolled .mm-brand  { padding-top: 3px; padding-bottom: 3px; }
-  .mm-capsule.scrolled .mm-link   { height: 36px; }
-  .mm-capsule.scrolled .mm-pill   { height: 36px; }
-  .mm-capsule.scrolled .mm-cta    { height: 40px; }
-  .mm-capsule.scrolled .mm-util-btn,
-  .mm-capsule.scrolled .mm-statschip,
-  .mm-capsule.scrolled .mm-av-btn { height: 39px; }
 
   .mm-capsule::before {
     content: '';
@@ -294,7 +224,6 @@ const NAVBAR_CSS = `
     box-shadow: 0 0 0 0 rgba(26,110,255,0);
     transition: box-shadow .22s cubic-bezier(.22,1,.36,1);
     display: flex; flex-shrink: 0;
-    animation: mmLogoBreathe 4.5s ease-in-out infinite;
   }
 
   .mm-brand-word  { display: flex; flex-direction: column; gap: 3px; }
@@ -393,7 +322,7 @@ const NAVBAR_CSS = `
     margin: 0 2px;
   }
 
-    .mm-cta {
+  .mm-cta {
     position: relative; overflow: hidden;
     display: inline-flex; align-items: center; justify-content: center; gap: 9px;
     height: 42px; padding: 0 16px 0 6px;
@@ -416,7 +345,7 @@ const NAVBAR_CSS = `
     background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
     transform: skewX(-14deg); opacity: 0; pointer-events: none;
   }
-   .mm-cta:hover {
+  .mm-cta:hover {
     transform: translateY(-1.5px);
     filter: saturate(1.06) brightness(1.03);
     box-shadow:
@@ -425,14 +354,14 @@ const NAVBAR_CSS = `
       0 10px 28px rgba(0,87,232,.28);
   }
   .mm-cta:hover::before { opacity: 1; animation: mmSheen .8s ease-out; }
-    .mm-cta:active {
+  .mm-cta:active {
     transform: translateY(0) scale(.98); filter: brightness(.98);
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,.25),
       0 0 0 3px rgba(0,87,232,.10),
       0 3px 10px rgba(0,87,232,.2);
   }
-    .mm-cta-icon {
+  .mm-cta-icon {
     position: relative; z-index: 1;
     width: 28px; height: 28px;
     display: flex; align-items: center; justify-content: center;
@@ -476,11 +405,6 @@ const NAVBAR_CSS = `
     box-shadow: inset 0 1px 0 rgba(255,255,255,.92);
   }
 
-  /* ══════════════════════════════════════════════════════════════
-     Dropdown — now scroll-safe: fixed max-height relative to
-     viewport with its own scroll container, so the header/stats/
-     menu never gets clipped off-screen on shorter laptop displays.
-     ══════════════════════════════════════════════════════════════ */
   .mm-drop {
     position: absolute; top: calc(100% + 10px); right: 0;
     width: 296px; padding: 0;
@@ -491,7 +415,6 @@ const NAVBAR_CSS = `
     box-shadow: 0 28px 64px rgba(0,31,107,.18), 0 6px 18px rgba(0,31,107,.08), inset 0 1px 0 rgba(255,255,255,.95);
     animation: mmDropIn .22s cubic-bezier(.22,1,.36,1);
     z-index: 100; overflow: hidden;
-    /* never let the popover exceed the viewport */
     max-height: min(560px, calc(100vh - 96px));
   }
   .mm-drop-scroll {
@@ -505,15 +428,9 @@ const NAVBAR_CSS = `
     overflow: hidden; border-bottom: 1px solid ${C.border};
   }
   .mm-drop-mesh::before {
-    content: '';
-    position: absolute; inset: -40%;
-    background:
-      radial-gradient(circle at 18% 22%, rgba(26,110,255,.16), transparent 45%),
-      radial-gradient(circle at 82% 15%, rgba(0,200,240,.14), transparent 42%),
-      radial-gradient(circle at 60% 85%, rgba(108,92,232,.10), transparent 48%);
-    animation: mmMeshDrift 14s ease-in-out infinite;
-    pointer-events: none;
-  }
+  background: linear-gradient(135deg, rgba(26,110,255,.06), rgba(0,200,240,.04));
+  animation: none;
+}
   .mm-drop-mesh-inner { position: relative; z-index: 1; }
 
   .mm-drop-toprow { display: flex; align-items: center; gap: 11px; }
@@ -668,6 +585,8 @@ const NAVBAR_CSS = `
     z-index: 100; overflow: visible;
     max-height: calc(100vh - 96px);
   }
+    :root { --navbar-h: 75px; }
+body { padding-top: var(--navbar-h); }
   .mm-popover::before {
     content: '';
     position: absolute; top: -6px; right: 16px;
@@ -756,7 +675,6 @@ const NAVBAR_CSS = `
   .mm-stats-cell-val        { font: 800 17px ${F.display}; letter-spacing: -.03em; }
   .mm-stats-cell-label      { font: 600 9px ${F.body}; letter-spacing: .2px; color: ${C.muted}; margin-top: 2px; text-transform: uppercase; }
 
-  /* ── Mobile controls (hamburger) ── */
   .mm-mobile-controls { display: none; align-items: center; gap: 6px; flex-shrink: 0; }
   .mm-ham {
     width: 40px; height: 40px; border: 1px solid ${C.border};
@@ -772,9 +690,6 @@ const NAVBAR_CSS = `
   .mm-ham.open .bar:nth-child(2) { opacity: 0; transform: scaleX(0); }
   .mm-ham.open .bar:nth-child(3) { transform: rotate(-45deg) translate(4.5px, -4.5px); }
 
-  /* ══════════════════════════════════════════════════════════════
-     Mobile panel — redesigned
-     ══════════════════════════════════════════════════════════════ */
   .mm-mobile-panel {
     position: absolute; left: 8px; right: 8px; top: calc(100% + 8px);
     padding: 12px; border: 1px solid ${C.border}; border-radius: 20px;
@@ -838,7 +753,6 @@ const NAVBAR_CSS = `
     color: ${C.muted}; padding: 0 2px; margin-bottom: 7px;
   }
 
-  /* Navigate section: 2-col tile grid, easier to scan/tap than a flat list */
   .mm-mobile-grid {
     display: grid; grid-template-columns: repeat(2, 1fr);
     gap: 8px; margin-bottom: 16px;
@@ -878,7 +792,6 @@ const NAVBAR_CSS = `
     color: #fff; background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.35);
   }
 
-  /* Account section: compact list, visually distinct from Navigate grid */
   .mm-mobile-list { display: flex; flex-direction: column; gap: 4px; }
   .mm-mobile-link {
     display: flex; align-items: center; gap: 11px;
@@ -973,12 +886,12 @@ const Navbar = () => {
 
   const [indicator, setIndicator] = useState({ left: 0, width: 0, opacity: 0 });
 
-  const irs       = user?.irs ?? user?.readinessScore ?? 0;
-  const avgScore  = user?.averageScore ?? null;
-  const streak    = user?.streak?.current ?? 0;
+  const irs        = user?.irs ?? user?.readinessScore ?? 0;
+  const avgScore   = user?.averageScore ?? null;
+  const streak     = user?.streak?.current ?? 0;
   const bestStreak = user?.streak?.best ?? streak;
-  const accent    = scoreColor(irs);
-  const initials  = user?.name?.[0]?.toUpperCase() || 'M';
+  const accent     = scoreColor(irs);
+  const initials   = user?.name?.[0]?.toUpperCase() || 'M';
 
   const tierLabel =
     user?.tierLabel ??
@@ -1088,8 +1001,6 @@ const Navbar = () => {
     setStatsOpen(false);
   };
 
-  // Trimmed desktop dropdown menu — Dashboard/Leaderboard/Analytics live in
-  // the top nav already, so the account menu only holds what's NOT there.
   const DROPDOWN_ITEMS = [
     { icon: 'clock',    label: 'Interview history', path: '/history' },
     { icon: 'settings', label: 'Settings',           path: '/settings' },
@@ -1104,11 +1015,11 @@ const Navbar = () => {
       )}
 
       <nav className="mm-root" aria-label="Main navigation">
-        <div className={`mm-capsule${scrolled ? ' scrolled' : ''}`}>
+        <div className="mm-capsule">
 
           <Link to={user ? '/dashboard' : '/'} className="mm-brand mm-focus">
             <div className="mm-brand-ring">
-              <Logomark size={40} uid="navbar"/>
+              <Logomark size={40} />
             </div>
             <div className="mm-brand-word">
               <div className="mm-brand-title">MockMate</div>
@@ -1338,7 +1249,6 @@ const Navbar = () => {
                   <span className="mm-cta-text">New Interview</span>
                 </button>
 
-                {/* Profile dropdown — trimmed, scroll-safe */}
                 <div ref={dropRef} className="mm-profile-wrap">
                   <button type="button"
                     className="mm-av-btn mm-focus"
@@ -1380,9 +1290,9 @@ const Navbar = () => {
 
                             <div className="mm-drop-stats">
                               {[
-                                { val: irs,           color: accent,    label: 'IRS' },
+                                { val: irs,             color: accent,    label: 'IRS' },
                                 { val: avgScore ?? '—', color: C.cyan500, label: 'Avg score' },
-                                { val: `${streak}d`,  color: C.orange,  label: 'Streak' },
+                                { val: `${streak}d`,    color: C.orange,  label: 'Streak' },
                               ].map(({ val, color, label }) => (
                                 <div className="mm-drop-stat" key={label}>
                                   <div className="mm-drop-stat-val" style={{ color }}>{val}</div>
@@ -1452,11 +1362,6 @@ const Navbar = () => {
             )}
           </div>
 
-          {/* ══════════════════════════════════════════════════════════════
-             Mobile panel — redesigned: Account card → CTA → Navigate
-             section (grid) → Account section (Settings/Logout), clear
-             visual grouping instead of one long undifferentiated list.
-             ══════════════════════════════════════════════════════════════ */}
           {mobileOpen && user && (
             <div className="mm-mobile-panel">
               {notificationsLoaded && unreadCount > 0 && (
@@ -1514,13 +1419,14 @@ const Navbar = () => {
                 </div>
               )}
 
-             <button type="button"
-  className="mm-cta desktop-only mm-focus"
-  onClick={() => navigate('/interview')}
->
-  <span className="mm-cta-icon" style={{ fontSize: 14 }}>🎙️</span>
-  <span className="mm-cta-text">New Interview</span>
-</button>
+              <button type="button"
+                className="mm-cta mm-focus"
+                style={{ width: '100%', height: 42, marginBottom: 12, justifyContent: 'center' }}
+                onClick={() => { setMobileOpen(false); navigate('/interview'); }}
+              >
+                <span className="mm-cta-icon" style={{ fontSize: 14 }}>🎙️</span>
+                <span className="mm-cta-text">New Interview</span>
+              </button>
 
               <div className="mm-mobile-section-label">Navigate</div>
               <div className="mm-mobile-grid">

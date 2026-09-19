@@ -407,20 +407,26 @@ const NAVBAR_CSS = `
 
   .mm-drop {
     position: absolute; top: calc(100% + 10px); right: 0;
-    width: 296px; padding: 0;
-    border: 1px solid rgba(210,222,248,.9); border-radius: 20px;
+    width: 310px; padding: 0;
+    border: 1px solid rgba(210,222,248,.9); border-radius: 22px;
     background: rgba(255,255,255,.98);
-    backdrop-filter: blur(30px) saturate(190%);
-    -webkit-backdrop-filter: blur(30px) saturate(190%);
-    box-shadow: 0 28px 64px rgba(0,31,107,.18), 0 6px 18px rgba(0,31,107,.08), inset 0 1px 0 rgba(255,255,255,.95);
+    backdrop-filter: blur(36px) saturate(200%);
+    -webkit-backdrop-filter: blur(36px) saturate(200%);
+    box-shadow:
+      0 0 0 1px rgba(26,110,255,.06),
+      0 8px 24px rgba(0,31,107,.10),
+      0 28px 64px rgba(0,31,107,.18),
+      inset 0 1px 0 rgba(255,255,255,.96);
     animation: mmDropIn .22s cubic-bezier(.22,1,.36,1);
     z-index: 100; overflow: hidden;
-    max-height: min(560px, calc(100vh - 96px));
+    max-height: min(600px, calc(100vh - 96px));
+    display: flex; flex-direction: column;
   }
   .mm-drop-scroll {
-    max-height: min(560px, calc(100vh - 96px));
+    flex: 1;
     overflow-y: auto;
     overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .mm-drop-mesh {
@@ -517,6 +523,43 @@ const NAVBAR_CSS = `
 
   .mm-drop-divider { height: 1px; background: ${C.border}; margin: 4px 8px; }
 
+  /* ── Dropdown sticky footer (logout always visible) ──── */
+  .mm-drop-footer {
+    flex-shrink: 0;
+    padding: 7px 8px 9px;
+    border-top: 1px solid rgba(210,220,245,.65);
+    background: linear-gradient(180deg, rgba(250,252,255,.97), rgba(246,249,255,.98));
+  }
+  .mm-drop-logout-btn {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 13px;
+    border: 1px solid rgba(220,38,38,.13);
+    background: linear-gradient(135deg, rgba(254,242,242,.85), rgba(255,250,250,.95));
+    color: ${C.red}; font: 650 13px ${F.body}; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+  }
+  .mm-drop-logout-btn:hover {
+    background: rgba(254,226,226,.92);
+    border-color: rgba(220,38,38,.26);
+    transform: translateX(1.5px);
+    box-shadow: 0 4px 12px rgba(220,38,38,.09);
+  }
+  .mm-drop-logout-btn:active { transform: scale(.98); }
+  .mm-drop-logout-icon {
+    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+    display: grid; place-items: center;
+    background: rgba(220,38,38,.07); border: 1px solid rgba(220,38,38,.13);
+    color: ${C.red};
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .mm-drop-logout-btn:hover .mm-drop-logout-icon {
+    background: rgba(220,38,38,.13); border-color: rgba(220,38,38,.26);
+  }
+  .mm-drop-logout-label { flex: 1; text-align: left; }
+  .mm-drop-logout-arrow { color: rgba(220,38,38,.45); transition: transform .15s ease, color .15s ease; }
+  .mm-drop-logout-btn:hover .mm-drop-logout-arrow { transform: translateX(2px); color: ${C.red}; }
+
   .mm-login {
     display: inline-flex; align-items: center; justify-content: center; gap: 9px;
     height: 40px; padding: 0 15px 0 8px;
@@ -548,6 +591,7 @@ const NAVBAR_CSS = `
   }
 
   .mm-util-wrap { position: relative; flex-shrink: 0; }
+  .mm-cmd-wrap  { display: contents; }  /* transparent wrapper — only used for mobile hiding */
   .mm-util-btn {
     position: relative;
     width: 40px; height: 40px;
@@ -725,14 +769,52 @@ body { padding-top: var(--navbar-h); }
 
   .mm-mobile-panel {
     position: absolute; left: 8px; right: 8px; top: calc(100% + 8px);
-    padding: 12px; border: 1px solid ${C.border}; border-radius: 20px;
-    background: rgba(255,255,255,.98); backdrop-filter: blur(30px);
-    -webkit-backdrop-filter: blur(30px);
-    box-shadow: 0 24px 60px rgba(0,31,107,.16);
+    padding: 0; border: 1px solid ${C.border}; border-radius: 22px;
+    background: rgba(255,255,255,.98); backdrop-filter: blur(32px) saturate(200%);
+    -webkit-backdrop-filter: blur(32px) saturate(200%);
+    box-shadow: 0 0 0 1px rgba(26,110,255,.05), 0 24px 60px rgba(0,31,107,.16);
     animation: mmSlideDown .22s cubic-bezier(.22,1,.36,1);
-    max-height: calc(100vh - 110px); overflow-y: auto;
-    overscroll-behavior: contain;
+    max-height: calc(100vh - 110px);
+    display: flex; flex-direction: column; overflow: hidden;
   }
+  /* ── mobile panel sub-sections ────────────────────────── */
+  .mm-mobile-panel-header {
+    flex-shrink: 0;
+    padding: 12px 12px 0;
+    background: rgba(255,255,255,.98);
+  }
+  .mm-mobile-panel-scroll {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 10px 12px 4px;
+  }
+  .mm-mobile-panel-footer {
+    flex-shrink: 0;
+    padding: 8px 12px 12px;
+    border-top: 1px solid rgba(210,220,245,.65);
+    background: linear-gradient(180deg, rgba(250,252,255,.97), rgba(246,249,255,.98));
+  }
+  .mm-mobile-logout-full {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 13px 15px;
+    border: 1px solid rgba(220,38,38,.15);
+    border-radius: 15px;
+    background: linear-gradient(135deg, rgba(254,242,242,.92), rgba(255,250,250,.97));
+    color: ${C.red}; font: 650 13.5px ${F.body}; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+  }
+  .mm-mobile-logout-full:hover  { background: rgba(254,226,226,.92); border-color: rgba(220,38,38,.28); }
+  .mm-mobile-logout-full:active { transform: scale(.98); }
+  .mm-mobile-logout-icon {
+    width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(220,38,38,.07); border: 1px solid rgba(220,38,38,.14); color: ${C.red};
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .mm-mobile-logout-full:hover .mm-mobile-logout-icon { background: rgba(220,38,38,.13); border-color: rgba(220,38,38,.25); }
 
   .mm-mobile-notif {
     display: flex; align-items: center; gap: 9px;
@@ -872,9 +954,11 @@ body { padding-top: var(--navbar-h); }
     .mm-sep               { display: none; }
     .mm-mobile-controls   { display: flex; }
     .mm-right             { margin-left: auto; }
+    /* Hide all utility icons + CommandPalette — only Interview + ☰ survive */
+    .mm-util-wrap { display: none !important; }
+    .mm-cmd-wrap  { display: none !important; }
     /* Popovers: clamp to viewport, anchor from left edge of capsule
        so they never overflow right on narrow phones */
-    .mm-util-wrap { position: static; }
     .mm-popover {
       position: fixed;
       top: 82px;
@@ -911,6 +995,8 @@ body { padding-top: var(--navbar-h); }
   }
   @media (max-width: 380px) {
     .mm-mobile-grid { grid-template-columns: 1fr; }
+    .mm-brand-word  { display: none; }
+    .mm-brand       { padding: 4px 6px; gap: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -1294,7 +1380,7 @@ const Navbar = () => {
                   )}
                 </div>
 
-                <CommandPalette />
+                <div className="mm-cmd-wrap"><CommandPalette /></div>
                 <div className="mm-sep" aria-hidden="true"/>
                 <button type="button"
                   className="mm-cta desktop-only mm-focus"
@@ -1317,47 +1403,50 @@ const Navbar = () => {
 
                   {dropOpen && (
                     <div className="mm-drop" role="menu">
-                      <div className="mm-drop-scroll">
-                        <div className="mm-drop-mesh">
-                          <div className="mm-drop-mesh-inner">
-                            <div className="mm-drop-toprow">
-                              <div className="mm-drop-avatar-wrap">
-                                <div className="mm-drop-avatar">{initials}</div>
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div className="mm-drop-name">{user.name?.split(' ')[0]}</div>
-                                <div className="mm-drop-sub">{user.college ?? 'MockMate User'}</div>
-                              </div>
-                              <ScoreRing value={irs} size={32} strokeW={2.4} id="drop-irs"/>
-                              <button type="button"
-                                className="mm-drop-close mm-focus"
-                                onClick={() => setDropOpen(false)}
-                                aria-label="Close profile menu"
-                              >
-                                <NavIcon name="close" size={13}/>
-                              </button>
-                            </div>
 
-                            <div className="mm-drop-tier">
-                              <span className="mm-drop-tier-icon"><NavIcon name="spark" size={9}/></span>
-                              Tracking toward <b>{tierLabel}</b>
+                      {/* ── Sticky header ─────────────────────────── */}
+                      <div className="mm-drop-mesh">
+                        <div className="mm-drop-mesh-inner">
+                          <div className="mm-drop-toprow">
+                            <div className="mm-drop-avatar-wrap">
+                              <div className="mm-drop-avatar">{initials}</div>
                             </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="mm-drop-name">{user.name?.split(' ')[0]}</div>
+                              <div className="mm-drop-sub">{user.college ?? 'MockMate User'}</div>
+                            </div>
+                            <ScoreRing value={irs} size={32} strokeW={2.4} id="drop-irs"/>
+                            <button type="button"
+                              className="mm-drop-close mm-focus"
+                              onClick={() => setDropOpen(false)}
+                              aria-label="Close profile menu"
+                            >
+                              <NavIcon name="close" size={13}/>
+                            </button>
+                          </div>
 
-                            <div className="mm-drop-stats">
-                              {[
-                                { val: irs,             color: accent,    label: 'IRS' },
-                                { val: avgScore ?? '—', color: C.cyan500, label: 'Avg score' },
-                                { val: `${streak}d`,    color: C.orange,  label: 'Streak' },
-                              ].map(({ val, color, label }) => (
-                                <div className="mm-drop-stat" key={label}>
-                                  <div className="mm-drop-stat-val" style={{ color }}>{val}</div>
-                                  <div className="mm-drop-stat-label">{label}</div>
-                                </div>
-                              ))}
-                            </div>
+                          <div className="mm-drop-tier">
+                            <span className="mm-drop-tier-icon"><NavIcon name="spark" size={9}/></span>
+                            Tracking toward <b>{tierLabel}</b>
+                          </div>
+
+                          <div className="mm-drop-stats">
+                            {[
+                              { val: irs,             color: accent,    label: 'IRS' },
+                              { val: avgScore ?? '—', color: C.cyan500, label: 'Avg score' },
+                              { val: `${streak}d`,    color: C.orange,  label: 'Streak' },
+                            ].map(({ val, color, label }) => (
+                              <div className="mm-drop-stat" key={label}>
+                                <div className="mm-drop-stat-val" style={{ color }}>{val}</div>
+                                <div className="mm-drop-stat-label">{label}</div>
+                              </div>
+                            ))}
                           </div>
                         </div>
+                      </div>
 
+                      {/* ── Scrollable items ──────────────────────── */}
+                      <div className="mm-drop-scroll">
                         <div className="mm-drop-menu">
                           {DROPDOWN_ITEMS.map((item, i) => (
                             <button type="button" key={item.path}
@@ -1371,21 +1460,26 @@ const Navbar = () => {
                               <span className="mm-drop-item-arrow"><NavIcon name="arrowRight" size={12}/></span>
                             </button>
                           ))}
-
-                          <div className="mm-drop-divider"/>
-
-                          <button type="button"
-                            className="mm-drop-item danger mm-focus"
-                            role="menuitem"
-                            style={{ animationDelay: '60ms' }}
-                            onClick={() => { setDropOpen(false); logout(); }}
-                          >
-                            <span className="mm-drop-icon"><NavIcon name="logout" size={14}/></span>
-                            Logout
-                            <span className="mm-drop-item-arrow"><NavIcon name="arrowRight" size={12}/></span>
-                          </button>
                         </div>
                       </div>
+
+                      {/* ── Sticky footer: logout always visible ─── */}
+                      <div className="mm-drop-footer">
+                        <button type="button"
+                          className="mm-drop-logout-btn mm-focus"
+                          role="menuitem"
+                          onClick={() => { setDropOpen(false); logout(); }}
+                        >
+                          <span className="mm-drop-logout-icon">
+                            <NavIcon name="logout" size={14}/>
+                          </span>
+                          <span className="mm-drop-logout-label">Sign out</span>
+                          <span className="mm-drop-logout-arrow">
+                            <NavIcon name="arrowRight" size={12}/>
+                          </span>
+                        </button>
+                      </div>
+
                     </div>
                   )}
                 </div>
@@ -1422,100 +1516,110 @@ const Navbar = () => {
 
           {mobileOpen && user && (
             <div className="mm-mobile-panel">
-              {notificationsLoaded && unreadCount > 0 && (
-                <div className="mm-mobile-notif">
-                  <div className="mm-mobile-notif-icon">
-                    <NavIcon name="bell" size={14}/>
-                  </div>
+
+              {/* ── Sticky header: user card + notification ─── */}
+              <div className="mm-mobile-panel-header">
+                <div className="mm-mobile-user">
+                  <div className="mm-drop-avatar" style={{ width: 40, height: 40, flexShrink: 0 }}>{initials}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="mm-mobile-notif-text">{notifications[0]?.text}</div>
-                    {notifications.length > 1 && (
-                      <div className="mm-mobile-notif-more">+{notifications.length - 1} more</div>
-                    )}
+                    <div className="mm-mobile-user-name">{user.name?.split(' ')[0]}</div>
+                    <div className="mm-mobile-user-sub">{user.college ?? 'MockMate User'}</div>
+                  </div>
+                  <span className="mm-mobile-tier">{tierLabel}</span>
+                </div>
+
+                {notificationsLoaded && unreadCount > 0 && (
+                  <div className="mm-mobile-notif">
+                    <div className="mm-mobile-notif-icon">
+                      <NavIcon name="bell" size={14}/>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="mm-mobile-notif-text">{notifications[0]?.text}</div>
+                      {notifications.length > 1 && (
+                        <div className="mm-mobile-notif-more">+{notifications.length - 1} more</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Scrollable body ───────────────────────────── */}
+              <div className="mm-mobile-panel-scroll">
+
+                <div className="mm-mobile-stats">
+                  <div className="mm-mobile-stat">
+                    <div className="mm-mobile-stat-val" style={{ color: C.orange }}>🔥{streak}</div>
+                    <div className="mm-mobile-stat-label">Streak</div>
+                  </div>
+                  <div className="mm-mobile-stat">
+                    <div className="mm-mobile-stat-val" style={{ color: accent }}>{irs}</div>
+                    <div className="mm-mobile-stat-label">IRS</div>
+                  </div>
+                  <div className="mm-mobile-stat">
+                    <div className="mm-mobile-stat-val" style={{ color: C.cyan500 }}>{avgScore ?? '—'}</div>
+                    <div className="mm-mobile-stat-label">Avg</div>
                   </div>
                 </div>
-              )}
 
-              <div className="mm-mobile-user">
-                <div className="mm-drop-avatar" style={{ width: 40, height: 40 }}>{initials}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="mm-mobile-user-name">{user.name?.split(' ')[0]}</div>
-                  <div className="mm-mobile-user-sub">{user.college ?? 'MockMate User'}</div>
-                </div>
-                <span className="mm-mobile-tier">{tierLabel}</span>
-              </div>
-
-              <div className="mm-mobile-stats">
-                <div className="mm-mobile-stat">
-                  <div className="mm-mobile-stat-val" style={{ color: C.orange }}>🔥{streak}</div>
-                  <div className="mm-mobile-stat-label">Streak</div>
-                </div>
-                <div className="mm-mobile-stat">
-                  <div className="mm-mobile-stat-val" style={{ color: accent }}>{irs}</div>
-                  <div className="mm-mobile-stat-label">IRS</div>
-                </div>
-                <div className="mm-mobile-stat">
-                  <div className="mm-mobile-stat-val" style={{ color: C.cyan500 }}>{avgScore ?? '—'}</div>
-                  <div className="mm-mobile-stat-label">Avg</div>
-                </div>
-              </div>
-
-              {!goalDone && (
-                <div className="mm-mobile-goal">
-                  <svg width={32} height={32} viewBox="0 0 34 34"
-                    style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
-                    <circle cx="17" cy="17" r="14" fill="none" stroke={C.border} strokeWidth="3.5"/>
-                    <circle cx="17" cy="17" r="14" fill="none" stroke={C.blue500} strokeWidth="3.5"
-                      strokeDasharray={2 * Math.PI * 14}
-                      strokeDashoffset={2 * Math.PI * 14 * (1 - goalPct / 100)}
-                      strokeLinecap="round"/>
-                  </svg>
-                  <div style={{ flex: 1 }}>
-                    <div className="mm-mobile-goal-title">Today's goal</div>
-                    <div className="mm-mobile-goal-sub">{goalCompleted} of {goalTarget} interviews done</div>
+                {!goalDone && (
+                  <div className="mm-mobile-goal">
+                    <svg width={32} height={32} viewBox="0 0 34 34"
+                      style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
+                      <circle cx="17" cy="17" r="14" fill="none" stroke={C.border} strokeWidth="3.5"/>
+                      <circle cx="17" cy="17" r="14" fill="none" stroke={C.blue500} strokeWidth="3.5"
+                        strokeDasharray={2 * Math.PI * 14}
+                        strokeDashoffset={2 * Math.PI * 14 * (1 - goalPct / 100)}
+                        strokeLinecap="round"/>
+                    </svg>
+                    <div style={{ flex: 1 }}>
+                      <div className="mm-mobile-goal-title">Today's goal</div>
+                      <div className="mm-mobile-goal-sub">{goalCompleted} of {goalTarget} interviews done</div>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <button type="button"
-                className="mm-cta mm-focus"
-                style={{ width: '100%', height: 42, marginBottom: 12, justifyContent: 'center' }}
-                onClick={() => { setMobileOpen(false); navigate('/interview'); }}
-              >
-                <span className="mm-cta-icon" style={{ fontSize: 14 }}>🎙️</span>
-                <span className="mm-cta-text">New Interview</span>
-              </button>
-
-              <div className="mm-mobile-section-label">Navigate</div>
-              <div className="mm-mobile-grid">
-                {NAV_LINKS.map(link => (
-                  <Link key={link.path} to={link.path}
-                    className={`mm-mobile-tile mm-focus${isActive(link.path) ? ' active' : ''}`}
-                    aria-current={isActive(link.path) ? 'page' : undefined}
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    {link.badge && <span className="mm-mobile-tile-badge">{link.badge}</span>}
-                    <span className="mm-mobile-tile-icon"><NavIcon name={link.icon} size={18}/></span>
-                    <span className="mm-mobile-tile-label">{link.label}</span>
-                  </Link>
-                ))}
-              </div>
-
-              <div className="mm-mobile-section-label">Account</div>
-              <div className="mm-mobile-list">
                 <button type="button"
-                  className="mm-mobile-link mm-mobile-logout mm-focus"
+                  className="mm-cta mm-focus"
+                  style={{ width: '100%', height: 42, marginBottom: 14, justifyContent: 'center' }}
+                  onClick={() => { setMobileOpen(false); navigate('/interview'); }}
+                >
+                  <span className="mm-cta-icon" style={{ fontSize: 14 }}>🎙️</span>
+                  <span className="mm-cta-text">New Interview</span>
+                </button>
+
+                <div className="mm-mobile-section-label">Navigate</div>
+                <div className="mm-mobile-grid" style={{ marginBottom: 8 }}>
+                  {NAV_LINKS.map(link => (
+                    <Link key={link.path} to={link.path}
+                      className={`mm-mobile-tile mm-focus${isActive(link.path) ? ' active' : ''}`}
+                      aria-current={isActive(link.path) ? 'page' : undefined}
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      {link.badge && <span className="mm-mobile-tile-badge">{link.badge}</span>}
+                      <span className="mm-mobile-tile-icon"><NavIcon name={link.icon} size={18}/></span>
+                      <span className="mm-mobile-tile-label">{link.label}</span>
+                    </Link>
+                  ))}
+                </div>
+
+              </div>
+
+              {/* ── Sticky footer: logout always visible ─────── */}
+              <div className="mm-mobile-panel-footer">
+                <button type="button"
+                  className="mm-mobile-logout-full mm-focus"
                   onClick={() => { setMobileOpen(false); logout(); }}
                 >
-                  <span className="mm-mobile-link-icon" style={{ background: C.redTint, color: C.red }}>
-                    <NavIcon name="logout" size={16}/>
-                  </span>
-                  Logout
-                  <span className="mm-drop-item-arrow" style={{ opacity: 1, transform: 'none' }}>
-                    <NavIcon name="arrowRight" size={13}/>
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                    <span className="mm-mobile-logout-icon">
+                      <NavIcon name="logout" size={16}/>
+                    </span>
+                    Sign out of MockMate
+                  </div>
+                  <NavIcon name="arrowRight" size={14}/>
                 </button>
               </div>
+
             </div>
           )}
         </div>

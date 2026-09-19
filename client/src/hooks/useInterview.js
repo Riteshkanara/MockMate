@@ -260,10 +260,12 @@ export const useInterview = ({ notify } = {}) => {
   // ── SKIP ───────────────────────────────────────────────────────────────
 
   const handleSkip = useCallback(
-    async timeTaken => handleSubmit('', null, Number(timeTaken) || 0, true),
-    [handleSubmit]
-  );
-
+  async timeTaken => {
+    await handleSubmit('', null, Number(timeTaken) || 0, true);
+    window.scrollTo({ top: 183, behavior: 'smooth' });
+  },
+  [handleSubmit]
+);
   // ── TIME UP ────────────────────────────────────────────────────────────
 
   const handleTimeUp = useCallback(
@@ -310,6 +312,7 @@ export const useInterview = ({ notify } = {}) => {
     }
 
     setCurrentIndex(prev => prev + 1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     setFeedback(null);
     setSelectedAnswerIndex(null);
     setIsSubmitted(false);

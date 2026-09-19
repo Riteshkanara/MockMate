@@ -1,12 +1,3 @@
-/**
- * CommandPalette — Ctrl+K / Cmd+K quick navigation
- * ─────────────────────────────────────────────────────────────────────────
- * Opens a spotlight-style modal. Lets users navigate the app without
- * reaching for the navbar — extremely impressive in demos and interviews.
- *
- * Usage: Mount once inside BrowserRouter (needs useNavigate).
- *   <CommandPalette />
- */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -61,7 +52,13 @@ const CommandPalette = () => {
   useEffect(() => {
     if (open) {
       setSelected(0);
-      setTimeout(() => inputRef.current?.focus(), 30);
+      // Only auto-focus on non-touch devices (desktop keyboard users).
+      // On mobile we let the user tap the input themselves so the
+      // virtual keyboard doesn't pop up uninvited.
+      const isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+      if (!isTouchDevice) {
+        setTimeout(() => inputRef.current?.focus(), 30);
+      }
     }
   }, [open]);
 
@@ -85,14 +82,21 @@ const CommandPalette = () => {
           backdrop-filter: blur(8px);
         }
         .mm-cmd-trigger:hover { border-color: ${C.borderMd}; background: ${C.card}; color: ${C.sub}; }
+        .mm-cmd-trigger-icon { font-size: 15px; line-height: 1; }
+        .mm-cmd-trigger-keys { display: inline-flex; align-items: center; gap: 3px; }
         .mm-cmd-trigger kbd {
           padding: 1px 4px; border: 1px solid ${C.border};
           border-radius: 4px; font: inherit; font-size: 10px;
           background: rgba(255,255,255,0.8); color: ${C.muted};
         }
+        @media (max-width: 830px) {
+          .mm-cmd-trigger { padding: 4px 8px; }
+          .mm-cmd-trigger-keys { display: none; }
+        }
       `}</style>
       <button className="mm-cmd-trigger" onClick={() => setOpen(true)} title="Open command palette (Ctrl+K)">
-        <kbd>⌘</kbd><kbd>K</kbd>
+        <span className="mm-cmd-trigger-icon">⌕</span>
+        <span className="mm-cmd-trigger-keys"><kbd>⌘</kbd><kbd>K</kbd></span>
       </button>
     </>
   );

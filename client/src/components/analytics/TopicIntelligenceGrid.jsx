@@ -431,6 +431,69 @@ TIGSummaryBar.propTypes = {
 };
 
 // ─────────────────────────────────────────────
+// MobileTopicRow — compact list row for mobile
+// ─────────────────────────────────────────────
+const MobileTopicRow = ({ data, isSelected, onClick }) => {
+  const tier = getTier(data.avgScore);
+  const trnd = getTrendLabel(data.trend);
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={isSelected}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+        padding: '10px 12px', border: 'none', borderRadius: 12, cursor: 'pointer',
+        background: isSelected ? `${tier.color}10` : 'transparent',
+        outline: isSelected ? `1.5px solid ${tier.color}40` : '1.5px solid transparent',
+        transition: 'all .18s ease', textAlign: 'left',
+      }}
+    >
+      {/* Score circle */}
+      <div style={{
+        width: 42, height: 42, borderRadius: '50%', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: `${tier.color}18`, border: `2px solid ${tier.color}55`,
+      }}>
+        <span style={{ fontFamily: F.display, fontSize: '13px', fontWeight: 900, color: tier.color }}>
+          {data.avgScore}
+        </span>
+      </div>
+
+      {/* Topic + tier */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: F.body, fontSize: '13px', fontWeight: 700, color: C.text,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {data.topic}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+          <span style={{ fontFamily: F.mono, fontSize: '9px', fontWeight: 700, color: tier.color }}>
+            {tier.label}
+          </span>
+          <span style={{ fontFamily: F.mono, fontSize: '9px', color: trnd.color }}>
+            {trnd.icon} {trnd.word}
+          </span>
+          <span style={{ fontFamily: F.mono, fontSize: '9px', color: C.muted }}>
+            {data.sessionCount} sessions
+          </span>
+        </div>
+      </div>
+
+      {/* Chevron */}
+      <span style={{
+        fontFamily: F.mono, fontSize: '11px', color: C.muted, flexShrink: 0,
+        transform: isSelected ? 'rotate(180deg)' : 'none',
+        transition: 'transform .2s ease',
+      }}>▾</span>
+    </button>
+  );
+};
+MobileTopicRow.propTypes = {
+  data:       PropTypes.object.isRequired,
+  isSelected: PropTypes.bool.isRequired,
+  onClick:    PropTypes.func.isRequired,
+};
+
+// ─────────────────────────────────────────────
 // TopicIntelligenceGrid (exported)
 // ─────────────────────────────────────────────
 TopicIntelligenceGrid.propTypes = {
@@ -449,12 +512,22 @@ function TopicIntelligenceGrid({ topicData, onDrill }) {
   const topics = topicData?.length ? topicData : SEED_TOPICS;
   const [selected, setSelected]           = useState(null);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [isMobile, setIsMobile]           = useState(false);
+  const [mobileExpanded, setMobileExpanded] = useState(false);
   const panelRef = useRef(null);
 
   useEffect(() => {
     const mq      = window.matchMedia('(prefers-reduced-motion: reduce)');
     setReducedMotion(mq.matches);
     const handler = (e) => setReducedMotion(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    setIsMobile(mq.matches);
+    const handler = (e) => setIsMobile(e.matches);
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, []);
@@ -472,6 +545,13 @@ function TopicIntelligenceGrid({ topicData, onDrill }) {
     tierOrder[getTier(a.avgScore).key] - tierOrder[getTier(b.avgScore).key]
   );
 
+  // On mobile: show first 3 rows collapsed, rest behind "Show more"
+  const MOBILE_PREVIEW_COUNT = 3;
+  const mobileVisible = isMobile && !mobileExpanded
+    ? sorted.slice(0, MOBILE_PREVIEW_COUNT)
+    : sorted;
+  const hiddenCount = sorted.length - MOBILE_PREVIEW_COUNT;
+
   return (
     <>
       <style>{`
@@ -483,10 +563,15 @@ function TopicIntelligenceGrid({ topicData, onDrill }) {
           from { opacity: 0; transform: translateX(14px) scale(.97); }
           to   { opacity: 1; transform: translateX(0) scale(1); }
         }
+        @keyframes tig-row-in {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
         .tig-hex-btn:focus-visible  { outline: 2px solid #1A6EFF; outline-offset: 4px; border-radius: 6px; }
         .tig-drill-btn:hover        { transform: translateY(-2px); }
         .tig-drill-btn:active       { transform: scale(.97); }
         .tig-close-btn:hover        { background: #FEF2F2; border-color: #fca5a5; color: #DC2626; }
+        .tig-mobile-row             { animation: tig-row-in .22s ease both; }
         @media (prefers-reduced-motion: reduce) {
           * { animation: none !important; transition: none !important; }
         }
@@ -508,44 +593,109 @@ function TopicIntelligenceGrid({ topicData, onDrill }) {
               <h2 style={{ margin: 0, fontFamily: F.display, fontSize: '17px', fontWeight: 900,
                 color: C.text, letterSpacing: '-0.04em' }}>Topic Intelligence</h2>
               <p style={{ margin: '4px 0 0', fontFamily: F.body, fontSize: '12px', color: C.muted, fontWeight: 500 }}>
-                {topics.length} topics mapped · click any cell to drill down
+                {topics.length} topics mapped · {isMobile ? 'tap a topic to drill down' : 'click any cell to drill down'}
               </p>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-              padding: '6px 10px', borderRadius: 10, background: C.bgDeep, border: `1px solid ${C.border}` }}>
-              {[18, 24, 30].map((r, i) => (
-                <div key={i} style={{ width: r, height: r, borderRadius: '50%',
-                  background: `${C.blue500}${['12','1a','24'][i]}`,
-                  border: `1.5px solid ${C.blue500}${['30','44','66'][i]}` }} />
-              ))}
-              <span style={{ fontFamily: F.mono, fontSize: '8px', color: C.muted, fontWeight: 700 }}>sessions</span>
-            </div>
+            {!isMobile && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                padding: '6px 10px', borderRadius: 10, background: C.bgDeep, border: `1px solid ${C.border}` }}>
+                {[18, 24, 30].map((r, i) => (
+                  <div key={i} style={{ width: r, height: r, borderRadius: '50%',
+                    background: `${C.blue500}${['12','1a','24'][i]}`,
+                    border: `1.5px solid ${C.blue500}${['30','44','66'][i]}` }} />
+                ))}
+                <span style={{ fontFamily: F.mono, fontSize: '8px', color: C.muted, fontWeight: 700 }}>sessions</span>
+              </div>
+            )}
           </div>
           <TIGSummaryBar topics={topics} />
         </div>
 
-        {/* Grid + Panel */}
-        <div className="tig-grid"
-          style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 240px' : '1fr', gap: 20, alignItems: 'start' }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '36px 18px',
-              padding: '12px 8px 36px', justifyContent: 'flex-start' }}>
-              {sorted.map((topic, i) => (
-                <HexCell key={topic.topic} data={topic} index={i}
-                  isSelected={selected?.topic === topic.topic}
-                  onClick={() => handleSelect(topic)}
-                  reducedMotion={reducedMotion} />
+        {/* ── MOBILE LAYOUT ── */}
+        {isMobile ? (
+          <div>
+            {/* Topic rows */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {mobileVisible.map((topic, i) => (
+                <div key={topic.topic} className="tig-mobile-row"
+                  style={{ animationDelay: `${i * 40}ms` }}>
+                  <MobileTopicRow
+                    data={topic}
+                    isSelected={selected?.topic === topic.topic}
+                    onClick={() => handleSelect(topic)}
+                  />
+                  {/* Inline detail panel below selected row */}
+                  {selected?.topic === topic.topic && (
+                    <div style={{ margin: '6px 0 10px', animation: 'tig-row-in .22s ease' }}>
+                      <DetailPanel
+                        data={selected}
+                        onClose={() => setSelected(null)}
+                        onDrill={handleDrill}
+                        reducedMotion={reducedMotion}
+                      />
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
-          </div>
 
-          {selected && (
-            <div ref={panelRef} className="tig-panel" style={{ position: 'sticky', top: 100 }}>
-              <DetailPanel data={selected} onClose={() => setSelected(null)}
-                onDrill={handleDrill} reducedMotion={reducedMotion} />
+            {/* Fade + Show more / Show less */}
+            {sorted.length > MOBILE_PREVIEW_COUNT && (
+              <div style={{ position: 'relative', marginTop: 4 }}>
+                {/* Fade overlay only when collapsed */}
+                {!mobileExpanded && (
+                  <div style={{
+                    position: 'absolute', bottom: '100%', left: 0, right: 0, height: 56,
+                    background: `linear-gradient(to bottom, transparent, ${C.card})`,
+                    pointerEvents: 'none',
+                  }} />
+                )}
+                <button
+                  onClick={() => {
+                    setMobileExpanded(e => !e);
+                    if (mobileExpanded) setSelected(null);
+                  }}
+                  style={{
+                    width: '100%', marginTop: 8, padding: '10px',
+                    borderRadius: 12, border: `1px solid ${C.border}`,
+                    background: C.bgDeep, cursor: 'pointer',
+                    fontFamily: F.body, fontSize: '12.5px', fontWeight: 700, color: C.blue500,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    transition: 'all .18s ease',
+                  }}
+                >
+                  {mobileExpanded
+                    ? <>Show less ▲</>
+                    : <>{hiddenCount} more topics ▼</>
+                  }
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ── DESKTOP LAYOUT (unchanged) ── */
+          <div className="tig-grid"
+            style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 240px' : '1fr', gap: 20, alignItems: 'start' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '36px 18px',
+                padding: '12px 8px 36px', justifyContent: 'flex-start' }}>
+                {sorted.map((topic, i) => (
+                  <HexCell key={topic.topic} data={topic} index={i}
+                    isSelected={selected?.topic === topic.topic}
+                    onClick={() => handleSelect(topic)}
+                    reducedMotion={reducedMotion} />
+                ))}
+              </div>
             </div>
-          )}
-        </div>
+
+            {selected && (
+              <div ref={panelRef} className="tig-panel" style={{ position: 'sticky', top: 100 }}>
+                <DetailPanel data={selected} onClose={() => setSelected(null)}
+                  onDrill={handleDrill} reducedMotion={reducedMotion} />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Legend */}
         <div style={{ marginTop: 4, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>

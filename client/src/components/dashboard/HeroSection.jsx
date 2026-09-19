@@ -180,7 +180,7 @@ function HeroSection({
               {starting ? 'Launching…' : hasData ? 'New mock interview' : 'Run first interview'}
             </button>
             {hasData && <Button surface="dark" variant="ghost" onClick={() => navigate('/analytics')}>Full analytics</Button>}
-            {hasData && <Button surface="dark" variant="ghost" onClick={() => setCoachOpen(true)}>AI Coach</Button>}
+            {hasData && <Button surface="dark" variant="ghost" onClick={() => navigate('/coach')}>AI Coach</Button>}
           </div>
         </div>
       </div>

@@ -1,8 +1,7 @@
 import PropTypes from 'prop-types';
 import { useState } from "react";
 
-// ─── Design tokens matching MockMate's exact blue palette from the screenshot ───
-// Deep cobalt: #0F2D6B, Royal blue: #1A4FBF, Vivid blue: #2563EB, Electric: #0EA5E9, Cyan pop: #00C6FF
+// ─── Design tokens — same MockMate blue palette ──────────────────────────────
 const W = {
   deepNavy:    '#0A1F4E',
   cobalt:      '#0F2D6B',
@@ -14,9 +13,6 @@ const W = {
   glassBg:     'rgba(15, 45, 107, 0.55)',
   glassEdge:   'rgba(0, 198, 255, 0.28)',
   glassEdgeMd: 'rgba(0, 198, 255, 0.48)',
-  shimmer:     'rgba(255,255,255,0.06)',
-  shimmerMd:   'rgba(255,255,255,0.10)',
-  shimmerHi:   'rgba(255,255,255,0.16)',
   textPrimary: '#FFFFFF',
   textSub:     'rgba(199,225,255,0.85)',
   textMuted:   'rgba(160,200,255,0.62)',
@@ -30,10 +26,9 @@ const W = {
   greenGlow:   'rgba(16,185,129,0.28)',
 };
 
-// Exact gradient matching the MockMate hero in the screenshot
-const heroGradient = `linear-gradient(135deg, #0A1F4E 0%, #0F2D6B 22%, #1A4FBF 52%, #2563EB 76%, #0EA5E9 100%)`;
-const cardGradient = `linear-gradient(145deg, rgba(15,45,107,0.72) 0%, rgba(26,79,191,0.48) 100%)`;
+const heroGradient   = `linear-gradient(135deg, #0A1F4E 0%, #0F2D6B 22%, #1A4FBF 52%, #2563EB 76%, #0EA5E9 100%)`;
 const accentGradient = `linear-gradient(135deg, #00C6FF 0%, #0EA5E9 50%, #2563EB 100%)`;
+const greenGradient  = `linear-gradient(135deg, #10B981 0%, #059669 100%)`;
 
 const F = {
   display: "'Inter', 'SF Pro Display', system-ui, sans-serif",
@@ -41,7 +36,16 @@ const F = {
   body:    "'Inter', system-ui, sans-serif",
 };
 
-// ─── WarRoom Section (standalone, drop-in replacement) ───
+// Convert hex to rgba — used for per-card accent tint backgrounds
+const hexA = (hex, a) => {
+  if (!hex || !hex.startsWith('#') || hex.length < 7) return `rgba(0,198,255,${a})`;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
+};
+
+// ─── WarRoom Section ──────────────────────────────────────────────────────────
 const WarRoomSection = ({
   dimensionProfile = [],
   scoreTrend = [],
@@ -54,14 +58,14 @@ const WarRoomSection = ({
   getAIFreeform,
 }) => {
   const [boardSections, setBoardSections] = useState([]);
-  const [boardRaw, setBoardRaw] = useState("");
-  const [boardDone, setBoardDone] = useState(false);
-  const [dnaSections, setDnaSections] = useState([]);
-  const [dnaDone, setDnaDone] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
+  const [boardRaw,      setBoardRaw]      = useState("");
+  const [boardDone,     setBoardDone]     = useState(false);
+  const [dnaSections,   setDnaSections]   = useState([]);
+  const [dnaDone,       setDnaDone]       = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [done,          setDone]          = useState(false);
 
-  // stat helpers
+  // ── stat helpers ──────────────────────────────────────────────────────────
   const stdDev = (vals) => {
     if (vals.length < 2) return 0;
     const m = vals.reduce((a, v) => a + v, 0) / vals.length;
@@ -70,51 +74,74 @@ const WarRoomSection = ({
   const trendSlope = (vals) => {
     const n = vals.length;
     if (n < 2) return 0;
-    const xm = (n - 1) / 2, ym = vals.reduce((a, v) => a + v, 0) / n;
+    const xm = (n - 1) / 2;
+    const ym = vals.reduce((a, v) => a + v, 0) / n;
     const num = vals.reduce((a, v, i) => a + (i - xm) * (v - ym), 0);
     const den = vals.reduce((a, _, i) => a + Math.pow(i - xm, 2), 0);
     return den ? num / den : 0;
   };
-  const sd = stdDev((scoreTrend || []).map(s => s.score || 0));
+  const sd    = stdDev((scoreTrend || []).map(s => s.score || 0));
   const slope = trendSlope((scoreTrend || []).slice(-6).map(s => s.score || 0));
 
+  // ── accent maps ───────────────────────────────────────────────────────────
   const boardAccents = {
-    "HONEST VERDICT": W.cyanLight, "THE REAL PROBLEM": W.red,
-    "WHAT'S ACTUALLY WORKING": W.green, "YOUR NEXT 30 DAYS": W.cyan,
-    "INTERVIEW TALKING POINTS": W.green, "ONE THING MOST COACHES WON'T SAY": W.amber,
+    "HONEST VERDICT":                   W.cyanLight,
+    "THE REAL PROBLEM":                 W.red,
+    "WHAT'S ACTUALLY WORKING":          W.green,
+    "YOUR NEXT 30 DAYS":                W.cyan,
+    "INTERVIEW TALKING POINTS":         W.green,
+    "ONE THING MOST COACHES WON'T SAY": W.amber,
   };
   const boardIcons = {
-    "HONEST VERDICT": "🎯", "THE REAL PROBLEM": "🚨",
-    "WHAT'S ACTUALLY WORKING": "✨", "YOUR NEXT 30 DAYS": "📅",
-    "INTERVIEW TALKING POINTS": "🏆", "ONE THING MOST COACHES WON'T SAY": "🧠",
+    "HONEST VERDICT":                   "🎯",
+    "THE REAL PROBLEM":                 "🚨",
+    "WHAT'S ACTUALLY WORKING":          "✨",
+    "YOUR NEXT 30 DAYS":                "📅",
+    "INTERVIEW TALKING POINTS":         "🏆",
+    "ONE THING MOST COACHES WON'T SAY": "🧠",
   };
   const dnaColors = {
-    "RESPONSE STYLE": W.cyan, "PRESSURE RESPONSE": W.electric,
-    "KNOWLEDGE PATTERN": W.green, "GROWTH EDGE": W.amber, "PROOF POINTS": W.green,
+    "RESPONSE STYLE":    W.cyan,
+    "PRESSURE RESPONSE": W.electric,
+    "KNOWLEDGE PATTERN": W.green,
+    "GROWTH EDGE":       W.amber,
+    "PROOF POINTS":      W.green,
   };
   const dnaIcons = {
-    "RESPONSE STYLE": "💬", "PRESSURE RESPONSE": "🔥",
-    "KNOWLEDGE PATTERN": "📚", "GROWTH EDGE": "🎯", "PROOF POINTS": "💼",
+    "RESPONSE STYLE":    "💬",
+    "PRESSURE RESPONSE": "🔥",
+    "KNOWLEDGE PATTERN": "📚",
+    "GROWTH EDGE":       "🎯",
+    "PROOF POINTS":      "💼",
   };
 
   const parseSections = (text, accentMap) =>
-    (text || '').split(/\n(?=[A-Z][A-Z ']{3,}\n)/).filter(Boolean)
+    (text || '')
+      .split(/\n(?=[A-Z][A-Z ']{3,}\n)/)
+      .filter(Boolean)
       .map(section => {
-        const lines = section.trim().split("\n");
+        const lines   = section.trim().split('\n');
         const heading = lines[0].trim();
-        const body = lines.slice(1).join("\n").trim();
+        const body    = lines.slice(1).join('\n').trim();
         return { heading, body, accent: accentMap[heading] || W.cyan };
-      }).filter(s => s.heading && s.body);
+      })
+      .filter(s => s.heading && s.body);
 
+  // ── generate ──────────────────────────────────────────────────────────────
   const generateBoth = async () => {
-    setLoading(true); setBoardDone(false); setDnaDone(false);
-    setBoardSections([]); setDnaSections([]); setBoardRaw(""); setDone(false);
+    setLoading(true);
+    setBoardDone(false); setDnaDone(false);
+    setBoardSections([]); setDnaSections([]);
+    setBoardRaw(''); setDone(false);
 
-    const topicLines = (dimensionProfile || []).filter(d => d.hasData).sort((a, b) => a.score - b.score)
-      .map(d => `  ${d.label}: ${d.score}/100 — ${Math.round((d.weight ?? 0.1) * 100)}% weight`).join("\n");
-    const recentTrend = scoreTrend.slice(-5).map((s, i) => `S${scoreTrend.length - 4 + i}: ${s.score}`).join(" → ");
-    const trendVerdict = slope > 3 ? "accelerating upward" : slope > 0.5 ? "slowly improving" : slope > -0.5 ? "flatlined" : "declining";
-    const varianceVerdict = sd > 18 ? "dangerously inconsistent" : sd > 10 ? "moderately inconsistent" : "consistent";
+    const topicLines = (dimensionProfile || [])
+      .filter(d => d.hasData)
+      .sort((a, b) => a.score - b.score)
+      .map(d => `  ${d.label}: ${d.score}/100 — ${Math.round((d.weight ?? 0.1) * 100)}% weight`)
+      .join('\n');
+    const recentTrend     = scoreTrend.slice(-5).map((s, i) => `S${scoreTrend.length - 4 + i}: ${s.score}`).join(' → ');
+    const trendVerdict    = slope > 3 ? 'accelerating upward' : slope > 0.5 ? 'slowly improving' : slope > -0.5 ? 'flatlined' : 'declining';
+    const varianceVerdict = sd > 18 ? 'dangerously inconsistent' : sd > 10 ? 'moderately inconsistent' : 'consistent';
 
     const boardPrompt = `You are coach, MockMate's senior placement coach. You have placed 200+ Indian CS students at companies from TCS to Google. Speak directly and honestly.
 
@@ -125,7 +152,7 @@ STUDENT DATA:
 - Archetype: ${archetype?.label} — ${archetype?.desc}
 
 DIMENSIONS:
-${topicLines || "  No data yet"}
+${topicLines || '  No data yet'}
 
 Write using EXACTLY these headings:
 
@@ -183,9 +210,8 @@ Under 200 words. Reference real numbers in every observation.`;
 
     try {
       const fn = getAIFreeform || (async (p) => {
-        // demo fallback
-        return p.includes("HONEST VERDICT") ?
-`HONEST VERDICT
+        return p.includes('HONEST VERDICT')
+          ? `HONEST VERDICT
 At IRS ${irs}/100 you're in the ₹${topTier?.label} band but sitting right at the floor, not the ceiling. That means you'll get shortlisted, but you'll lose to candidates with one more strong dimension.
 
 THE REAL PROBLEM
@@ -206,8 +232,8 @@ INTERVIEW TALKING POINTS
 3. "I track my performance trend, not just my last session — I'm trending ${slope >= 0 ? 'upward' : 'toward stability'} over my last 6 sessions."
 
 ONE THING MOST COACHES WON'T SAY
-At IRS ${irs} with ${totalSessions} sessions, your biggest risk isn't knowledge — it's overconfidence in your strong dimension and avoidance of your weak one. If nothing changes in ${weakest?.label}, the pattern predicts you'll clear screening rounds and stall in technical depth rounds every single time.` :
-`RESPONSE STYLE
+At IRS ${irs} with ${totalSessions} sessions, your biggest risk isn't knowledge — it's overconfidence in your strong dimension and avoidance of your weak one. If nothing changes in ${weakest?.label}, the pattern predicts you'll clear screening rounds and stall in technical depth rounds every single time.`
+          : `RESPONSE STYLE
 Your answers show high structural clarity in ${strongest?.label} but the communication pattern shifts to reactive mode when the topic enters ${weakest?.label} territory — interviewers will notice the gear change.
 
 PRESSURE RESPONSE
@@ -226,11 +252,11 @@ Closing the ${weakest?.label} gap from ${weakest?.score} to 60+ would move your 
 
       const [boardResult, dnaResult] = await Promise.allSettled([
         fn(boardPrompt, 1000),
-        totalSessions >= 10 ? fn(dnaPrompt, 600) : Promise.resolve(""),
+        totalSessions >= 10 ? fn(dnaPrompt, 600) : Promise.resolve(''),
       ]);
 
-      const boardText = boardResult.status === "fulfilled" ? boardResult.value : "Unable to generate analysis.";
-      const dnaText = dnaResult.status === "fulfilled" ? dnaResult.value : "";
+      const boardText = boardResult.status === 'fulfilled' ? boardResult.value : 'Unable to generate analysis.';
+      const dnaText   = dnaResult.status === 'fulfilled' ? dnaResult.value : '';
 
       setBoardRaw(boardText);
       setBoardSections(parseSections(boardText, boardAccents));
@@ -238,7 +264,7 @@ Closing the ${weakest?.label} gap from ${weakest?.score} to 60+ would move your 
       setDnaSections(parseSections(dnaText, dnaColors));
       setDnaDone(true);
     } catch {
-      setBoardRaw("Could not reach AI. Check your connection and try again.");
+      setBoardRaw('Could not reach AI. Check your connection and try again.');
       setBoardDone(true);
     } finally {
       setLoading(false);
@@ -246,367 +272,303 @@ Closing the ${weakest?.label} gap from ${weakest?.score} to 60+ would move your 
     }
   };
 
+  // ── UI data ───────────────────────────────────────────────────────────────
   const statsStrip = [
-    { label: "IRS", val: `${irs}`, unit: "/100", color: irs >= 75 ? W.green : irs >= 55 ? W.cyan : W.amber },
-    { label: "VARIANCE", val: sd > 18 ? "HIGH" : sd > 10 ? "MED" : "LOW", color: sd > 18 ? W.red : sd > 10 ? W.amber : W.green },
-    { label: "ARCHETYPE", val: archetype?.icon || "📈", color: W.cyanLight },
+    { label: 'IRS',       val: `${irs}`,                                  unit: '/100', color: irs >= 75 ? W.green : irs >= 55 ? W.cyan : W.amber },
+    { label: 'VARIANCE',  val: sd > 18 ? 'HIGH' : sd > 10 ? 'MED' : 'LOW', unit: '',  color: sd > 18 ? W.red : sd > 10 ? W.amber : W.green },
+    { label: 'ARCHETYPE', val: archetype?.icon || '📈',                   unit: '',    color: W.cyanLight },
   ];
 
   const previewCards = [
-    { icon: "🎯", label: "HONEST VERDICT", desc: "Where you truly stand", color: W.cyanLight, bg: 'rgba(0,198,255,0.08)' },
-    { icon: "🚨", label: "REAL PROBLEM", desc: "Root cause identified", color: W.red, bg: 'rgba(239,68,68,0.08)' },
-    { icon: "📅", label: "30-DAY BATTLE PLAN", desc: "Week-by-week targets", color: W.cyan, bg: 'rgba(14,165,233,0.08)' },
-    { icon: "🧬", label: "INTERVIEW DNA", desc: `Unlocks at 10 sessions`, color: W.green, bg: 'rgba(16,185,129,0.08)' },
+    { icon: '🎯', label: 'HONEST VERDICT',  desc: 'Where you truly stand',   color: W.cyanLight, bg: 'rgba(0,198,255,0.08)'  },
+    { icon: '🚨', label: 'REAL PROBLEM',     desc: 'Root cause identified',   color: W.red,       bg: 'rgba(239,68,68,0.08)'  },
+    { icon: '📅', label: '30-DAY PLAN',      desc: 'Week-by-week targets',    color: W.cyan,      bg: 'rgba(14,165,233,0.08)' },
+    { icon: '🧬', label: 'INTERVIEW DNA',    desc: 'Unlocks at 10 sessions',  color: W.green,     bg: 'rgba(16,185,129,0.08)' },
   ];
 
   const loadingSteps = [
     `Scanning IRS = ${irs}/100 across 6 dimensions…`,
     `Computing score variance — std-dev ${sd.toFixed(1)}…`,
-    `Mapping ${strongest?.label || "—"} strength vs ${weakest?.label || "—"} gap…`,
-    "Drafting your 30-day battle plan…",
-    "Writing behavioral fingerprint…",
+    `Mapping ${strongest?.label || '—'} strength vs ${weakest?.label || '—'} gap…`,
+    'Drafting your 30-day battle plan…',
+    'Writing behavioral fingerprint…',
   ];
 
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
       <style>{`
-        @keyframes wr-spin { to { transform: rotate(360deg); } }
-        @keyframes wr-pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.7)} }
-        @keyframes wr-shimmer {
-          0%{background-position:-400px 0}
-          100%{background-position:400px 0}
-        }
-        @keyframes wr-fade-up {
-          from{opacity:0;transform:translateY(16px)}
-          to{opacity:1;transform:translateY(0)}
-        }
-        @keyframes wr-scan {
-          0%{transform:translateY(-100%);opacity:0}
-          10%{opacity:1}
-          90%{opacity:1}
-          100%{transform:translateY(400%);opacity:0}
-        }
-        @keyframes wr-glow-pulse {
-          0%,100%{opacity:0.5}
-          50%{opacity:1}
-        }
+        @keyframes wr-spin       { to { transform: rotate(360deg); } }
+        @keyframes wr-pulse-dot  { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.7)} }
+        @keyframes wr-shimmer    { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+        @keyframes wr-fade-up    { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes wr-scan       { 0%{transform:translateY(-100%);opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{transform:translateY(400%);opacity:0} }
+        @keyframes wr-glow-pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
 
         .wr-section { font-family: ${F.body}; }
 
-        .wr-card-glass {
-          background: ${cardGradient};
-          border: 1px solid ${W.glassEdge};
-          border-radius: 16px;
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s cubic-bezier(.22,1,.36,1);
-        }
-        .wr-card-glass:hover {
-          border-color: ${W.glassEdgeMd};
-          box-shadow: 0 12px 36px rgba(0,198,255,0.15);
-        }
+        /* Responsive inner padding */
+        .wr-inner { position:relative; z-index:1; padding:28px 26px 24px; }
+        @media (max-width:767px) { .wr-inner { padding:22px 18px 20px; } }
+        @media (max-width:480px) { .wr-inner { padding:18px 14px 16px; } }
 
-        .wr-result-card {
-          padding: 16px 18px;
-          border-radius: 14px;
-          background: rgba(10,31,78,0.55);
-          border: 1px solid ${W.glassEdge};
-          backdrop-filter: blur(16px);
-          transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-          animation: wr-fade-up 0.35s cubic-bezier(.22,1,.36,1) both;
-        }
-        .wr-result-card:hover {
-          transform: translateY(-2px);
-          border-color: ${W.glassEdgeMd};
-          box-shadow: 0 10px 28px rgba(0,198,255,0.12);
-        }
+        /* Header row — stacks on mobile */
+        .wr-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:22px; }
+        @media (max-width:640px) { .wr-header { flex-direction:column; gap:14px; } }
 
-        .wr-generate-btn {
-          border: none;
-          border-radius: 14px;
-          background: ${accentGradient};
-          color: #fff;
-          font-weight: 800;
-          font-family: ${F.body};
-          cursor: pointer;
-          letter-spacing: -0.02em;
-          box-shadow: 0 8px 28px rgba(0,198,255,0.32), inset 0 1px 0 rgba(255,255,255,0.22);
-          transition: transform 0.22s cubic-bezier(.22,1,.36,1), box-shadow 0.22s ease, filter 0.22s ease;
-        }
-        .wr-generate-btn:hover:not(:disabled) {
-          transform: translateY(-3px);
-          filter: brightness(1.06) saturate(1.08);
-          box-shadow: 0 14px 36px rgba(0,198,255,0.42), inset 0 1px 0 rgba(255,255,255,0.26);
-        }
-        .wr-generate-btn:active:not(:disabled) {
-          transform: translateY(-1px) scale(0.98);
-        }
-        .wr-generate-btn:disabled {
-          background: rgba(26,79,191,0.5);
-          box-shadow: none;
-          cursor: not-allowed;
-          color: rgba(255,255,255,0.5);
-        }
+        /* Right side (chips + button) */
+        .wr-stat-side { display:flex; flex-direction:column; gap:10px; align-items:flex-end; flex-shrink:0; }
+        @media (max-width:640px) { .wr-stat-side { align-items:stretch; width:100%; flex-shrink:1; } }
 
-        .wr-preview-card {
-          border-radius: 14px;
-          padding: 16px 14px;
-          text-align: center;
-          border: 1px solid ${W.glassEdge};
-          backdrop-filter: blur(16px);
-          transition: transform 0.26s cubic-bezier(.22,1,.36,1), border-color 0.26s ease, box-shadow 0.26s ease;
-        }
-        .wr-preview-card:hover {
-          transform: translateY(-5px);
-          border-color: ${W.glassEdgeMd};
-          box-shadow: 0 16px 40px rgba(0,198,255,0.18);
-        }
+        /* Stat chips row */
+        .wr-stat-chips { display:flex; gap:7px; flex-wrap:wrap; }
+        @media (max-width:640px) { .wr-stat-chips { justify-content:space-between; } }
 
+        /* Individual chip */
         .wr-stat-chip {
-          border-radius: 10px;
-          padding: 8px 14px;
-          border: 1px solid ${W.glassEdge};
-          background: rgba(15,45,107,0.6);
-          backdrop-filter: blur(20px);
-          text-align: center;
-          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          border-radius:10px; padding:8px 14px;
+          border:1px solid ${W.glassEdge};
+          background:rgba(15,45,107,0.65);
+          backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+          text-align:center;
+          transition:border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        .wr-stat-chip:hover {
-          border-color: ${W.glassEdgeMd};
-          box-shadow: 0 6px 20px rgba(0,198,255,0.15);
+        .wr-stat-chip:hover { border-color:${W.glassEdgeMd}; box-shadow:0 6px 20px rgba(0,198,255,0.18); }
+        @media (max-width:640px) { .wr-stat-chip { flex:1; min-width:0; padding:8px 10px; } }
+
+        /* Generate button */
+        .wr-generate-btn {
+          border:none; border-radius:14px;
+          background:${accentGradient};
+          color:#fff; font-weight:800; font-family:${F.body};
+          cursor:pointer; letter-spacing:-0.02em;
+          box-shadow:0 8px 28px rgba(0,198,255,0.35), inset 0 1px 0 rgba(255,255,255,0.22);
+          transition:transform 0.22s cubic-bezier(.22,1,.36,1), box-shadow 0.22s ease, filter 0.22s ease;
+          padding:12px 22px; font-size:13px;
+          display:flex; align-items:center; justify-content:center; gap:10px; white-space:nowrap;
+        }
+        @media (max-width:640px) { .wr-generate-btn { width:100%; padding:14px 22px; font-size:14px; } }
+        .wr-generate-btn:hover:not(:disabled) {
+          transform:translateY(-3px); filter:brightness(1.06) saturate(1.08);
+          box-shadow:0 14px 36px rgba(0,198,255,0.45), inset 0 1px 0 rgba(255,255,255,0.26);
+        }
+        .wr-generate-btn:active:not(:disabled) { transform:translateY(-1px) scale(0.98); }
+        .wr-generate-btn:disabled { background:rgba(26,79,191,0.45); box-shadow:none; cursor:not-allowed; color:rgba(255,255,255,0.45); }
+
+        /* Pre-generate box */
+        .wr-idle-box {
+          border:1.5px dashed rgba(0,198,255,0.32); border-radius:18px;
+          padding:40px 24px; text-align:center; background:rgba(10,31,78,0.38);
+        }
+        @media (max-width:480px) { .wr-idle-box { padding:28px 14px 24px; } }
+
+        /* Preview grid */
+        .wr-preview-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; max-width:620px; margin:0 auto; }
+        @media (max-width:640px) { .wr-preview-grid { grid-template-columns:repeat(2,1fr) !important; } }
+        @media (max-width:380px) { .wr-preview-grid { grid-template-columns:1fr !important; } }
+
+        /* Preview card */
+        .wr-preview-card {
+          border-radius:14px; padding:16px 12px; text-align:center;
+          border:1px solid ${W.glassEdge}; backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+          transition:transform 0.26s cubic-bezier(.22,1,.36,1), border-color 0.26s ease, box-shadow 0.26s ease;
+        }
+        .wr-preview-card:hover { transform:translateY(-5px); border-color:${W.glassEdgeMd}; box-shadow:0 16px 40px rgba(0,198,255,0.18); }
+
+        /* Two-col results — stacks at 768px */
+        .wr-two-col { gap:18px; }
+        @media (max-width:768px) { .wr-two-col { grid-template-columns:1fr !important; } }
+
+        /* Column header */
+        .wr-col-header { display:flex; align-items:center; gap:12px; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid ${W.glassEdge}; }
+
+        /* Result card */
+        .wr-result-card {
+          border-radius:14px; border:1px solid ${W.glassEdge};
+          backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+          transition:transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+          animation:wr-fade-up 0.38s cubic-bezier(.22,1,.36,1) both;
+          overflow:hidden; position:relative; padding:16px 18px;
+        }
+        .wr-result-card:hover { transform:translateY(-2px); border-color:${W.glassEdgeMd}; box-shadow:0 10px 28px rgba(0,198,255,0.14); }
+        @media (max-width:480px) { .wr-result-card { padding:14px 14px; } }
+
+        /* Section heading badge */
+        .wr-section-badge {
+          display:inline-flex; align-items:center; gap:6px;
+          padding:3px 9px; border-radius:7px;
+          font-family:${F.mono}; font-size:8.5px; font-weight:800; letter-spacing:1px;
         }
 
-        .wr-loading-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 11px 16px;
-          border-radius: 10px;
-          background: rgba(15,45,107,0.5);
-          border: 1px solid ${W.glassEdge};
+        /* DNA panel wrapper (green tint) */
+        .wr-dna-panel {
+          background:rgba(5,22,38,0.38); border-radius:16px; padding:14px;
+          border:1px solid rgba(16,185,129,0.16);
         }
+        @media (max-width:480px) { .wr-dna-panel { padding:10px; } }
 
-        .wr-section-divider {
-          border: none;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, ${W.glassEdge}, transparent);
-          margin: 0;
-        }
+        /* Loading row */
+        .wr-loading-row { display:flex; align-items:center; gap:12px; padding:11px 16px; border-radius:10px; background:rgba(15,45,107,0.5); border:1px solid ${W.glassEdge}; }
+        @media (max-width:480px) { .wr-loading-row { padding:10px 12px; } }
 
-        .wr-col-label {
-          font-family: ${F.mono};
-          font-size: 9px;
-          font-weight: 700;
-          letter-spacing: 1.4px;
-          color: ${W.textMuted};
-          margin-bottom: 4px;
-        }
-        .wr-col-title {
-          font-family: ${F.display};
-          font-size: 15px;
-          font-weight: 800;
-          color: ${W.textPrimary};
-          letter-spacing: -0.025em;
-          line-height: 1.25;
-        }
+        /* Divider */
+        .wr-divider { border:none; height:1px; background:linear-gradient(90deg,transparent,${W.glassEdge},transparent); margin:0; }
 
-        @media (prefers-reduced-motion: reduce) {
-          .wr-section * { animation: none !important; transition: none !important; }
+        /* Footer regen button */
+        .wr-regen-btn {
+          background:rgba(0,198,255,0.10); border:1px solid ${W.glassEdge};
+          border-radius:10px; padding:8px 16px; font-size:11.5px; font-weight:700;
+          color:${W.cyanLight}; cursor:pointer; font-family:${F.body};
+          transition:background 0.18s ease, border-color 0.18s ease;
         }
-        @media (max-width: 640px) {
-          .wr-two-col { grid-template-columns: 1fr !important; }
-          .wr-preview-grid { grid-template-columns: repeat(2,1fr) !important; }
-        }
+        .wr-regen-btn:hover:not(:disabled) { background:rgba(0,198,255,0.18); border-color:${W.glassEdgeMd}; }
+        @media (max-width:480px) { .wr-regen-btn { width:100%; text-align:center; } }
+
+        @media (prefers-reduced-motion:reduce) { .wr-section * { animation:none !important; transition:none !important; } }
       `}</style>
 
-      {/* ── OUTER SHELL — matches MockMate's exact blue gradient ── */}
+      {/* ── OUTER SHELL ──────────────────────────────────────────────────────── */}
       <section
         className="wr-section"
         style={{
-          position: 'relative',
-          borderRadius: 24,
-          overflow: 'hidden',
-          marginBottom: 18,
+          position: 'relative', borderRadius: 24, overflow: 'hidden', marginBottom: 18,
           background: heroGradient,
           boxShadow: '0 24px 80px rgba(10,31,78,0.55), 0 8px 28px rgba(0,198,255,0.12)',
           border: '1px solid rgba(0,198,255,0.22)',
         }}
       >
-        {/* ── decorative ambient orbs ── */}
-        <div style={{ position:'absolute', top:-120, right:-80, width:420, height:420, borderRadius:'50%',
-          background:'radial-gradient(circle, rgba(0,198,255,0.14) 0%, rgba(37,99,235,0.08) 40%, transparent 70%)',
-          pointerEvents:'none' }} />
-        <div style={{ position:'absolute', bottom:-100, left:-60, width:340, height:340, borderRadius:'50%',
-          background:'radial-gradient(circle, rgba(14,165,233,0.12) 0%, rgba(26,79,191,0.06) 40%, transparent 70%)',
-          pointerEvents:'none' }} />
-        {/* subtle scan line */}
-        <div style={{ position:'absolute', inset:0, pointerEvents:'none', overflow:'hidden' }}>
-          <div style={{ position:'absolute', left:0, right:0, height:2,
-            background:'linear-gradient(90deg, transparent, rgba(0,198,255,0.25), transparent)',
-            animation:'wr-scan 6s ease-in-out infinite' }} />
+        {/* Decorative orbs */}
+        <div style={{ position:'absolute', top:-120, right:-80, width:420, height:420, borderRadius:'50%', pointerEvents:'none', zIndex:0, background:'radial-gradient(circle, rgba(0,198,255,0.14) 0%, rgba(37,99,235,0.08) 40%, transparent 70%)' }} />
+        <div style={{ position:'absolute', bottom:-100, left:-60, width:340, height:340, borderRadius:'50%', pointerEvents:'none', zIndex:0, background:'radial-gradient(circle, rgba(14,165,233,0.12) 0%, rgba(26,79,191,0.06) 40%, transparent 70%)' }} />
+        {/* Scan line */}
+        <div style={{ position:'absolute', inset:0, pointerEvents:'none', overflow:'hidden', zIndex:0 }}>
+          <div style={{ position:'absolute', left:0, right:0, height:2, background:'linear-gradient(90deg, transparent, rgba(0,198,255,0.22), transparent)', animation:'wr-scan 6s ease-in-out infinite' }} />
         </div>
 
-        {/* ── INNER CONTENT WRAPPER ── */}
-        <div style={{ position:'relative', zIndex:1, padding:'32px 28px 28px' }}>
+        {/* ── INNER ──────────────────────────────────────────────────────────── */}
+        <div className="wr-inner">
 
-          {/* ── HEADER ROW ── */}
-          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:20, marginBottom:24, flexWrap:'wrap' }}>
+          {/* ── HEADER ─────────────────────────────────────────────────────── */}
+          <div className="wr-header">
 
+            {/* Left: title area */}
             <div style={{ flex:1, minWidth:0 }}>
-              {/* eyebrow */}
               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                <div style={{ width:6, height:6, borderRadius:'50%', background:W.cyan,
-                  boxShadow:`0 0 10px ${W.cyan}`, animation:'wr-glow-pulse 2s ease infinite' }} />
-                <span style={{ fontFamily:F.mono, fontSize:9.5, fontWeight:700, letterSpacing:'1.8px', color:W.textMuted }}>
-                  ANALYTICS WAR ROOM
-                </span>
+                <div style={{ width:6, height:6, borderRadius:'50%', background:W.cyan, boxShadow:`0 0 10px ${W.cyan}`, animation:'wr-glow-pulse 2s ease infinite' }} />
+                <span style={{ fontFamily:F.mono, fontSize:9, fontWeight:700, letterSpacing:'1.8px', color:W.textMuted }}>ANALYTICS WAR ROOM</span>
               </div>
 
-              <h2 style={{ margin:'0 0 10px', fontFamily:F.display, fontSize:'clamp(20px,3vw,26px)', fontWeight:800,
-                color:W.textPrimary, letterSpacing:'-0.04em', lineHeight:1.18 }}>
-                Placement Coach&nbsp;
-                <span style={{ background:accentGradient, WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
-                  backgroundClip:'text' }}>
+              <h2 style={{ margin:'0 0 10px', fontFamily:F.display, fontSize:'clamp(17px,3vw,24px)', fontWeight:800, color:W.textPrimary, letterSpacing:'-0.04em', lineHeight:1.2 }}>
+                Placement Coach{' '}
+                <span style={{ background:accentGradient, WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>
                   + Behavioral DNA
                 </span>
               </h2>
 
-              <p style={{ margin:0, fontFamily:F.body, fontSize:13, lineHeight:1.72, color:W.textSub,
-                fontWeight:450, maxWidth:600, letterSpacing:'-0.005em' }}>
+              <p style={{ margin:0, fontFamily:F.body, fontSize:12.5, lineHeight:1.72, color:W.textSub, fontWeight:450, maxWidth:560, letterSpacing:'-0.005em' }}>
                 Two AI analyses computed in parallel from your {totalSessions} real sessions.
-                Left: your 30-day action plan. Right: your behavioral fingerprint.
                 {totalSessions < 10 && (
-                  <span style={{ display:'block', marginTop:7, color:W.amber, fontSize:11.5,
-                    fontFamily:F.mono, letterSpacing:'0.3px' }}>
+                  <span style={{ display:'block', marginTop:6, color:W.amber, fontSize:11, fontFamily:F.mono, letterSpacing:'0.2px' }}>
                     ⚠ Interview DNA unlocks at 10 sessions — you have {totalSessions}.
                   </span>
                 )}
               </p>
             </div>
 
-            {/* right: stat chips + button */}
-            <div style={{ display:'flex', flexDirection:'column', gap:10, alignItems:'flex-end', flexShrink:0 }}>
-              <div style={{ display:'flex', gap:7 }}>
+            {/* Right: stat chips + button */}
+            <div className="wr-stat-side">
+              <div className="wr-stat-chips">
                 {statsStrip.map((s, i) => (
                   <div key={i} className="wr-stat-chip">
-                    <div style={{ fontFamily:F.mono, fontSize:8, fontWeight:700, letterSpacing:'0.8px', color:W.textFaint, marginBottom:3 }}>
-                      {s.label}
-                    </div>
-                    <div style={{ fontFamily:F.display, fontSize:s.label === 'ARCHETYPE' ? 18 : 16,
-                      fontWeight:900, color:s.color, letterSpacing:'-0.02em', lineHeight:1 }}>
-                      {s.val}{s.unit && <span style={{ fontSize:9, color:W.textMuted }}>{s.unit}</span>}
+                    <div style={{ fontFamily:F.mono, fontSize:7.5, fontWeight:700, letterSpacing:'0.8px', color:W.textFaint, marginBottom:2 }}>{s.label}</div>
+                    <div style={{ fontFamily:F.display, fontSize:s.label === 'ARCHETYPE' ? 18 : 16, fontWeight:900, color:s.color, letterSpacing:'-0.02em', lineHeight:1 }}>
+                      {s.val}{s.unit && <span style={{ fontSize:8.5, color:W.textMuted }}>{s.unit}</span>}
                     </div>
                   </div>
                 ))}
               </div>
 
-              <button
-                className="wr-generate-btn"
-                onClick={generateBoth}
-                disabled={loading}
-                style={{ padding:'12px 20px', fontSize:13, display:'flex', alignItems:'center', gap:10, whiteSpace:'nowrap' }}
-              >
+              <button className="wr-generate-btn" onClick={generateBoth} disabled={loading}>
                 {loading ? (
                   <>
-                    <span style={{ width:14, height:14, borderRadius:'50%', flexShrink:0,
-                      border:'2px solid rgba(255,255,255,0.25)', borderTopColor:'#fff',
-                      animation:'wr-spin 0.65s linear infinite', display:'inline-block' }} />
+                    <span style={{ width:14, height:14, borderRadius:'50%', flexShrink:0, border:'2px solid rgba(255,255,255,0.25)', borderTopColor:'#fff', animation:'wr-spin 0.65s linear infinite', display:'inline-block' }} />
                     Analyzing…
                   </>
-                ) : done ? (
-                  <>↺ Regenerate Profile</>
-                ) : (
-                  <>⚔ Generate War Room Profile</>
-                )}
+                ) : done ? '↺ Regenerate Profile' : '⚔ Generate War Room Profile'}
               </button>
             </div>
           </div>
 
-          {/* ── PRE-GENERATE STATE ── */}
+          {/* ── PRE-GENERATE STATE ─────────────────────────────────────────── */}
           {!done && !loading && (
-            <div style={{ border:`1.5px dashed rgba(0,198,255,0.30)`, borderRadius:18,
-              padding:'40px 24px', textAlign:'center', background:'rgba(10,31,78,0.35)' }}>
+            <div className="wr-idle-box">
+              <div style={{ width:54, height:54, borderRadius:16, margin:'0 auto 16px', background:accentGradient, display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, boxShadow:'0 10px 32px rgba(0,198,255,0.32)' }}>⚔</div>
 
-              <div style={{ width:52, height:52, borderRadius:16, margin:'0 auto 14px',
-                background:accentGradient, display:'flex', alignItems:'center', justifyContent:'center',
-                fontSize:24, boxShadow:`0 10px 30px rgba(0,198,255,0.30)` }}>⚔</div>
-
-              <p style={{ color:W.textSub, fontSize:13.5, margin:'0 auto 24px', maxWidth:500,
-                lineHeight:1.78, fontWeight:450, letterSpacing:'-0.005em' }}>
-                Click <strong style={{ color:W.textPrimary }}>Generate War Room Profile</strong> to get your
-                placement coach's action plan and behavioral fingerprint — both computed from your real session data.
+              <p style={{ color:W.textSub, fontSize:13, margin:'0 auto 26px', maxWidth:480, lineHeight:1.78, fontWeight:450 }}>
+                Click <strong style={{ color:W.textPrimary }}>Generate War Room Profile</strong> to get your placement coach's action plan and behavioral fingerprint — both computed from your real session data.
               </p>
 
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, maxWidth:640, margin:'0 auto' }}
-                className="wr-preview-grid">
+              <div className="wr-preview-grid">
                 {previewCards.map(item => (
-                  <div key={item.label} className="wr-preview-card"
-                    style={{ background: item.bg, borderColor: item.color + '30' }}>
-                    <div style={{ fontSize:22, marginBottom:8 }}>{item.icon}</div>
-                    <div style={{ fontFamily:F.mono, fontSize:8.5, fontWeight:800, letterSpacing:'0.9px',
-                      color:item.color, marginBottom:5 }}>{item.label}</div>
-                    <div style={{ fontSize:11, color:W.textSub, lineHeight:1.45 }}>{item.desc}</div>
+                  <div key={item.label} className="wr-preview-card" style={{ background:item.bg, borderColor:item.color + '35' }}>
+                    <div style={{ fontSize:22, marginBottom:9 }}>{item.icon}</div>
+                    <div style={{ fontFamily:F.mono, fontSize:8.5, fontWeight:800, letterSpacing:'0.9px', color:item.color, marginBottom:6 }}>{item.label}</div>
+                    <div style={{ fontSize:11, color:W.textSub, lineHeight:1.5 }}>{item.desc}</div>
                   </div>
                 ))}
               </div>
 
-              <div style={{ marginTop:16, fontFamily:F.mono, fontSize:10, color:W.textFaint }}>
-                ~10 sec · uses your real session data · no data leaves MockMate
-              </div>
+              <div style={{ marginTop:16, fontFamily:F.mono, fontSize:10, color:W.textFaint }}>~10 sec · uses your real session data · no data leaves MockMate</div>
             </div>
           )}
 
-          {/* ── LOADING STATE ── */}
+          {/* ── LOADING STATE ──────────────────────────────────────────────── */}
           {loading && (
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {loadingSteps.map((msg, i) => (
                 <div key={i} className="wr-loading-row">
-                  <div style={{ width:7, height:7, borderRadius:'50%', flexShrink:0,
-                    background:W.cyan, boxShadow:`0 0 8px ${W.cyan}`,
-                    animation:`wr-pulse-dot 1.4s ease ${i * 0.2}s infinite` }} />
-                  <span style={{ color:W.textSub, fontSize:12, fontFamily:F.mono, letterSpacing:'0.2px' }}>{msg}</span>
+                  <div style={{ width:7, height:7, borderRadius:'50%', flexShrink:0, background:W.cyan, boxShadow:`0 0 8px ${W.cyan}`, animation:`wr-pulse-dot 1.4s ease ${i * 0.2}s infinite` }} />
+                  <span style={{ color:W.textSub, fontSize:12, fontFamily:F.mono, letterSpacing:'0.2px', flex:1 }}>{msg}</span>
                   {i === 0 && (
-                    <div style={{ marginLeft:'auto', flexShrink:0,
-                      background:'linear-gradient(90deg, transparent, rgba(0,198,255,0.15), transparent)',
-                      backgroundSize:'400px 100%', animation:'wr-shimmer 1.6s ease infinite',
-                      borderRadius:4, height:8, width:80 }} />
+                    <div style={{ flexShrink:0, background:'linear-gradient(90deg,transparent,rgba(0,198,255,0.18),transparent)', backgroundSize:'400px 100%', animation:'wr-shimmer 1.6s ease infinite', borderRadius:4, height:8, width:80 }} />
                   )}
                 </div>
               ))}
             </div>
           )}
 
-          {/* ── RESULTS ── */}
+          {/* ── RESULTS ────────────────────────────────────────────────────── */}
           {done && (
-            <div style={{ display:'grid', gridTemplateColumns: totalSessions >= 10 ? '1fr 1fr' : '1fr', gap:20 }}
-              className="wr-two-col">
+            <div className="wr-two-col" style={{ display:'grid', gridTemplateColumns: totalSessions >= 10 ? '1fr 1fr' : '1fr' }}>
 
               {/* LEFT: PLACEMENT COACH */}
               <div>
-                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14,
-                  paddingBottom:12, borderBottom:`1px solid ${W.glassEdge}` }}>
-                  <div style={{ width:32, height:32, borderRadius:10, flexShrink:0,
-                    background:accentGradient, display:'flex', alignItems:'center', justifyContent:'center',
-                    fontSize:16, boxShadow:`0 6px 18px rgba(0,198,255,0.30)` }}>⚡</div>
+                <div className="wr-col-header">
+                  <div style={{ width:36, height:36, borderRadius:11, flexShrink:0, background:accentGradient, display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, boxShadow:'0 6px 18px rgba(0,198,255,0.30)' }}>⚡</div>
                   <div>
-                    <div className="wr-col-label">PLACEMENT COACH</div>
-                    <div className="wr-col-title">Action plan + interview talking points</div>
+                    <div style={{ fontFamily:F.mono, fontSize:8.5, fontWeight:700, letterSpacing:'1.4px', color:W.textMuted, marginBottom:3 }}>PLACEMENT COACH</div>
+                    <div style={{ fontFamily:F.display, fontSize:13.5, fontWeight:800, color:W.textPrimary, letterSpacing:'-0.025em', lineHeight:1.25 }}>Action plan + interview talking points</div>
                   </div>
                 </div>
 
                 {boardSections.length > 0 ? (
-                  <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                     {boardSections.map((s, i) => (
                       <div key={i} className="wr-result-card"
-                        style={{ borderLeftWidth:3, borderLeftStyle:'solid', borderLeftColor:s.accent,
-                          animationDelay:`${i * 55}ms` }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:9 }}>
-                          <span style={{ fontSize:12 }}>{boardIcons[s.heading] || '•'}</span>
-                          <span style={{ fontFamily:F.mono, fontSize:8.5, fontWeight:800,
-                            letterSpacing:'1.1px', color:s.accent }}>{s.heading}</span>
+                        style={{
+                          borderLeftWidth:4, borderLeftStyle:'solid', borderLeftColor:s.accent,
+                          background:`linear-gradient(135deg, rgba(10,31,78,0.65) 0%, ${hexA(s.accent, 0.06)} 100%)`,
+                          animationDelay:`${i * 60}ms`,
+                        }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                          <div style={{ width:28, height:28, borderRadius:8, flexShrink:0, background:hexA(s.accent, 0.14), border:`1px solid ${hexA(s.accent, 0.30)}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>
+                            {boardIcons[s.heading] || '•'}
+                          </div>
+                          <span className="wr-section-badge" style={{ color:s.accent, background:hexA(s.accent, 0.12), border:`1px solid ${hexA(s.accent, 0.22)}` }}>
+                            {s.heading}
+                          </span>
                         </div>
-                        <p style={{ margin:0, color:W.textSub, fontSize:12.5, lineHeight:1.82,
-                          fontWeight:450, letterSpacing:'-0.006em', whiteSpace:'pre-line' }}>{s.body}</p>
+                        <p style={{ margin:0, color:W.textSub, fontSize:13, lineHeight:1.85, fontWeight:450, letterSpacing:'-0.006em', whiteSpace:'pre-line' }}>{s.body}</p>
                       </div>
                     ))}
                   </div>
@@ -617,45 +579,43 @@ Closing the ${weakest?.label} gap from ${weakest?.score} to 60+ would move your 
 
               {/* RIGHT: INTERVIEW DNA */}
               {totalSessions >= 10 && (
-                <div>
-                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14,
-                    paddingBottom:12, borderBottom:`1px solid ${W.glassEdge}` }}>
-                    <div style={{ width:32, height:32, borderRadius:10, flexShrink:0,
-                      background:`linear-gradient(135deg, ${W.green}, #059669)`,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      fontSize:16, boxShadow:`0 6px 18px ${W.greenGlow}` }}>🧬</div>
+                <div className="wr-dna-panel">
+                  <div className="wr-col-header" style={{ borderBottomColor:'rgba(16,185,129,0.25)' }}>
+                    <div style={{ width:36, height:36, borderRadius:11, flexShrink:0, background:greenGradient, display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, boxShadow:`0 6px 18px ${W.greenGlow}` }}>🧬</div>
                     <div>
-                      <div className="wr-col-label">INTERVIEW DNA</div>
-                      <div className="wr-col-title">Behavioral fingerprint · {totalSessions} sessions</div>
+                      <div style={{ fontFamily:F.mono, fontSize:8.5, fontWeight:700, letterSpacing:'1.4px', color:W.textMuted, marginBottom:3 }}>INTERVIEW DNA</div>
+                      <div style={{ fontFamily:F.display, fontSize:13.5, fontWeight:800, color:W.textPrimary, letterSpacing:'-0.025em', lineHeight:1.25 }}>Behavioral fingerprint · {totalSessions} sessions</div>
                     </div>
                   </div>
 
                   {dnaSections.length > 0 ? (
-                    <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                       {dnaSections.map((s, i) => (
                         <div key={i} className="wr-result-card"
-                          style={{ borderLeftWidth:3, borderLeftStyle:'solid', borderLeftColor:s.accent,
-                            animationDelay:`${i * 55}ms` }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:9 }}>
-                            <span style={{ fontSize:12 }}>{dnaIcons[s.heading] || '🧬'}</span>
-                            <span style={{ fontFamily:F.mono, fontSize:8.5, fontWeight:800,
-                              letterSpacing:'1.1px', color:s.accent }}>{s.heading}</span>
+                          style={{
+                            borderLeftWidth:4, borderLeftStyle:'solid', borderLeftColor:s.accent,
+                            background:`linear-gradient(135deg, rgba(4,20,35,0.72) 0%, ${hexA(s.accent, 0.07)} 100%)`,
+                            animationDelay:`${i * 60}ms`,
+                          }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                            <div style={{ width:28, height:28, borderRadius:8, flexShrink:0, background:hexA(s.accent, 0.14), border:`1px solid ${hexA(s.accent, 0.30)}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>
+                              {dnaIcons[s.heading] || '🧬'}
+                            </div>
+                            <span className="wr-section-badge" style={{ color:s.accent, background:hexA(s.accent, 0.12), border:`1px solid ${hexA(s.accent, 0.22)}` }}>
+                              {s.heading}
+                            </span>
                           </div>
-                          <p style={{ margin:0, color:W.textSub, fontSize:12.5, lineHeight:1.82,
-                            fontWeight:450, letterSpacing:'-0.006em', whiteSpace:'pre-line' }}>{s.body}</p>
+                          <p style={{ margin:0, color:W.textSub, fontSize:13, lineHeight:1.85, fontWeight:450, letterSpacing:'-0.006em', whiteSpace:'pre-line' }}>{s.body}</p>
                         </div>
                       ))}
                     </div>
                   ) : dnaDone ? (
-                    <p style={{ color:W.textSub, fontSize:13, lineHeight:1.82, margin:0, whiteSpace:'pre-line' }}>
-                      {dnaRaw || "Unable to generate Interview DNA."}
-                    </p>
+                    <p style={{ color:W.textSub, fontSize:13, lineHeight:1.82, margin:0 }}>Unable to generate Interview DNA.</p>
                   ) : (
                     <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                      {["Reading session variance…","Mapping response style…","Analyzing pressure signals…","Writing fingerprint…"].map((m, i) => (
+                      {['Reading session variance…','Mapping response style…','Analyzing pressure signals…','Writing fingerprint…'].map((m, i) => (
                         <div key={i} className="wr-loading-row">
-                          <div style={{ width:6, height:6, borderRadius:'50%', flexShrink:0,
-                            background:W.green, animation:`wr-pulse-dot 1.5s ease ${i*0.25}s infinite` }} />
+                          <div style={{ width:6, height:6, borderRadius:'50%', flexShrink:0, background:W.green, animation:`wr-pulse-dot 1.5s ease ${i*0.25}s infinite` }} />
                           <span style={{ color:W.textMuted, fontSize:11.5, fontFamily:F.mono }}>{m}</span>
                         </div>
                       ))}
@@ -666,29 +626,19 @@ Closing the ${weakest?.label} gap from ${weakest?.score} to 60+ would move your 
             </div>
           )}
 
-          {/* ── FOOTER ── */}
+          {/* ── FOOTER ─────────────────────────────────────────────────────── */}
           {done && (
             <>
-              <hr className="wr-section-divider" style={{ margin:'20px 0 16px' }} />
+              <hr className="wr-divider" style={{ margin:'20px 0 14px' }} />
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
-                <p style={{ margin:0, fontSize:11, color:W.textFaint, fontFamily:F.mono, letterSpacing:'0.2px' }}>
+                <p style={{ margin:0, fontSize:10.5, color:W.textFaint, fontFamily:F.mono, letterSpacing:'0.2px' }}>
                   Both analyses regenerate fresh each click · DNA unlocks at 10 sessions
                 </p>
-                <button
-                  onClick={generateBoth}
-                  disabled={loading}
-                  style={{ background:'rgba(0,198,255,0.10)', border:`1px solid ${W.glassEdge}`,
-                    borderRadius:10, padding:'8px 16px', fontSize:11.5, fontWeight:700,
-                    color:W.cyanLight, cursor:'pointer', fontFamily:F.body,
-                    transition:'all 0.18s ease', letterSpacing:'-0.01em' }}
-                  onMouseEnter={e => { e.currentTarget.style.background='rgba(0,198,255,0.18)'; e.currentTarget.style.borderColor=W.glassEdgeMd; }}
-                  onMouseLeave={e => { e.currentTarget.style.background='rgba(0,198,255,0.10)'; e.currentTarget.style.borderColor=W.glassEdge; }}
-                >
-                  ↺ Regenerate both
-                </button>
+                <button className="wr-regen-btn" onClick={generateBoth} disabled={loading}>↺ Regenerate both</button>
               </div>
             </>
           )}
+
         </div>
       </section>
     </>

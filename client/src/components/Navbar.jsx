@@ -527,7 +527,11 @@ const NAVBAR_CSS = `
     box-shadow: 0 2px 8px rgba(0,31,107,.05), 0 5px 14px rgba(26,110,255,.06), inset 0 1px 0 rgba(255,255,255,.96);
     transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s ease, border-color .2s ease, background .2s ease;
     white-space: nowrap;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
   }
+  .mm-login-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .mm-login:hover {
     color: #111827 !important; transform: translateY(-1.5px);
     border-color: rgba(26,110,255,.42);
@@ -675,7 +679,36 @@ body { padding-top: var(--navbar-h); }
   .mm-stats-cell-val        { font: 800 17px ${F.display}; letter-spacing: -.03em; }
   .mm-stats-cell-label      { font: 600 9px ${F.body}; letter-spacing: .2px; color: ${C.muted}; margin-top: 2px; text-transform: uppercase; }
 
-  .mm-mobile-controls { display: none; align-items: center; gap: 6px; flex-shrink: 0; }
+  .mm-mobile-controls { display: none; align-items: center; gap: 8px; flex-shrink: 0; }
+
+  .mm-mobile-new-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 38px; padding: 0 13px 0 9px;
+    border: 1.5px solid rgba(0,66,184,.5); border-radius: 12px;
+    background: linear-gradient(135deg, ${C.blue600} 0%, ${C.cyan400} 100%);
+    color: #fff; cursor: pointer; flex-shrink: 0;
+    box-shadow: 0 3px 10px rgba(0,87,232,.22), inset 0 1px 0 rgba(255,255,255,.25);
+    transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s ease, filter .18s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mm-mobile-new-btn:active {
+    transform: scale(.95);
+    box-shadow: 0 1px 4px rgba(0,87,232,.2);
+    filter: brightness(.96);
+  }
+  .mm-mobile-new-icon {
+    font-size: 15px; line-height: 1; flex-shrink: 0;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,.18));
+  }
+  .mm-mobile-new-label {
+    font: 700 12.5px ${F.body}; letter-spacing: -.01em;
+    white-space: nowrap; line-height: 1;
+  }
+  @media (max-width: 400px) {
+    /* On very small phones, hide the label and show just the mic icon */
+    .mm-mobile-new-label { display: none; }
+    .mm-mobile-new-btn   { padding: 0 10px; width: 38px; justify-content: center; }
+  }
   .mm-ham {
     width: 40px; height: 40px; border: 1px solid ${C.border};
     border-radius: 11px; background: rgba(255,255,255,.84);
@@ -839,7 +872,18 @@ body { padding-top: var(--navbar-h); }
     .mm-sep               { display: none; }
     .mm-mobile-controls   { display: flex; }
     .mm-right             { margin-left: auto; }
-    .mm-popover           { width: min(300px, calc(100vw - 24px)); right: -8px; }
+    /* Popovers: clamp to viewport, anchor from left edge of capsule
+       so they never overflow right on narrow phones */
+    .mm-util-wrap { position: static; }
+    .mm-popover {
+      position: fixed;
+      top: 82px;
+      left: 12px;
+      right: 12px;
+      width: auto;
+      max-width: 100%;
+    }
+    .mm-popover::before { display: none; }
   }
   @media (min-width: 831px) {
     .mm-mobile-controls { display: none !important; }
@@ -852,6 +896,18 @@ body { padding-top: var(--navbar-h); }
     .mm-statschip   { display: none; }
     .mm-mobile-stat-val { font-size: 14px; }
     .mm-mobile-grid { grid-template-columns: repeat(2, 1fr); }
+    /* Sign-in button: shrink text gracefully, never overflow */
+    .mm-right { overflow: hidden; min-width: 0; flex-shrink: 1; }
+    .mm-login { padding: 0 12px 0 7px; gap: 7px; font-size: 12px; }
+    .mm-google-wrap { width: 22px; height: 22px; flex-shrink: 0; }
+  }
+  @media (max-width: 400px) {
+    /* Very small phones: hide "Sign in with" text, show just "Google" */
+    .mm-login-text-full { display: none; }
+    .mm-login-text-short { display: inline; }
+  }
+  @media (min-width: 401px) {
+    .mm-login-text-short { display: none; }
   }
   @media (max-width: 380px) {
     .mm-mobile-grid { grid-template-columns: 1fr; }
@@ -1002,8 +1058,7 @@ const Navbar = () => {
   };
 
   const DROPDOWN_ITEMS = [
-    { icon: 'clock',    label: 'Interview history', path: '/history' },
-    { icon: 'settings', label: 'Settings',           path: '/settings' },
+    { icon: 'clock', label: 'Interview history', path: '/history' },
   ];
 
   return (
@@ -1337,12 +1392,12 @@ const Navbar = () => {
 
                 <div className="mm-mobile-controls">
                   <button type="button"
-                    className="mm-cta mm-focus"
-                    style={{ height: 40, padding: '0 12px 0 5px' }}
+                    className="mm-mobile-new-btn mm-focus"
                     onClick={() => navigate('/interview')}
+                    aria-label="Start new interview"
                   >
-                    <span className="mm-cta-icon" style={{ width: 26, height: 26, fontSize: 13 }}>🎙️</span>
-                    <span className="mm-cta-text">New</span>
+                    <span className="mm-mobile-new-icon">🎙️</span>
+                    <span className="mm-mobile-new-label">Interview</span>
                   </button>
                   <button type="button"
                     className={`mm-ham mm-focus${mobileOpen ? ' open' : ''}`}
@@ -1357,7 +1412,10 @@ const Navbar = () => {
             ) : (
               <a href={`${API_BASE}/auth/google`} className="mm-login mm-focus">
                 <span className="mm-google-wrap"><GoogleG size={16}/></span>
-                Sign in with Google
+                <span className="mm-login-text">
+                  <span className="mm-login-text-full">Sign in with Google</span>
+                  <span className="mm-login-text-short">Google</span>
+                </span>
               </a>
             )}
           </div>
@@ -1445,18 +1503,6 @@ const Navbar = () => {
 
               <div className="mm-mobile-section-label">Account</div>
               <div className="mm-mobile-list">
-                <Link to="/settings"
-                  className={`mm-mobile-link mm-focus${isActive('/settings') ? ' active' : ''}`}
-                  aria-current={isActive('/settings') ? 'page' : undefined}
-                  onClick={() => setMobileOpen(false)}
-                >
-                  <span className="mm-mobile-link-icon"><NavIcon name="settings" size={16}/></span>
-                  Settings
-                  <span className="mm-drop-item-arrow" style={{ opacity: 1, transform: 'none' }}>
-                    <NavIcon name="arrowRight" size={13}/>
-                  </span>
-                </Link>
-
                 <button type="button"
                   className="mm-mobile-link mm-mobile-logout mm-focus"
                   onClick={() => { setMobileOpen(false); logout(); }}

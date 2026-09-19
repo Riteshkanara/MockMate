@@ -10,13 +10,6 @@ import QuestionDisplay   from '../components/interview/QuestionDisplay';
 import InterviewControls from '../components/interview/InterviewControls';
 import FeedbackPanel     from '../components/interview/FeedbackPanel';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MOCKMATE — INTERVIEW v5
-// Blueprint-blue system. Session flow hands off to /result debrief page on
-// the final question. Keyboard-driven flow (Enter to submit/advance, 1–4 for
-// MCQ), sticky compact timer, smooth cross-question transitions, full
-// responsiveness and motion pass.
-// ═══════════════════════════════════════════════════════════════════════════
 
 const C = {
   ...CT,
@@ -237,6 +230,10 @@ const Interview = () => {
   }, []);
 
   useEffect(() => {
+  window.scrollTo({ top: 183, behavior: 'smooth' });
+}, []);
+
+  useEffect(() => {
     let rafId;
     let timerId;
     rafId = requestAnimationFrame(() => {
@@ -295,6 +292,7 @@ const Interview = () => {
   }, [isSubmitted]);
 
   useEffect(() => {
+    window.scrollTo({ top: 183, behavior: 'smooth' });
     setTextAnswer('');
     textAnswerRef.current  = '';
     answerIndexRef.current = null;

@@ -989,7 +989,7 @@ BadgeSessionBridge.propTypes = { streak: PropTypes.shape({ current: PropTypes.nu
 
 // ─── ScoreCard Drawer ─────────────────────────────────────────────────────────
 
-const ScoreCardDrawer = ({ result, totalScore, normalizedQuestions, shareCardRef, onDownloadImage, downloading }) => {
+const ScoreCardDrawer = ({ result, totalScore, normalizedQuestions}) => {
   const [open, setOpen] = useState(false);
   const grade = getGrade(totalScore);
   return (
@@ -1015,22 +1015,13 @@ const ScoreCardDrawer = ({ result, totalScore, normalizedQuestions, shareCardRef
       </button>
       <div style={{ maxHeight: open ? 1200 : 0, opacity: open ? 1 : 0, overflow: "hidden", transition: "max-height 0.4s cubic-bezier(.16,1,.3,1), opacity 0.25s ease", border: open ? `1px solid ${grade.accent}40` : "none", borderTop: "none", borderRadius: "0 0 14px 14px", background: C.card }}>
         <div style={{ padding: "18px 20px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "10px 14px", borderRadius: 10, background: cardAlt, border: `1px solid ${C.border}` }}>
-            <div>
-              <div style={{ fontFamily: F.mono, fontSize: 9, color: C.muted, marginBottom: 2 }}>share this session</div>
-              <div style={{ fontSize: 12, color: C.sub }}>Download a shareable image card or copy your summary stats.</div>
-            </div>
-            <button onClick={onDownloadImage} disabled={downloading} style={{ flexShrink: 0, padding: "8px 16px", borderRadius: 9, border: "none", background: `linear-gradient(135deg, ${grade.glow}, ${grade.accent})`, color: "#fff", fontFamily: F.body, fontSize: 12, fontWeight: 700, cursor: downloading ? "not-allowed" : "pointer", opacity: downloading ? 0.7 : 1, boxShadow: `0 3px 12px ${grade.accent}40` }}>
-              {downloading ? "Preparing…" : "↓ Download image"}
-            </button>
-          </div>
           <ScoreCard totalScore={totalScore} questions={normalizedQuestions} />
         </div>
       </div>
     </div>
   );
 };
-ScoreCardDrawer.propTypes = { result: PropTypes.object.isRequired, totalScore: PropTypes.number.isRequired, normalizedQuestions: PropTypes.array.isRequired, shareCardRef: PropTypes.object.isRequired, onDownloadImage: PropTypes.func.isRequired, downloading: PropTypes.bool.isRequired };
+ScoreCardDrawer.propTypes = { result: PropTypes.object.isRequired, totalScore: PropTypes.number.isRequired, normalizedQuestions: PropTypes.array.isRequired };
 
 // ─── ShareCard ────────────────────────────────────────────────────────────────
 
@@ -1557,7 +1548,7 @@ const Result = () => {
 
         <AnimatedSection delay={80}>
           <SectionErrorBoundary>
-            <ScoreCardDrawer result={heroResult} totalScore={totalScore} normalizedQuestions={normalizedQuestions} shareCardRef={shareCardRef} onDownloadImage={handleDownload} downloading={downloading} />
+            <ScoreCardDrawer result={heroResult} totalScore={totalScore} normalizedQuestions={normalizedQuestions}  />
           </SectionErrorBoundary>
         </AnimatedSection>
 

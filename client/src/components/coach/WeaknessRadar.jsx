@@ -6,7 +6,7 @@ import {
   scoreColor,
   Eyebrow,
   LightCard,
-} from "./coachShared";
+} from "./CoachShared";
 
 export const WeaknessRadar = memo(({ analyticsData, navigate }) => {
   const dimProfile = useMemo(() => {

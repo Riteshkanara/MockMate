@@ -20,7 +20,7 @@ import {
   DarkCard, LightCard,
   HighlightedText,
   AnimatedSection, SectionDivider,
-} from "../components/coach/CoachShared";
+} from "../components/coach/CoachShared.jsx";
 import { TodayCard, WeeklyPlan }  from "../components/coach/CoachInsights";
 import { WeaknessRadar }          from "../components/coach/WeaknessRadar";
 import { SessionBreakdown }       from "../components/coach/SessionBreakdown";

@@ -11,7 +11,7 @@ import {
   DarkCard, LightCard,
   GenButton, Spin,
   SentenceBreaker, HighlightedText,
-} from "./coachShared";
+} from "./CoachShared";
 
 
 const TODAY_IDLE_BEATS = [

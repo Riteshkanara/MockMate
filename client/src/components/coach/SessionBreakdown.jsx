@@ -9,7 +9,7 @@ import {
   Eyebrow, CacheTagLight,
   LightCard,
   HighlightedText,
-} from "./coachShared";
+} from "./CoachShared";
 
 const DEBRIEF_IDLE_SECTIONS = [
   { label: "WHAT HAPPENED",   color: C.blue400, lines: [100, 80, 65] },

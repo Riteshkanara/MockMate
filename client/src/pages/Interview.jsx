@@ -327,18 +327,64 @@ const Interview = () => {
     return () => clearTimeout(id);
   }, [sessionStarted, currentQuestion?.id, isObjective, isSubmitted]);
 
-   
+  // ── Single timer effect keyed purely on currentIndex ─────────────────
+  // FIXED: The previous design had `isLoading` in the interval effect's dep array.
+  // Every time the user hit Submit, isLoading flipped true → the interval was
+  // torn down and re-created, resetting transitionRef checks mid-tick and
+  // causing the timer to freeze while the answer was being evaluated.
+  // Solution: drive everything off a ref so the interval never needs to
+  // restart due to loading/submission state changes.
+  const timerActiveRef = useRef(false);
+  const isSubmittedRef = useRef(false);
+
+  // Keep refs in sync with state so the interval closure always sees fresh values
+  useEffect(() => { timerActiveRef.current = timerActive; },    [timerActive]);
+  useEffect(() => { isSubmittedRef.current = isSubmitted; },   [isSubmitted]);
+
   useEffect(() => {
-    if (!sessionStarted || !currentQuestion || isSubmitted || isLoading || !timerActive || transitionRef.current) {
-      return undefined;
-    }
-    const questionId = currentQuestion.id;
+    if (!sessionStarted || !currentQuestion) return undefined;
+
+    const questionId  = currentQuestion.id;
+    const timeLimit   = currentQuestion.timeLimit;
 
     const timerId = window.setInterval(() => {
+      // Read current flags via refs — never via closure-captured state
+      if (!timerActiveRef.current || isSubmittedRef.current) return;
+
       setSecondsLeft((prev) => {
-        if (prev <= 1) { window.clearInterval(timerId); return 0; }
+        if (prev <= 0) return 0;
+
+        // Time is up: trigger submission once
+        if (prev <= 1) {
+          window.clearInterval(timerId);
+          if (!submitLockRef.current) {
+            submitLockRef.current = true;
+            const isObj = ['mcq', 'aptitude'].includes(currentQuestion?.questionType);
+            if (isObj) {
+              if (answerIndexRef.current !== null && answerIndexRef.current !== undefined) {
+                handleSubmit(null, answerIndexRef.current, timeLimit, false)
+                  .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
+              } else {
+                setWasSkipped(true);
+                handleTimeUp(timeLimit)
+                  .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
+              }
+            } else if (textAnswerRef.current.trim()) {
+              handleSubmit(textAnswerRef.current, null, timeLimit, false)
+                .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
+            } else {
+              setWasSkipped(true);
+              handleTimeUp(timeLimit)
+                .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
+            }
+          }
+          return 0;
+        }
+
         const next = prev - 1;
         secondsLeftRef.current = next;
+
+        // Beep in the last 10 seconds
         if (next >= 1 && next <= 10) {
           const beepKey = `${questionId ?? 'unknown'}-${next}`;
           if (!beepedTicksRef.current.has(beepKey)) {
@@ -351,35 +397,10 @@ const Interview = () => {
     }, 1000);
 
     return () => window.clearInterval(timerId);
-  }, [sessionStarted, currentQuestion?.id, isSubmitted, isLoading, timerActive]);
-
-   
-  useEffect(() => {
-    if (!sessionStarted || !currentQuestion || isSubmitted || isLoading || !timerActive) return undefined;
-    if (secondsLeft > 0) return undefined;
-    if (submitLockRef.current) return undefined;
-
-    submitLockRef.current = true;
-    const timeTaken = currentQuestion.timeLimit;
-
-    if (isObjective) {
-      if (answerIndexRef.current !== null && answerIndexRef.current !== undefined) {
-        handleSubmit(null, answerIndexRef.current, timeTaken, false)
-          .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
-      } else {
-        setWasSkipped(true);
-        handleTimeUp(timeTaken)
-          .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
-      }
-    } else if (textAnswerRef.current.trim()) {
-      handleSubmit(textAnswerRef.current, null, timeTaken, false)
-        .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
-    } else {
-      setWasSkipped(true);
-      handleTimeUp(timeTaken)
-        .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
-    }
-  }, [secondsLeft, sessionStarted, isSubmitted, isLoading, timerActive]);
+    // Intentionally excludes isLoading, isSubmitted, timerActive — those are
+    // read through refs so the interval is never recreated mid-question.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionStarted, currentQuestion?.id]);
 
   const timerPercent = currentQuestion?.timeLimit
     ? Math.max(0, Math.min(100, (secondsLeft / currentQuestion.timeLimit) * 100))

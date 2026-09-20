@@ -913,6 +913,28 @@ const Analytics = () => {
           .an-page * { animation: none !important; transition-duration: 0.01ms !important; }
           .an-fade-in { opacity: 1 !important; transform: none !important; }
         }
+        /* WAR ROOM — responsive layout */
+        .an-war-room-banner {
+          min-width: 0;
+        }
+        .an-war-room-content {
+          min-width: 0;
+        }
+        .an-war-room-title {
+          overflow-wrap: anywhere;
+        }
+        .an-war-room-copy {
+          overflow-wrap: anywhere;
+          word-break: normal;
+        }
+        .an-war-room-cta {
+          transition: transform 0.18s cubic-bezier(.16,1,.3,1), box-shadow 0.18s ease, background 0.18s ease !important;
+        }
+        .an-war-room-cta:hover {
+          transform: translateY(-2px) !important;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.16) !important;
+        }
+
         @media (max-width: 960px) {
           .an-two-col { grid-template-columns: 1fr !important; }
           .an-hero-grid { grid-template-columns: 1fr !important; }
@@ -921,6 +943,34 @@ const Analytics = () => {
           .an-stats { grid-template-columns: repeat(2,1fr) !important; }
           .an-tiers { grid-template-columns: repeat(2,1fr) !important; }
           .an-dims  { grid-template-columns: repeat(2,1fr) !important; }
+
+          .an-war-room-banner {
+            align-items: stretch !important;
+            flex-direction: column !important;
+            gap: 14px !important;
+            padding: 18px !important;
+            border-radius: 18px !important;
+          }
+          .an-war-room-icon {
+            width: 46px !important;
+            height: 46px !important;
+            border-radius: 14px !important;
+            font-size: 21px !important;
+          }
+          .an-war-room-title {
+            font-size: 16px !important;
+            line-height: 1.35 !important;
+          }
+          .an-war-room-copy {
+            font-size: 12px !important;
+            line-height: 1.6 !important;
+          }
+          .an-war-room-cta {
+            width: 100% !important;
+            min-height: 46px !important;
+            padding: 12px 16px !important;
+            font-size: 12.5px !important;
+          }
         }
         @media (max-width: 480px) {
           .an-page  { padding: 16px 12px 60px !important; }
@@ -928,6 +978,42 @@ const Analytics = () => {
           .an-tiers { grid-template-columns: 1fr !important; }
           .an-dims  { grid-template-columns: 1fr !important; }
           .an-milestone-grid { grid-template-columns: 1fr !important; }
+
+          .an-war-room-banner {
+            gap: 12px !important;
+            padding: 16px !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            border-radius: 16px !important;
+            box-shadow: 0 10px 28px rgba(0,68,196,0.25) !important;
+          }
+          .an-war-room-content {
+            width: 100% !important;
+          }
+          .an-war-room-title {
+            font-size: 15px !important;
+            letter-spacing: -0.15px !important;
+          }
+          .an-war-room-copy {
+            font-size: 11.5px !important;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .an-war-room-banner {
+            padding: 14px !important;
+          }
+          .an-war-room-title {
+            font-size: 14px !important;
+          }
+          .an-war-room-copy {
+            font-size: 11px !important;
+            line-height: 1.55 !important;
+          }
+          .an-war-room-cta {
+            min-height: 44px !important;
+            padding: 10px 13px !important;
+          }
         }
       `}</style>
 
@@ -1346,26 +1432,57 @@ const Analytics = () => {
         </div>
 
         <AnimatedSection delay={0}>
-          {/* COACH BANNER */}
-          <section style={{ display: "flex", alignItems: "center", gap: 18, padding: "22px 26px",
-            borderRadius: 20, marginBottom: 18,
-            background: `linear-gradient(135deg, ${C.violetDeep} 0%, ${C.violetMid} 55%, ${C.blue700} 100%)`,
-            boxShadow: "0 12px 40px rgba(0,68,196,0.35)" }}>
-            <div style={{ width: 52, height: 52, borderRadius: 16, background: "rgba(255,255,255,0.14)",
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>⚔️</div>
-            <div style={{ flex: 1 }}>
+          {/* COACH BANNER / MOCKMATE WAR ROOM */}
+          <section className="an-war-room-banner"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 18,
+              padding: "22px 26px",
+              borderRadius: 20,
+              marginBottom: 18,
+              background: `linear-gradient(135deg, ${C.violetDeep} 0%, ${C.violetMid} 55%, ${C.blue700} 100%)`,
+              boxShadow: "0 12px 40px rgba(0,68,196,0.35)"
+            }}>
+            <div className="an-war-room-icon" style={{
+              width: 52,
+              height: 52,
+              borderRadius: 16,
+              background: "rgba(255,255,255,0.14)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 24,
+              flexShrink: 0
+            }}>⚔️</div>
+
+            <div className="an-war-room-content" style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: F.mono, fontSize: 9.5, letterSpacing: "1.5px", color: "rgba(255,255,255,0.6)", marginBottom: 5 }}>MOCKMATE WAR ROOM</div>
-              <h2 style={{ margin: "0 0 6px", fontFamily: F.display, fontSize: 17, fontWeight: 800, color: "#fff" }}>
+              <h2 className="an-war-room-title" style={{ margin: "0 0 6px", fontFamily: F.display, fontSize: 17, fontWeight: 800, color: "#fff" }}>
                 Biggest unlock: <strong style={{ color: C.violetLight }}>{weakestDim?.label}</strong> at {weakestDim?.score}/100.
               </h2>
-              <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.78)", lineHeight: 1.65 }}>
+              <p className="an-war-room-copy" style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.78)", lineHeight: 1.65 }}>
                 Strongest: <strong style={{ color: "#fff" }}>{strongestDim?.label}</strong> at {strongestDim?.score}/100.
                 {" "}A {weakestDim?.label} gap at IRS {irs} is the primary reason you haven't crossed{" "}
                 <strong style={{ color: C.violetLight }}>{nextTier?.label || "the next tier"}</strong> yet.
               </p>
             </div>
-            <button style={{ flexShrink: 0, border: "none", borderRadius: 12, padding: "11px 16px",
-              background: "#fff", color: C.violetMid, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: F.body }}
+
+            <button className="an-war-room-cta"
+              style={{
+                flexShrink: 0,
+                border: "none",
+                borderRadius: 12,
+                minHeight: 44,
+                padding: "11px 16px",
+                background: "#fff",
+                color: C.violetMid,
+                fontSize: 12.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                fontFamily: F.body,
+                whiteSpace: "nowrap"
+              }}
               onClick={() => navigate("/interview")}>Build This Skill →</button>
           </section>
         </AnimatedSection>

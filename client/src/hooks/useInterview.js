@@ -63,6 +63,7 @@ const normalizeQuestion = question => ({
 const buildFeedback = (data, parsed) => ({
   score:        Number(data?.score) || 0,
   correct:      data?.correct ?? null,
+  timeTaken:    Number(data?.timeTaken) || 0,  // FeedbackPanel displays "Xs · Q2/5"
   aiAvailable:  parsed.aiAvailable !== false,
   fallback:     parsed.fallback === true,
   good:         parsed.good || '',
@@ -251,7 +252,8 @@ export const useInterview = ({ notify } = {}) => {
 
   const handleTimeUp = useCallback(
     async timeTaken => {
-      if (isSubmitted || isLoading || submitInFlightRef.current) return;
+      // Re-check submitInFlightRef first (isSubmitted state lags one render behind).
+      if (submitInFlightRef.current || isSubmitted || isLoading) return;
       await handleSubmit(
         '',
         null,

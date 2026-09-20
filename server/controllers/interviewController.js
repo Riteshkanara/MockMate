@@ -272,7 +272,7 @@ const startInterview = async (req, res) => {
       text: q.text,
       topic: q.topic,
       difficulty: q.difficulty,
-      timeLimit: q.timeLimit || (q.questionType === 'aptitude' ? 60 : q.questionType === 'mcq' ? 45 : 120),
+      timeLimit: q.timeLimit || (q.questionType === 'aptitude' ? 60 : q.questionType === 'mcq' ? 45 : 90),
       questionType: q.questionType || 'open',
       options: q.questionType === 'open' ? [] : q.options || [],
     }));
@@ -886,7 +886,7 @@ const getAICoach = async (req, res) => {
     const { tier: currentTier } = tierForScoreGated(irs, sessions.length);
     const currentTierIndex = TIERS.findIndex(t => t.label === currentTier.label);
     const nextTier = TIERS[currentTierIndex + 1] || null;
-    const dimTimeSeries = dimensionTimeSeries(chronological);
+    const dimTimeSeries = buildDimSeries(chronological);
     const nextTierReadiness = nextTier ? tierReadiness(dimProfile, nextTier, sessions.length) : null;
     const blocker = nextTierReadiness ? blockingDimension(nextTierReadiness) : null;
     const eta = blocker ? sessionsToUnlock(blocker, dimTimeSeries) : null;
@@ -1096,8 +1096,3 @@ module.exports = {
   getSessionWarmup,
   getAIFreeform,
 };
-
-
-
-
-

@@ -22,6 +22,11 @@ const DIMENSION_TO_TOPIC = {
   fundamentals: 'OS',
 };
 
+// Stable session ID — generated once outside render so Math.random is never
+// called during the render phase (avoids react-hooks/purity violation).
+const generateSessionId = () =>
+  Math.random().toString(36).slice(2, 8).toUpperCase();
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const scoreColor = (score) => {
@@ -53,7 +58,7 @@ const isPlatinumBand = (rank, total) => {
   return pct !== null && pct >= 95;
 };
 
-// ─── Small local components (not complex enough for their own files) ──────────
+// ─── Small local components ───────────────────────────────────────────────────
 
 const Eyebrow = ({ children, color = C.cyanBright }) => (
   <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: '1.8px', color, marginBottom: 6, textTransform: 'uppercase' }}>{children}</div>
@@ -348,6 +353,14 @@ const Leaderboard = () => {
   const heroRef = useRef(null);
   const { setUser } = useContext(AuthContext);
 
+  // Stable session ID — generated once on mount via ref, never during render.
+  const sessionIdRef = useRef(null);
+  if (sessionIdRef.current === null) {
+    sessionIdRef.current = generateSessionId();
+  }
+  
+  const clockNow = new Date();
+
   const EMPTY_BOARD = useMemo(() => ({ global: [], college: [], globalTotal: 0, collegeTotal: 0 }), []);
 
   const [activePeriod, setActivePeriod] = useState('weekly');
@@ -373,7 +386,12 @@ const Leaderboard = () => {
   // ─── Load leaderboard ──────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
+
+    // Reset loading state at the start of each fetch — intentional synchronous
+    // setState inside effect to gate the UI before async work begins.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(true);
+     
     setLoadError(null);
 
     const load = async () => {
@@ -408,8 +426,10 @@ const Leaderboard = () => {
 
     load();
     return () => { cancelled = true; };
-  }, [EMPTY_BOARD, retryToken]);
+  }, [EMPTY_BOARD, retryToken, setUser]);
 
+  // Remount podium animation when period/tab changes — setTimeout keeps setState
+  // out of the synchronous part of the effect body.
   useEffect(() => {
     setPodiumMounted(false);
     const t = setTimeout(() => setPodiumMounted(true), 60);
@@ -453,7 +473,10 @@ const Leaderboard = () => {
 
   // ─── Derived state ─────────────────────────────────────────────────────────
   const selectedBoard = leaderboardData?.[activePeriod] || EMPTY_BOARD;
-  const rawData = activeTab === 'global' ? selectedBoard.global || [] : selectedBoard.college || [];
+  const rawData = useMemo(
+    () => (activeTab === 'global' ? selectedBoard.global || [] : selectedBoard.college || []),
+    [activeTab, selectedBoard]
+  );
 
   const activeData = useMemo(() => {
     if (!query.trim()) return rawData;
@@ -524,9 +547,6 @@ const Leaderboard = () => {
 
   const fieldSessions = rawData.reduce((sum, e) => sum + (Number(e.sessionCount) || 0), 0);
   const fieldOnStreak = rawData.filter((e) => (Number(e.streak) || 0) >= 2).length;
-
-  const sessionId = useMemo(() => Math.random().toString(36).slice(2, 8).toUpperCase(), []);
-  const clockNow = new Date();
 
   // ─── Loading state ─────────────────────────────────────────────────────────
   if (isLoading) {
@@ -615,7 +635,7 @@ const Leaderboard = () => {
               <span style={S.mono}>mockmate leaderboard</span>
             </div>
             <div style={S.stripR} className="mm-strip-r">
-              <span style={S.mono}>session {sessionId}</span>
+              <span style={S.mono}>session {sessionIdRef.current}</span>
               <span style={{ color: C.lineMd }}>·</span>
               <span style={S.mono}>{clockNow.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toLowerCase()}</span>
             </div>

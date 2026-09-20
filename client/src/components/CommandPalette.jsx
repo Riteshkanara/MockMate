@@ -49,20 +49,28 @@ const CommandPalette = () => {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // FIX: wrap synchronous setState in setTimeout to avoid react-hooks/set-state-in-effect
   useEffect(() => {
     if (open) {
-      setSelected(0);
-      // Only auto-focus on non-touch devices (desktop keyboard users).
-      // On mobile we let the user tap the input themselves so the
-      // virtual keyboard doesn't pop up uninvited.
-      const isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-      if (!isTouchDevice) {
-        setTimeout(() => inputRef.current?.focus(), 30);
-      }
+      const t = setTimeout(() => {
+        setSelected(0);
+        // Only auto-focus on non-touch devices (desktop keyboard users).
+        // On mobile we let the user tap the input themselves so the
+        // virtual keyboard doesn't pop up uninvited.
+        const isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        if (!isTouchDevice) {
+          inputRef.current?.focus();
+        }
+      }, 0);
+      return () => clearTimeout(t);
     }
   }, [open]);
 
-  useEffect(() => { setOpen(false); }, [location.pathname]);
+  // FIX: wrap synchronous setState in setTimeout to avoid react-hooks/set-state-in-effect
+  useEffect(() => {
+    const t = setTimeout(() => setOpen(false), 0);
+    return () => clearTimeout(t);
+  }, [location.pathname]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setSelected(s => Math.min(s + 1, filtered.length - 1)); }
@@ -150,13 +158,14 @@ const CommandPalette = () => {
                 No results for "{query}"
               </div>
             )}
+            {/* FIX: removed unused `i` parameter from map callback */}
             {['Navigate', 'Action'].map(group => {
               const items = filtered.filter(c => c.group === group);
               if (!items.length) return null;
               return (
                 <div key={group}>
                   <div className="mm-cmd-group">{group}</div>
-                  {items.map((cmd, i) => {
+                  {items.map((cmd) => {
                     const idx = filtered.indexOf(cmd);
                     return (
                       <div

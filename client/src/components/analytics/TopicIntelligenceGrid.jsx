@@ -18,8 +18,6 @@ const C = {
   },
 };
 
-const scoreColor = (s) =>
-  s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.orange;
 
 const getTier = (s) => {
   const n = Number(s) || 0;
@@ -112,12 +110,18 @@ const HexCell = ({ data, index, isSelected, onClick, reducedMotion }) => {
   const [pulsing, setPulsing] = useState(false);
 
   useEffect(() => {
-    if (reducedMotion) { setMounted(true); return; }
-    const t = setTimeout(() => setMounted(true), index * 60);
+  if (reducedMotion) {
+    const t = setTimeout(() => setMounted(true), 0);
     return () => clearTimeout(t);
-  }, [index, reducedMotion]);
+  }
+  const t = setTimeout(() => setMounted(true), index * 60);
+  return () => clearTimeout(t);
+}, [index, reducedMotion]);
 
-  useEffect(() => { setPulsing(isSelected); }, [isSelected]);
+useEffect(() => {
+  const t = setTimeout(() => setPulsing(isSelected), 0);
+  return () => clearTimeout(t);
+}, [isSelected]);
 
   const path      = hexPath(r);
   const arcR      = r - 7;
@@ -516,23 +520,23 @@ function TopicIntelligenceGrid({ topicData, onDrill }) {
   const [mobileExpanded, setMobileExpanded] = useState(false);
   const panelRef = useRef(null);
 
-  useEffect(() => {
-    const mq      = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReducedMotion(mq.matches);
-    const handler = (e) => setReducedMotion(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
+ useEffect(() => {
+  const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const handler = (e) => setReducedMotion(e.matches);
+  setTimeout(() => setReducedMotion(mq.matches), 0);
+  mq.addEventListener('change', handler);
+  return () => mq.removeEventListener('change', handler);
+}, []);
 
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 640px)');
-    setIsMobile(mq.matches);
-    const handler = (e) => setIsMobile(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
+useEffect(() => {
+  const mq = window.matchMedia('(max-width: 640px)');
+  const handler = (e) => setIsMobile(e.matches);
+  setTimeout(() => setIsMobile(mq.matches), 0);
+  mq.addEventListener('change', handler);
+  return () => mq.removeEventListener('change', handler);
+}, []);
 
-  const handleSelect = useCallback((topic) => {
+    const handleSelect = useCallback((topic) => {
     setSelected(prev => prev?.topic === topic.topic ? null : topic);
   }, []);
 

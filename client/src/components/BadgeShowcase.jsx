@@ -1,51 +1,11 @@
-// ═══════════════════════════════════════════════════════════════════════════
-// MOCKMATE — BADGE SHOWCASE v2
-//
-// Drop-in replacement for the BadgeShowcase section in Dashboard.jsx.
-//
-// WHAT'S NEW:
-//   - Geometric multi-colour SVG crests (shield/hexagon/crest shapes) —
-//     each badge has its own SVG emblem with 3+ colours, no icon library.
-//   - Category tabs: "All", "Dimension Mastery", "Streaks & Milestones",
-//     "Ranked Badges".
-//   - Grid layout with locked/unlocked states — no podium, no columns.
-//   - Click-to-expand detail panel below the grid (not a modal):
-//       • Why this badge matters
-//       • Progress bar + percentage
-//       • Concrete steps to unlock it (like the Coach card)
-//   - Each crest SVG is a deterministic design derived from the badge's
-//     tier + category — same badge always renders the same crest.
-//
-// HOW TO DROP IN:
-//   1. Copy this file to your /src/components/ or /src/pages/ directory.
-//   2. In Dashboard.jsx, replace:
-//        import BadgeShowcase from ...  (if already extracted)
-//      or find the inline <BadgeShowcase> component and replace it.
-//   3. Wire the same props you were already passing:
-//        <BadgeShowcase
-//          badges={badges}
-//          unlockedCount={unlockedCount}
-//          nextBadge={nextBadge}
-//          onFixBadges={handleFixBadges}
-//        />
-//   4. The EXTENDED_EXTENDED_BADGE_CATALOGUE below replaces EXTENDED_BADGE_CATALOGUE in your
-//      Dashboard.jsx. Copy it there too, replacing the old one.
-//
-// DATA WIRING (TODO markers):
-//   Search for // TODO: to find the 3 spots where you plug in live data.
-// ═══════════════════════════════════════════════════════════════════════════
-
 import { useState, useMemo } from 'react';
 import { C, F } from '../styles/token';
 import Button from '../components/Button';
 
-// ─── Extended badge catalogue ─────────────────────────────────────────────
-// This replaces EXTENDED_BADGE_CATALOGUE in Dashboard.jsx.
-// Each badge now has:
-//   category: 'dimension' | 'streak' | 'milestone' | 'ranked'
-//   whyItMatters: string  — shown in the detail panel
-//   steps: string[]       — concrete unlock steps (Coach-card style)
-//   crestVariant: number  — 1–4 picks a crest silhouette family
+// FIX: removed `export` keyword — exporting non-components from a component
+// file breaks React fast-refresh (react-refresh/only-export-components).
+// If other files need this catalogue, import it from a separate
+// src/data/badgeCatalogue.js file instead.
 export const EXTENDED_BADGE_CATALOGUE = [
   // ── Dimension Mastery ──────────────────────────────────────────────────
   {
@@ -487,19 +447,14 @@ const CATEGORY_META = {
 };
 
 // ─── Crest SVG generator ──────────────────────────────────────────────────
-// Produces a unique geometric crest for each badge.
-// variant 1 = shield crest, 2 = hexagon crest,
-// 3 = rounded diamond, 4 = angular star crest
-// Each variant uses the tier palette for its 3 colours.
 const BadgeCrestSVG = ({ badge, size = 72, unlocked = true }) => {
   const T = TIER_PALETTE[badge.tier] || TIER_PALETTE.bronze;
   const v = badge.crestVariant || 1;
   const opacity = unlocked ? 1 : 0.28;
 
-  // Unique hue shift per badge so same-tier badges look distinct
   let seed = 0;
   for (let i = 0; i < (badge.id || '').length; i++) seed = (seed * 31 + badge.id.charCodeAt(i)) % 360;
-  const accent2 = seed % 2 === 0 ? T.accent : T.primary;
+  // FIX: removed unused `accent2` variable
 
   const iconMap = {
     '⚙': <text x="36" y="42" textAnchor="middle" fontSize="18" fill={unlocked ? T.accent : '#999'} fontWeight="700">{badge.icon}</text>,
@@ -514,7 +469,6 @@ const BadgeCrestSVG = ({ badge, size = 72, unlocked = true }) => {
   );
 
   if (v === 1) {
-    // ── Classic shield crest ──
     return (
       <svg width={size} height={size} viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity }}>
         <defs>
@@ -530,34 +484,17 @@ const BadgeCrestSVG = ({ badge, size = 72, unlocked = true }) => {
             <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor={unlocked ? T.glow : 'rgba(0,0,0,0.1)'} />
           </filter>
         </defs>
-        {/* Outer shield */}
-        <path
-          d="M36 4 L62 14 L62 38 C62 52 50 62 36 68 C22 62 10 52 10 38 L10 14 Z"
-          fill={`url(#sg1-${badge.id})`}
-          filter={`url(#sf1-${badge.id})`}
-        />
-        {/* Inner shield bevel */}
-        <path
-          d="M36 10 L56 18 L56 38 C56 49 46 58 36 63 C26 58 16 49 16 38 L16 18 Z"
-          fill={`url(#sg1b-${badge.id})`}
-        />
-        {/* Inner shield outline */}
-        <path
-          d="M36 10 L56 18 L56 38 C56 49 46 58 36 63 C26 58 16 49 16 38 L16 18 Z"
-          fill="none" stroke={unlocked ? T.accent : '#DDDDDD'} strokeWidth="1" strokeOpacity="0.5"
-        />
-        {/* Top rim highlight */}
+        <path d="M36 4 L62 14 L62 38 C62 52 50 62 36 68 C22 62 10 52 10 38 L10 14 Z" fill={`url(#sg1-${badge.id})`} filter={`url(#sf1-${badge.id})`} />
+        <path d="M36 10 L56 18 L56 38 C56 49 46 58 36 63 C26 58 16 49 16 38 L16 18 Z" fill={`url(#sg1b-${badge.id})`} />
+        <path d="M36 10 L56 18 L56 38 C56 49 46 58 36 63 C26 58 16 49 16 38 L16 18 Z" fill="none" stroke={unlocked ? T.accent : '#DDDDDD'} strokeWidth="1" strokeOpacity="0.5" />
         <path d="M14 16 L58 16" stroke="white" strokeWidth="1.5" strokeOpacity="0.3" strokeLinecap="round" />
-        {/* Icon */}
         {iconEl}
-        {/* Locked overlay */}
         {!unlocked && <path d="M36 4 L62 14 L62 38 C62 52 50 62 36 68 C22 62 10 52 10 38 L10 14 Z" fill="white" fillOpacity="0.5" />}
       </svg>
     );
   }
 
   if (v === 2) {
-    // ── Hexagon crest (inspired by heraldic badge style) ──
     const hex = '36,6 63,21 63,51 36,66 9,51 9,21';
     const hexInner = '36,13 57,25 57,47 36,59 15,47 15,25';
     return (
@@ -571,16 +508,11 @@ const BadgeCrestSVG = ({ badge, size = 72, unlocked = true }) => {
             <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor={unlocked ? T.glow : 'rgba(0,0,0,0.1)'} />
           </filter>
         </defs>
-        {/* Outer hex */}
         <polygon points={hex} fill={`url(#sg2-${badge.id})`} filter={`url(#sf2-${badge.id})`} />
-        {/* Inner hex ring */}
         <polygon points={hexInner} fill="none" stroke={unlocked ? T.accent : '#DDD'} strokeWidth="1.5" strokeOpacity="0.6" />
-        {/* Diagonal accent lines top-left */}
         <line x1="14" y1="26" x2="22" y2="18" stroke={unlocked ? T.accent : '#DDD'} strokeWidth="1" strokeOpacity="0.4" />
         <line x1="14" y1="33" x2="22" y2="25" stroke={unlocked ? T.accent : '#DDD'} strokeWidth="1" strokeOpacity="0.25" />
-        {/* Highlight rim */}
         <line x1="20" y1="18" x2="52" y2="18" stroke="white" strokeWidth="1.5" strokeOpacity="0.25" strokeLinecap="round" />
-        {/* Icon */}
         {iconEl}
         {!unlocked && <polygon points={hex} fill="white" fillOpacity="0.5" />}
       </svg>
@@ -588,7 +520,6 @@ const BadgeCrestSVG = ({ badge, size = 72, unlocked = true }) => {
   }
 
   if (v === 3) {
-    // ── Rounded diamond / oval crest ──
     return (
       <svg width={size} height={size} viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity }}>
         <defs>
@@ -601,23 +532,17 @@ const BadgeCrestSVG = ({ badge, size = 72, unlocked = true }) => {
             <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor={unlocked ? T.glow : 'rgba(0,0,0,0.1)'} />
           </filter>
         </defs>
-        {/* Outer diamond-oval */}
         <path d="M36 5 C50 5 67 18 67 36 C67 54 50 67 36 67 C22 67 5 54 5 36 C5 18 22 5 36 5 Z" fill={`url(#sg3-${badge.id})`} filter={`url(#sf3-${badge.id})`} />
-        {/* Inner ring */}
         <ellipse cx="36" cy="36" rx="22" ry="22" fill="none" stroke={unlocked ? T.accent : '#DDD'} strokeWidth="1.5" strokeOpacity="0.55" />
-        {/* Cross accent top */}
         <path d="M36 14 L36 22" stroke={unlocked ? T.accent : '#DDD'} strokeWidth="2" strokeLinecap="round" strokeOpacity="0.6" />
         <path d="M26 36 L46 36" stroke={unlocked ? T.accent : '#DDD'} strokeWidth="1" strokeLinecap="round" strokeOpacity="0.3" />
-        {/* Highlight */}
         <ellipse cx="29" cy="20" rx="8" ry="4" fill="white" fillOpacity="0.18" transform="rotate(-30 29 20)" />
-        {/* Icon */}
         {iconEl}
         {!unlocked && <ellipse cx="36" cy="36" rx="31" ry="31" fill="white" fillOpacity="0.5" />}
       </svg>
     );
   }
 
-  // v === 4 — Angular star crest (multi-pointed)
   return (
     <svg width={size} height={size} viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity }}>
       <defs>
@@ -629,20 +554,9 @@ const BadgeCrestSVG = ({ badge, size = 72, unlocked = true }) => {
           <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor={unlocked ? T.glow : 'rgba(0,0,0,0.1)'} />
         </filter>
       </defs>
-      {/* 8-pointed star crest */}
-      <path
-        d="M36 4 L42 28 L66 28 L47 43 L54 68 L36 54 L18 68 L25 43 L6 28 L30 28 Z"
-        fill={`url(#sg4-${badge.id})`}
-        filter={`url(#sf4-${badge.id})`}
-      />
-      {/* Inner accent star (smaller) */}
-      <path
-        d="M36 18 L39 30 L52 30 L42 38 L45 50 L36 44 L27 50 L30 38 L20 30 L33 30 Z"
-        fill="none" stroke={unlocked ? T.accent : '#DDD'} strokeWidth="1" strokeOpacity="0.45"
-      />
-      {/* Top highlight */}
+      <path d="M36 4 L42 28 L66 28 L47 43 L54 68 L36 54 L18 68 L25 43 L6 28 L30 28 Z" fill={`url(#sg4-${badge.id})`} filter={`url(#sf4-${badge.id})`} />
+      <path d="M36 18 L39 30 L52 30 L42 38 L45 50 L36 44 L27 50 L30 38 L20 30 L33 30 Z" fill="none" stroke={unlocked ? T.accent : '#DDD'} strokeWidth="1" strokeOpacity="0.45" />
       <line x1="32" y1="12" x2="40" y2="12" stroke="white" strokeWidth="1.5" strokeOpacity="0.3" strokeLinecap="round" />
-      {/* Icon — centered in star */}
       {iconEl}
       {!unlocked && (
         <path d="M36 4 L42 28 L66 28 L47 43 L54 68 L36 54 L18 68 L25 43 L6 28 L30 28 Z" fill="white" fillOpacity="0.5" />
@@ -651,7 +565,6 @@ const BadgeCrestSVG = ({ badge, size = 72, unlocked = true }) => {
   );
 };
 
-// ─── Lock icon SVG ────────────────────────────────────────────────────────
 const LockIcon = () => (
   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
     <rect x="2" y="5.5" width="8" height="5.5" rx="1.5" fill="currentColor" opacity="0.5" />
@@ -663,7 +576,7 @@ const LockIcon = () => (
 const BadgeCard = ({ badge, isSelected, onClick }) => {
   const T = TIER_PALETTE[badge.tier] || TIER_PALETTE.bronze;
   const pct = Math.round((badge.progress || 0) * 100);
-  const catMeta = CATEGORY_META[badge.category] || CATEGORY_META.milestone;
+  // FIX: removed unused `catMeta` variable
 
   return (
     <button
@@ -692,13 +605,11 @@ const BadgeCard = ({ badge, isSelected, onClick }) => {
       }}
       className="mm-badge-card"
     >
-      {/* Tier dot top-right */}
       <div style={{
         position: 'absolute', top: 8, right: 8, width: 6, height: 6, borderRadius: '50%',
         background: badge.unlocked ? T.primary : C.border,
       }} />
 
-      {/* Locked indicator */}
       {!badge.unlocked && (
         <div style={{
           position: 'absolute', top: 7, left: 8, color: C.muted, display: 'flex', alignItems: 'center',
@@ -707,10 +618,8 @@ const BadgeCard = ({ badge, isSelected, onClick }) => {
         </div>
       )}
 
-      {/* Crest SVG */}
       <BadgeCrestSVG badge={badge} size={64} unlocked={badge.unlocked} />
 
-      {/* Name */}
       <div style={{
         fontSize: 11,
         fontWeight: 800,
@@ -721,7 +630,6 @@ const BadgeCard = ({ badge, isSelected, onClick }) => {
         {badge.label}
       </div>
 
-      {/* Sub / tier */}
       <div style={{
         fontSize: 8.5,
         fontFamily: F.mono,
@@ -731,7 +639,6 @@ const BadgeCard = ({ badge, isSelected, onClick }) => {
         {badge.tier}
       </div>
 
-      {/* Progress bar for locked badges */}
       {!badge.unlocked && typeof badge.progress === 'number' && pct > 0 && (
         <div style={{ width: '80%', height: 3, borderRadius: 999, background: C.border, overflow: 'hidden' }}>
           <div style={{
@@ -742,7 +649,6 @@ const BadgeCard = ({ badge, isSelected, onClick }) => {
         </div>
       )}
 
-      {/* Earned check */}
       {badge.unlocked && (
         <div style={{
           position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)',
@@ -757,8 +663,6 @@ const BadgeCard = ({ badge, isSelected, onClick }) => {
 };
 
 // ─── Detail panel ─────────────────────────────────────────────────────────
-// Expands below the grid when a badge is clicked.
-// Styled like your Coach card: why it matters + numbered steps.
 const BadgeDetailPanel = ({ badge, onClose }) => {
   const T = TIER_PALETTE[badge.tier] || TIER_PALETTE.bronze;
   const pct = Math.round((badge.progress || 0) * 100);
@@ -778,7 +682,6 @@ const BadgeDetailPanel = ({ badge, onClose }) => {
       role="region"
       aria-label={`Badge detail: ${badge.label}`}
     >
-      {/* Header bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -787,11 +690,9 @@ const BadgeDetailPanel = ({ badge, onClose }) => {
         borderBottom: `1px solid ${badge.unlocked ? T.border : C.border}`,
         background: badge.unlocked ? `${T.primary}0A` : C.cardAlt,
       }}>
-        {/* Crest — larger in detail view */}
         <BadgeCrestSVG badge={badge} size={72} unlocked={badge.unlocked} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Category eyebrow */}
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 5,
             padding: '2px 8px', borderRadius: 6, marginBottom: 8,
@@ -828,7 +729,6 @@ const BadgeDetailPanel = ({ badge, onClose }) => {
           </p>
         </div>
 
-        {/* Progress pill — top right of header */}
         {!badge.unlocked && (
           <div style={{
             textAlign: 'center', flexShrink: 0, padding: '10px 14px',
@@ -855,12 +755,8 @@ const BadgeDetailPanel = ({ badge, onClose }) => {
         </button>
       </div>
 
-      {/* Body */}
       <div style={{ padding: '20px 22px', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-
-        {/* Left: progress bar + why it matters */}
         <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-          {/* Progress bar — only for locked badges */}
           {!badge.unlocked && (
             <div style={{ marginBottom: 18 }}>
               <div style={{
@@ -890,7 +786,6 @@ const BadgeDetailPanel = ({ badge, onClose }) => {
             </div>
           )}
 
-          {/* Why it matters block */}
           <div style={{
             padding: '14px 16px', borderRadius: 13,
             background: badge.unlocked ? `${T.primary}0A` : C.cardAlt,
@@ -911,7 +806,6 @@ const BadgeDetailPanel = ({ badge, onClose }) => {
           </div>
         </div>
 
-        {/* Right: steps to unlock */}
         {!badge.unlocked && badge.steps?.length > 0 && (
           <div style={{ flex: '1 1 240px', minWidth: 0 }}>
             <div style={{
@@ -946,7 +840,6 @@ const BadgeDetailPanel = ({ badge, onClose }) => {
           </div>
         )}
 
-        {/* If earned: show meta info instead of steps */}
         {badge.unlocked && (
           <div style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{
@@ -981,7 +874,6 @@ const BadgeDetailPanel = ({ badge, onClose }) => {
 };
 
 // ─── Main BadgeShowcase component ─────────────────────────────────────────
-// Drop-in for the existing <BadgeShowcase> in Dashboard.jsx
 const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState('all');
@@ -992,12 +884,6 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
     try { await onFixBadges?.(); } finally { setFixing(false); }
   };
 
-  // Map incoming badges (from Dashboard.jsx's `badges` useMemo) to the
-  // extended catalogue — merges live unlocked/progress/meta with the
-  // extended fields (whyItMatters, steps, crestVariant, category).
-  // TODO: if you replace EXTENDED_BADGE_CATALOGUE in Dashboard.jsx with
-  // EXTENDED_EXTENDED_BADGE_CATALOGUE, this merge is automatic. Until then, the
-  // extended fields come from EXTENDED_EXTENDED_BADGE_CATALOGUE as a fallback.
   const enrichedBadges = useMemo(() => {
     return badges.map(b => {
       const ext = EXTENDED_BADGE_CATALOGUE.find(e => e.id === b.id);
@@ -1017,7 +903,6 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
     ? enrichedBadges
     : enrichedBadges.filter(b => b.category === activeTab);
 
-  // Sort: unlocked first (by tier rarity), then locked by progress desc
   const tierOrder = { platinum: 0, gold: 1, silver: 2, bronze: 3 };
   const sorted = [...visible].sort((a, b) => {
     if (a.unlocked !== b.unlocked) return a.unlocked ? -1 : 1;
@@ -1042,11 +927,9 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
       }}
       aria-label="Badge showcase"
     >
-      {/* Ambient glows */}
       <div aria-hidden="true" style={{ position: 'absolute', top: -80, right: -60, width: 220, height: 220, borderRadius: '50%', background: `radial-gradient(circle, ${C.blue500}10, transparent 68%)`, pointerEvents: 'none' }} />
       <div aria-hidden="true" style={{ position: 'absolute', bottom: -100, left: -60, width: 240, height: 240, borderRadius: '50%', background: `radial-gradient(circle, ${C.cyan500}08, transparent 70%)`, pointerEvents: 'none' }} />
 
-      {/* ── Header ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
         <div>
           <div style={{ fontFamily: F.mono, fontSize: 10.5, fontWeight: 700, letterSpacing: '0.8px', color: C.blue500, marginBottom: 7 }}>
@@ -1061,7 +944,6 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-          {/* Next badge progress chip */}
           {nextBadge && (() => {
             const ext = EXTENDED_BADGE_CATALOGUE.find(e => e.id === nextBadge.id);
             const nb = ext ? { ...ext, ...nextBadge } : nextBadge;
@@ -1094,10 +976,8 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
         </div>
       </div>
 
-      {/* ── Rainbow rule ── */}
       <div aria-hidden="true" style={{ height: 2, marginBottom: 20, borderRadius: 999, background: 'linear-gradient(90deg, #C17F3E, #C9960A, #7B8FA8, #5B5FD6)', opacity: 0.7 }} />
 
-      {/* ── Category tabs ── */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 22, flexWrap: 'wrap' }}>
         {tabs.map(tab => {
           const isActive = activeTab === tab.id;
@@ -1129,7 +1009,6 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
           );
         })}
 
-        {/* Earned count for current view */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 10, background: C.cardAlt, border: `1px solid ${C.border}` }}>
           <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.green }} />
           <span style={{ fontFamily: F.mono, fontSize: 9.5, color: C.sub }}>
@@ -1138,7 +1017,6 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
         </div>
       </div>
 
-      {/* ── Badge grid ── */}
       <div
         style={{
           display: 'grid',
@@ -1157,7 +1035,6 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
         ))}
       </div>
 
-      {/* ── Tier legend ── */}
       <div style={{ display: 'flex', gap: 16, marginTop: 18, flexWrap: 'wrap', alignItems: 'center' }}>
         {Object.entries(TIER_PALETTE).map(([tier, T]) => (
           <div key={tier} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -1168,7 +1045,6 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
         <span style={{ fontSize: 10, color: C.faint, marginLeft: 2 }}>— click any badge to see how to earn it</span>
       </div>
 
-      {/* ── Detail panel — slides in below grid on click ── */}
       {selectedBadge && (
         <BadgeDetailPanel
           badge={selectedBadge}
@@ -1176,7 +1052,6 @@ const BadgeShowcase = ({ badges, unlockedCount, nextBadge, onFixBadges }) => {
         />
       )}
 
-      {/* Inline style — scoped to this component */}
       <style>{`
         .mm-badge-card:hover {
           transform: translateY(-4px) !important;

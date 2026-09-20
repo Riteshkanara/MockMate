@@ -34,8 +34,6 @@ const parseFeedback = feedback => {
 };
 
 // Fills in safe defaults for every field a question object must have.
-// Runs once on data received from the server so the rest of the hook
-// can read q.timeLimit, q.options etc. without defensive checks everywhere.
 const normalizeQuestion = question => ({
   id:         question?.id,
   text:       question?.text || 'Please answer the interview question.',
@@ -62,7 +60,6 @@ const normalizeQuestion = question => ({
 });
 
 // Shapes raw API response + parsed feedback into the feedback state object.
-// Used by both handleSubmit (full shape) and handleRetryQuestion (spread update).
 const buildFeedback = (data, parsed) => ({
   score:        Number(data?.score) || 0,
   correct:      data?.correct ?? null,
@@ -86,8 +83,6 @@ const getErrorMessage = (err, fallback = 'Something went wrong.') =>
 // ─── Hook ─────────────────────────────────────────────────────────────────
 
 export const useInterview = ({ notify } = {}) => {
-  // Silent no-op fallback so the hook works without a notify prop in tests
-  // or Storybook. In production, Interview.jsx always passes notify.
   const notifyFallback = {
     loading: () => {},
     success: () => {},
@@ -112,17 +107,8 @@ export const useInterview = ({ notify } = {}) => {
   const [selectedAnswerIndex, setSelectedAnswerIndex] = useState(null);
   const [isAbandoning,        setIsAbandoning]        = useState(false);
 
-  // WHY: Synchronous lock shared by every submit path — button, Enter, Skip,
-  // and timer time-up. React state updates only commit on the next render,
-  // so two callers firing in the same tick can both pass an isLoading/isSubmitted
-  // check before either write lands. This ref is set the instant a submit starts
-  // and cleared only in finally.
   const submitInFlightRef = useRef(false);
-
-  // WHY: Same pattern for handleNext — guards against currentIndex being bumped
-  // twice for one user action (double-click, effect re-fire), which used to
-  // silently skip a question with no answer recorded.
-  const advanceLockRef = useRef(false);
+  const advanceLockRef    = useRef(false);
 
   // ── START ──────────────────────────────────────────────────────────────
 
@@ -161,8 +147,6 @@ export const useInterview = ({ notify } = {}) => {
   );
 
   // ── DASHBOARD HYDRATION ────────────────────────────────────────────────
-  // Restores a session that was created from the Dashboard quick-launch.
-  // If questions are passed directly (fast path), skips the network fetch.
 
   const hydrateSession = useCallback(
     async (sessionId_, rawQuestions = []) => {
@@ -222,10 +206,6 @@ export const useInterview = ({ notify } = {}) => {
         });
         const parsed = parseFeedback(data?.feedback);
         setFeedback(buildFeedback(data, parsed));
-        // WHY: correctAnswerIndex and explanation are deliberately withheld from
-        // the initial question list (startInterview's publicQuestions) so the answer
-        // cannot be read from the network tab before answering. The submit endpoint
-        // sends them back only for the question just answered — patch that one entry.
         if (data?.correctAnswerIndex != null) {
           setQuestions(prev =>
             prev.map(q =>
@@ -260,12 +240,13 @@ export const useInterview = ({ notify } = {}) => {
   // ── SKIP ───────────────────────────────────────────────────────────────
 
   const handleSkip = useCallback(
-  async timeTaken => {
-    await handleSubmit('', null, Number(timeTaken) || 0, true);
-    window.scrollTo({ top: 183, behavior: 'smooth' });
-  },
-  [handleSubmit]
-);
+    async timeTaken => {
+      await handleSubmit('', null, Number(timeTaken) || 0, true);
+      window.scrollTo({ top: 183, behavior: 'smooth' });
+    },
+    [handleSubmit]
+  );
+
   // ── TIME UP ────────────────────────────────────────────────────────────
 
   const handleTimeUp = useCallback(
@@ -295,7 +276,6 @@ export const useInterview = ({ notify } = {}) => {
       notify_.loading('Preparing your final report…');
       try {
         const data = await completeInterview(sessionId);
-        // Refresh auth so Navbar streak/score updates immediately without a page reload.
         refreshUser().catch(() => {});
         notify_.success('Interview completed!');
         navigate('/result', { state: { result: data } });
@@ -329,8 +309,6 @@ export const useInterview = ({ notify } = {}) => {
   );
 
   // ── RETRY QUESTION ─────────────────────────────────────────────────────
-  // Re-runs AI evaluation on an already-submitted open answer and merges the
-  // fresh score/feedback into state without overwriting the correctness result.
 
   const handleRetryQuestion = useCallback(
     async questionId => {
@@ -340,9 +318,7 @@ export const useInterview = ({ notify } = {}) => {
       try {
         const data   = await retryQuestionApi(sessionId, questionId);
         const parsed = parseFeedback(data?.feedback);
-        // WHY: Spread over prev so `correct` (set on first submit) is preserved —
-        // retry re-evaluates open answer quality, not the correctness determination.
-        const { correct: _correct, ...qualityUpdate } = buildFeedback(data, parsed);
+        const qualityUpdate = buildFeedback(data, parsed);
         setFeedback(prev => ({ ...prev, ...qualityUpdate }));
         notify_.success('Re-evaluation complete!');
         return data;
@@ -360,10 +336,6 @@ export const useInterview = ({ notify } = {}) => {
   );
 
   // ── TAB-CLOSE ABANDON ──────────────────────────────────────────────────
-  // WHY: sendBeacon fires on tab-close so the backend marks the session
-  // abandoned even when the user never clicks Exit. sendBeacon cannot set
-  // auth headers — the abandon route must accept the sessionId from the URL
-  // without requiring authMiddleware.
 
   useEffect(() => {
     const handleUnload = () => {
@@ -375,9 +347,6 @@ export const useInterview = ({ notify } = {}) => {
   }, [sessionId, sessionStarted]);
 
   // ── EXPLICIT ABANDON (Exit button) ────────────────────────────────────
-  // WHY: Marks the session abandoned before navigating so it doesn't linger
-  // as a stale in-progress row in History/Analytics/streak calculations.
-  // Best-effort — a network failure never traps the user; we always navigate.
 
   const handleAbandon = useCallback(
     async (destination = '/dashboard') => {

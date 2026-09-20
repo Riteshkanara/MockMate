@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { ResultHeroV2 } from "./ResultHeroV2";
 import ScoreCard from "../components/ScoreCard";
 import { C, F } from "../styles/token";
+import { useSequentialReveal, revealStyle, useGradeColorMoment } from '../utils/resultHelpers';
 import ScoreSummary  from "../components/result/ScoreSummary";
 import FeedbackList  from "../components/result/FeedbackList";
 import ResultActions from "../components/result/ResultActions";
@@ -21,14 +22,6 @@ const scoreColor = (s) => {
   if (n >= 60) return C.blue500;
   if (n >= 40) return C.amber;
   return C.red;
-};
-
-const scoreTint = (s) => {
-  const n = clamp(s);
-  if (n >= 80) return C.greenTint;
-  if (n >= 60) return C.blue50;
-  if (n >= 40) return C.amberTint;
-  return C.redTint;
 };
 
 const GRADE_MAP = [
@@ -52,31 +45,6 @@ const formatTime = (s) => {
   return `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, "0")}`;
 };
 
-const toOneLine = (text, maxLen = 100) => {
-  if (!text) return "";
-  const s = (text.split(/(?<=[.!?])\s+/)[0] || text).trim();
-  return s.length <= maxLen ? s : `${s.slice(0, maxLen - 1).trim()}…`;
-};
-
-const getTakeaway = (question) => {
-  if (question.skipped) return { text: "Skipped — no answer submitted.", tone: "neutral" };
-  const objective = ["mcq", "aptitude"].includes(question.questionType);
-  const fb = question.aiFeedback;
-  if (objective) {
-    if (fb?.correct === true)  return { text: "Correct answer.", tone: "good" };
-    if (fb?.correct === false) return { text: "Incorrect — see the explanation below.", tone: "bad" };
-    return { text: "Answer recorded.", tone: "neutral" };
-  }
-  if (!fb || fb.aiAvailable === false) return { text: "AI evaluation unavailable for this answer.", tone: "neutral" };
-  const score = clamp(fb.score);
-  if (score >= 80 && fb.good)    return { text: toOneLine(fb.good),    tone: "good" };
-  if (score < 60  && fb.missing) return { text: toOneLine(fb.missing), tone: "bad" };
-  if (fb.tip)  return { text: toOneLine(fb.tip),  tone: "neutral" };
-  if (fb.good) return { text: toOneLine(fb.good), tone: "neutral" };
-  return { text: "Reviewed — open for the full breakdown.", tone: "neutral" };
-};
-
-const toneColor = (tone) => (tone === "good" ? C.green : tone === "bad" ? C.red : C.sub);
 
 const normalizeFeedback = (question) => {
   if (!question) return null;
@@ -134,37 +102,6 @@ const CS = {
   cardH2:  { margin: 0, fontFamily: F.display, fontSize: 15, fontWeight: 800, color: C.text, letterSpacing: "-0.3px" },
   cardSub: { margin: "5px 0 0", fontSize: 11.5, lineHeight: 1.6, color: C.sub, maxWidth: 480 },
   emptyState: { padding: "16px 0", fontSize: 11.5, color: C.muted, textAlign: "center" },
-};
-
-// ─── Reveal hooks ────────────────────────────────────────────────────────────
-
-export const useSequentialReveal = () => {
-  const [flags, setFlags] = useState({ arc: false, grade: false, stats: false, caption: false, actions: false });
-  useEffect(() => {
-    const timers = [
-      setTimeout(() => setFlags(f => ({ ...f, arc:     true })),   80),
-      setTimeout(() => setFlags(f => ({ ...f, grade:   true })),  500),
-      setTimeout(() => setFlags(f => ({ ...f, stats:   true })),  720),
-      setTimeout(() => setFlags(f => ({ ...f, caption: true })),  920),
-      setTimeout(() => setFlags(f => ({ ...f, actions: true })), 1080),
-    ];
-    return () => timers.forEach(clearTimeout);
-  }, []);
-  return flags;
-};
-
-export const revealStyle = {
-  fadeUp: (visible, delay = 0) => ({ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(18px)", transition: `opacity 0.55s cubic-bezier(.16,1,.3,1) ${delay}ms, transform 0.55s cubic-bezier(.16,1,.3,1) ${delay}ms` }),
-  dropIn: (visible) => ({ opacity: visible ? 1 : 0, transform: visible ? "translateY(0) scale(1)" : "translateY(-14px) scale(0.88)", transition: "opacity 0.42s cubic-bezier(.16,1,.3,1), transform 0.42s cubic-bezier(.16,1,.3,1)" }),
-  slideUp: (visible, index = 0) => ({ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(12px)", transition: `opacity 0.38s ease ${index * 60}ms, transform 0.38s cubic-bezier(.16,1,.3,1) ${index * 60}ms` }),
-  fade: (visible, delay = 0) => ({ opacity: visible ? 1 : 0, transition: `opacity 0.5s ease ${delay}ms` }),
-};
-
-export const useGradeColorMoment = (score) => {
-  const [momentActive, setMomentActive] = useState(true);
-  const grade = getGrade(clamp(score));
-  useEffect(() => { const t = setTimeout(() => setMomentActive(false), 1400); return () => clearTimeout(t); }, []);
-  return { momentActive, grade };
 };
 
 export const GradeFlashOverlay = ({ score }) => {
@@ -317,9 +254,19 @@ const isPeakLoad   = (timeTaken, maxTime, score)    => timeTaken >= maxTime * 0.
 export const CognitiveLoadHeatmap = ({ questions }) => {
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef(null);
 
-  const cells = useMemo(() => questions.map((q, i) => {
+    useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setContainerWidth(el.offsetWidth));
+    ro.observe(el);
+    setContainerWidth(el.offsetWidth);
+    return () => ro.disconnect();
+  }, []);
+
+      const cells = useMemo(() => questions.map((q, i) => {
     const score = clamp(typeof q.aiFeedback?.score === "number" ? q.aiFeedback.score : typeof q.score === "number" ? q.score : 0);
     const time = Math.max(0, Number(q.timeTaken || 0));
     const hasScore = !q.skipped && (typeof q.aiFeedback?.score === "number" || typeof q.score === "number");
@@ -335,9 +282,10 @@ export const CognitiveLoadHeatmap = ({ questions }) => {
   const minTime = Math.min(...times.filter(t => t > 0), 1);
   const normTime = (t) => { if (t <= 0) return 0; if (maxTime === minTime) return 0.6; return 0.18 + ((t - minTime) / (maxTime - minTime)) * 0.82; };
 
-  const insight = useMemo(() => {
+    const insight = useMemo(() => {
+    const timedCount = cells.filter(c => !c.skipped && c.time > 0).length;
     const overloaded = cells.filter(c => !c.skipped && c.time > 0 && isOverloaded(c.time, medianTime, c.score));
-    if (overloaded.length === 0 && timedCells.length === 0) return { text: "No timed answers recorded this session.", accent: C.muted };
+    if (overloaded.length === 0 && timedCount === 0) return { text: "No timed answers recorded this session.", accent: C.muted };
     if (overloaded.length === 0) return { text: "No overload signals — you stayed composed across all questions.", accent: C.green };
     const topicMap = {};
     overloaded.forEach(c => { topicMap[c.topic] = (topicMap[c.topic] || 0) + 1; });
@@ -345,7 +293,7 @@ export const CognitiveLoadHeatmap = ({ questions }) => {
     const qLabels = overloaded.map(c => `Q${c.index + 1}`).join(", ");
     if (overloaded.length === 1) { const c = overloaded[0]; return { text: `Q${c.index + 1} showed a load spike — ${formatTime(c.time)} and a score of ${c.score}.`, accent: C.amber }; }
     return { text: `${qLabels} triggered overload signals${topTopic ? ` — ${topTopic[0]} is the common thread` : ""}. That's the drill list.`, accent: C.amber };
-  }, [cells, medianTime, timedCells.length]);
+  }, [cells, medianTime]);
 
   const hoveredCell = hoveredIdx !== null ? cells[hoveredIdx] : null;
   const overloadFlag = hoveredCell && !hoveredCell.skipped && hoveredCell.time > 0 ? isOverloaded(hoveredCell.time, medianTime, hoveredCell.score) : false;
@@ -406,7 +354,7 @@ export const CognitiveLoadHeatmap = ({ questions }) => {
           })}
         </div>
         {hoveredCell && (
-          <div style={{ position: "absolute", top: Math.max(4, tooltipPos.y - 100), left: Math.min(tooltipPos.x - 70, containerRef.current ? containerRef.current.offsetWidth - 180 : 0), zIndex: 20, background: C.card, border: `1px solid ${C.borderMd}`, borderRadius: 10, padding: "10px 12px", boxShadow: "0 6px 22px rgba(0,0,0,0.18)", pointerEvents: "none", minWidth: 155 }}>
+                      <div style={{ position: "absolute", top: Math.max(4, tooltipPos.y - 100), left: Math.min(tooltipPos.x - 70, containerWidth ? containerWidth - 180 : 0), zIndex: 20, background: C.card, border: `1px solid ${C.borderMd}`, borderRadius: 10, padding: "10px 12px", boxShadow: "0 6px 22px rgba(0,0,0,0.18)", pointerEvents: "none", minWidth: 155 }}>
             <div style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted, marginBottom: 6 }}>Q{hoveredCell.index + 1} · {hoveredCell.topic}</div>
             <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
               {hoveredCell.hasScore && !hoveredCell.skipped && <div><div style={{ fontFamily: F.display, fontSize: 20, fontWeight: 900, color: scoreColor(hoveredCell.score), lineHeight: 1 }}>{hoveredCell.score}</div><div style={{ fontFamily: F.mono, fontSize: 7.5, color: C.muted, marginTop: 1 }}>/100</div></div>}
@@ -441,27 +389,33 @@ export const QuestionDifficultyCalibration = ({ questions }) => {
   const [selectedQ, setSelectedQ] = useState(null);
   const scoredTimed = useMemo(() => questions.filter(q => { if (q.skipped) return false; const hasScore = typeof q.aiFeedback?.score === "number" || typeof q.score === "number"; const hasTime = Number(q.timeTaken || 0) > 0; return hasScore && hasTime; }).map(q => ({ ...q, _score: clamp(typeof q.aiFeedback?.score === "number" ? q.aiFeedback.score : Number(q.score || 0)), _time: Number(q.timeTaken) })), [questions]);
 
+  const sortedByTime = [...scoredTimed].sort((a, b) => a._time - b._time);
+  const midIdx = Math.floor(sortedByTime.length / 2);
+  const medianTime = scoredTimed.length >= 3
+    ? (sortedByTime.length % 2 ? sortedByTime[midIdx]._time : (sortedByTime[midIdx - 1]._time + sortedByTime[midIdx]._time) / 2)
+    : 0;
+  const classified = scoredTimed.length >= 3
+    ? scoredTimed.map(q => ({ ...q, isHard: q._time > medianTime, isPassed: q._score >= 60 }))
+    : [];
+  const quadrantData = QUADRANTS.map(qd => ({ ...qd, questions: classified.filter(q => qd.pred(q.isHard, q.isPassed)) }));
+  const priorityGap  = quadrantData.find(q => q.id === "easy-fail");
+  const realStrength = quadrantData.find(q => q.id === "hard-pass");
+
+  const gapCount      = priorityGap?.questions.length || 0;
+  const strengthCount = realStrength?.questions.length || 0;
+
+  const insight = useMemo(() => {
+    if (gapCount === 0 && strengthCount === 0) return { text: "Clean split — no easy misses, no hard wins.", accent: C.blue500 };
+    if (gapCount === 0) return { text: `${strengthCount} hard question${strengthCount > 1 ? "s" : ""} answered correctly — genuine strengths, no easy misses.`, accent: C.green };
+    if (strengthCount === 0) return { text: `${gapCount} quick miss${gapCount > 1 ? "es" : ""} — answered fast, still got wrong. Pure knowledge gaps.`, accent: C.red };
+    return { text: `${gapCount} easy miss${gapCount > 1 ? "es" : ""} (fix first) · ${strengthCount} hard win${strengthCount > 1 ? "s" : ""} (genuine strength).`, accent: C.amber };
+  }, [gapCount, strengthCount]);
+
   if (scoredTimed.length < 3) return (
     <div>
       <p style={{ margin: 0, fontSize: 11, color: C.sub }}>Need at least 3 timed, scored questions to calibrate. {scoredTimed.length > 0 ? `${scoredTimed.length} so far.` : "None yet."}</p>
     </div>
   );
-
-  const sortedByTime = [...scoredTimed].sort((a, b) => a._time - b._time);
-  const midIdx = Math.floor(sortedByTime.length / 2);
-  const medianTime = sortedByTime.length % 2 ? sortedByTime[midIdx]._time : (sortedByTime[midIdx - 1]._time + sortedByTime[midIdx]._time) / 2;
-  const classified = scoredTimed.map(q => ({ ...q, isHard: q._time > medianTime, isPassed: q._score >= 60 }));
-  const quadrantData = QUADRANTS.map(qd => ({ ...qd, questions: classified.filter(q => qd.pred(q.isHard, q.isPassed)) }));
-  const priorityGap  = quadrantData.find(q => q.id === "easy-fail");
-  const realStrength = quadrantData.find(q => q.id === "hard-pass");
-
-  const insight = useMemo(() => {
-    const gapCount = priorityGap?.questions.length || 0, strengthCount = realStrength?.questions.length || 0;
-    if (gapCount === 0 && strengthCount === 0) return { text: "Clean split — no easy misses, no hard wins.", accent: C.blue500 };
-    if (gapCount === 0) return { text: `${strengthCount} hard question${strengthCount > 1 ? "s" : ""} answered correctly — genuine strengths, no easy misses.`, accent: C.green };
-    if (strengthCount === 0) return { text: `${gapCount} quick miss${gapCount > 1 ? "es" : ""} — answered fast, still got wrong. Pure knowledge gaps.`, accent: C.red };
-    return { text: `${gapCount} easy miss${gapCount > 1 ? "es" : ""} (fix first) · ${strengthCount} hard win${strengthCount > 1 ? "s" : ""} (genuine strength).`, accent: C.amber };
-  }, [priorityGap, realStrength]);
 
   return (
     <div>
@@ -558,6 +512,7 @@ const DNABand = ({ axis, delay }) => {
 };
 DNABand.propTypes = { axis: PropTypes.shape({ score: PropTypes.number, label: PropTypes.string, sublabel: PropTypes.string }).isRequired, delay: PropTypes.number.isRequired };
 
+
 export const SessionDNAFingerprint = ({ questions, totalScore, result }) => {
   const [visible, setVisible] = useState(false);
   const ref = useRef(null);
@@ -585,6 +540,7 @@ export const SessionDNAFingerprint = ({ questions, totalScore, result }) => {
       { key: "consistency", label: "Consistency",  sublabel: evaluated.length >= 2 ? "score variance" : "< 2 scored",                   score: consistency },
       { key: "completion",  label: "Completion",   sublabel: `${answered.length}/${questions.length} answered`,                          score: completion },
     ];
+     
   }, [questions, totalScore]);
 
   const fingerprintRead = useMemo(() => {
@@ -787,8 +743,7 @@ const polarToXY = (cx, cy, r, angleDeg) => ({ x: cx + r * Math.cos(toRad(angleDe
 const donutSegmentPath = (cx, cy, r_inner, r_outer, startAngle, endAngle) => {
   const s1 = polarToXY(cx, cy, r_outer, startAngle), e1 = polarToXY(cx, cy, r_outer, endAngle), s2 = polarToXY(cx, cy, r_inner, endAngle), e2 = polarToXY(cx, cy, r_inner, startAngle);
   const large = endAngle - startAngle > 180 ? 1 : 0;
-  return [`M ${s1.x.toFixed(2)} ${s1.y.toFixed(2)}`, `A ${r_outer} ${r_outer} 0 ${large} 1 ${e1.x.toFixed(2)} ${e1.y.toFixed(2)}`, `L ${s2.x.toFixed(2)} ${s2.y.toFixed(2)}`, `A ${r_inner} ${r_inner} 0 ${large} 0 ${e2.x.toFixed(2)} ${e2.y.toFixed(2)}`, "Z"].join
-  (" ");
+    return [`M ${s1.x.toFixed(2)} ${s1.y.toFixed(2)}`, `A ${r_outer} ${r_outer} 0 ${large} 1 ${e1.x.toFixed(2)} ${e1.y.toFixed(2)}`, `L ${s2.x.toFixed(2)} ${s2.y.toFixed(2)}`, `A ${r_inner} ${r_inner} 0 ${large} 0 ${e2.x.toFixed(2)} ${e2.y.toFixed(2)}`, "Z"].join(" ");
 };
 
 const ARC_START = 135, ARC_SWEEP = 270, SEG_GAP_DEG = 3, CX = 110, CY = 110, R_TRACK = 84, R_INNER = 56;
@@ -809,7 +764,6 @@ export const AnswerConfidenceArc = ({ questions }) => {
   }), [questions]);
 
   const n = segments.length;
-  if (n === 0) return <div style={CS.emptyState}>No questions to display.</div>;
   const totalGapDeg = SEG_GAP_DEG * n;
   const segDeg = (ARC_SWEEP - totalGapDeg) / n;
   const evaluated = segments.filter(s => s.hasScore && !s.skipped);
@@ -831,11 +785,13 @@ export const AnswerConfidenceArc = ({ questions }) => {
     if (strong === evaluated.length) return { text: "Every arc segment filled near the top. Strong across the board.", accent: C.green };
     if (weak > evaluated.length / 2) return { text: `More than half the arc is in the shallow tier — ${weak} answers below 60.`, accent: C.red };
     return { text: `${strong} full arc${strong === 1 ? "" : "s"}, ${weak} shallow.`, accent: C.blue500 };
-  }, [evaluated, mcqAcc, openAvg]);
+  }, [evaluated.length, mcqAcc, openAvg]);
 
   const hovSeg = hoveredIdx !== null ? segments[hoveredIdx] : null;
   const handleMouseMove = useCallback((e, idx) => { const rect = svgRef.current?.getBoundingClientRect(); if (!rect) return; setHoveredIdx(idx); setTooltipXY({ x: e.clientX - rect.left, y: e.clientY - rect.top }); }, []);
   const SVG_SIZE = 220;
+
+  if (n === 0) return <div style={CS.emptyState}>No questions to display.</div>;
 
   const tierRows = [
     { label: "80–100 · strong", color: C.green,   count: evaluated.filter(s => s.score >= 80).length },
@@ -1331,7 +1287,7 @@ const CaptionBlock = ({ captions, accentColor }) => {
   );
 };
 
-const ResultHero = ({ result, navigate, onCopy, copied, onDownloadImage, downloading }) => {
+const ResultHero = ({ result, navigate, onCopy, copied }) => {
   const score = result.score, v = getVerdict(score), trendDelta = result.trendDelta, hasTrend = trendDelta != null && result.scoreHistory?.length >= 2, grade = getGrade(score), reveal = useSequentialReveal();
   const captions = [
     { icon: "📊", tag: "Session insight", headline: score >= 80 ? "Strong fundamentals across the board." : score >= 60 ? "Foundation is there — edges need work." : "Clear gaps identified. Use them as a roadmap.", body: score >= 80 ? "Your answers show consistency and depth. Now isolate weak spots." : score >= 60 ? "You're in range. A few targeted reps will push you to the next tier." : "Every weak answer is a specific, fixable thing. Start there." },
@@ -1379,7 +1335,7 @@ const ResultHero = ({ result, navigate, onCopy, copied, onDownloadImage, downloa
     </section>
   );
 };
-ResultHero.propTypes = { result: PropTypes.object.isRequired, navigate: PropTypes.func.isRequired, onCopy: PropTypes.func.isRequired, copied: PropTypes.bool.isRequired, onDownloadImage: PropTypes.func.isRequired, downloading: PropTypes.bool.isRequired };
+ResultHero.propTypes = { result: PropTypes.object.isRequired, navigate: PropTypes.func.isRequired, onCopy: PropTypes.func.isRequired, copied: PropTypes.bool.isRequired };
 
 // ─── Global styles ────────────────────────────────────────────────────────────
 
@@ -1430,11 +1386,16 @@ const S = {
 // ─── Result (main) ────────────────────────────────────────────────────────────
 
 const Result = () => {
+  const sessionIdRef = useRef(null);
+if (sessionIdRef.current === null) {
+  sessionIdRef.current = Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
   const location = useLocation();
   const navigate = useNavigate();
-  const result   = location.state?.result;
+  const result = location.state?.result || location.state;
 
-  const [copied,      setCopied]      = useState(false);
+  const [copied,setCopied]      = useState(false);
   const [downloading, setDownloading] = useState(false);
   const shareCardRef = useRef(null);
 
@@ -1533,7 +1494,7 @@ const Result = () => {
               <span style={S.mono}>mockmate · post-interview debrief</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {sessionId && <span style={S.mono}>session {sessionId}</span>}
+              {sessionId && <span style={S.mono}>session {sessionIdRef.current}</span>}
               <span style={{ color: C.borderMd }}>·</span>
               <span style={S.mono}>{new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).toLowerCase()}</span>
             </div>
@@ -1601,3 +1562,4 @@ const Result = () => {
 };
 
 export default Result;
+

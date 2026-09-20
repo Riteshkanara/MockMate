@@ -39,6 +39,9 @@ const RouteProgressBar = () => {
 
   const clear = () => timers.current.forEach(clearTimeout);
 
+  // This effect intentionally calls setState synchronously on mount to reset
+  // the progress bar — it is an animation sequencer, not a data-sync effect.
+   
   useEffect(() => {
     clear();
     setVisible(true);
@@ -52,7 +55,7 @@ const RouteProgressBar = () => {
       }, 620),
     ];
     return clear;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [location.pathname]);
 
   if (!visible) return null;

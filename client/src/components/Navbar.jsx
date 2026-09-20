@@ -1136,13 +1136,7 @@ const Navbar = () => {
   if (HIDDEN_ROUTES.includes(location.pathname)) return null;
   const isActive = (path) => location.pathname === path;
 
-  const closeAll = () => {
-    setDropOpen(false);
-    setBellOpen(false);
-    setGoalOpen(false);
-    setStatsOpen(false);
-  };
-
+  
   const DROPDOWN_ITEMS = [
     { icon: 'clock', label: 'Interview history', path: '/history' },
   ];

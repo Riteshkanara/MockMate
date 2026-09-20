@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useEffect, useMemo, useState, useRef} from "react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -176,20 +176,6 @@ AnimatedRing.propTypes = {
   strokeWidth: PropTypes.number,
 };
 
-// — Score-tier Helpers
-const getTier = (s) => {
-  const n = Number(s) || 0;
-  if (n >= 80) return { label: 'Mastered', color: C.green,  glow: 'rgba(5,150,105,.30)',  bg: C.greenTint, key: 'mastered' };
-  if (n >= 60) return { label: 'Solid',    color: C.blue500, glow: 'rgba(26,110,255,.28)', bg: C.blue50,    key: 'solid'    };
-  if (n >= 40) return { label: 'Building', color: C.amber,   glow: 'rgba(217,119,6,.28)', bg: C.amberTint, key: 'building' };
-  return         { label: 'Weak',    color: C.red,    glow: 'rgba(220,38,38,.30)',  bg: C.redTint,   key: 'weak'     };
-};
-
-const getTrendLabel = (t) => {
-  if (!t || t === 0) return { icon: '→', color: C.muted,  word: 'Stable' };
-  if (t > 0)         return { icon: '↑', color: C.green,  word: `+${t} pts` };
-  return               { icon: '↓', color: C.red,    word: `${t} pts` };
-};
 
 
 // — SessionOrderCard

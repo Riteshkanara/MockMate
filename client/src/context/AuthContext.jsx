@@ -1,5 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-
 import API_BASE from '../config/api.js';
 import { createContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
@@ -84,7 +83,7 @@ export const AuthProvider = ({ children }) => {
                 method: 'POST',
                 credentials: 'include',
             });
-        } catch (_) {
+        } catch  {
             // Ignore logout network errors
         }
 

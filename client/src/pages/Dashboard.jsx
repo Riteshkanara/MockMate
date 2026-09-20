@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import useAuth from '../hooks/useAuth';
 import { getDashboardAnalytics, startInterview, fixBadges } from '../Services/interviewService';
-import { getShareLink } from '../Services/profileServices';
 import PageLoader from '../components/PageLoader';
 import Button from '../components/Button';
 import { C, F } from '../styles/token';
@@ -61,8 +60,6 @@ const ALL_TIERS = [
   { label: '₹20 LPA+',   minIRS: 80 },
 ];
 
-const clamp  = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(v || 0)));
-const ewma   = (values, alpha = 0.35) => !values.length ? 0 : values.reduce((acc, v, i) => i === 0 ? v : alpha * v + (1 - alpha) * acc, values[0]);
 const stdDev = (values) => {
   if (values.length < 2) return 0;
   const m = values.reduce((a, v) => a + v, 0) / values.length;
@@ -107,6 +104,11 @@ const useLiveClock = () => {
   }, []);
   return now;
 };
+
+// Stable session ID generated once per mount — lives outside render so it is
+// never re-created on re-renders and never calls Math.random() during render.
+const generateSessionId = () =>
+  Math.random().toString(36).slice(2, 8).toUpperCase();
 
 class SectionBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false }; }
@@ -253,13 +255,13 @@ UnlockedTrophyBtn.propTypes = {
   onClick: PropTypes.func.isRequired,
 };
 
-const Toast = ({ toast }) => toast ? (
+const ToastNotification = ({ toast }) => toast ? (
   <div role="status" aria-live="polite" style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: toast.type === 'error' ? C.red : C.text, color: '#fff', padding: '11px 20px', borderRadius: 12, fontWeight: 700, fontSize: 13, zIndex: 9999, pointerEvents: 'none', fontFamily: F.body, boxShadow: `0 8px 28px ${toast.type === 'error' ? 'rgba(220,38,38,0.3)' : 'rgba(15,26,53,0.3)'}`, animation: 'fadeUp 0.22s ease' }}>
     {toast.msg}
   </div>
 ) : null;
 
-Toast.propTypes = { toast: PropTypes.object };
+ToastNotification.propTypes = { toast: PropTypes.object };
 
 const RailStat = ({ label, value, unit, sub, color, onClick }) => (
   <div style={{ ...S.railCell, cursor: onClick ? 'pointer' : 'default' }} className="mm-rail-cell" onClick={onClick}>
@@ -330,6 +332,12 @@ const Dashboard = () => {
   const navigate  = useNavigate();
   const clock     = useLiveClock();
 
+  // Session ID is stable: generated once on mount, never during render.
+  const sessionIdRef = useRef(null);
+  if (sessionIdRef.current === null) {
+    sessionIdRef.current = generateSessionId();
+  }
+
   const [dashStats,  setDashStats]  = useState(null);
   const [analytics,  setAnalytics]  = useState(null);
   const [loading,    setLoading]    = useState(true);
@@ -338,6 +346,7 @@ const Dashboard = () => {
   const [starting,   setStarting]   = useState(false);
   const [coachOpen,  setCoachOpen]  = useState(false);
   const [toast,      setToast]      = useState(null);
+  const [fixingBadges, setFixingBadges] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -370,8 +379,6 @@ const Dashboard = () => {
     } catch (e) { console.error('Start interview:', e); }
     finally { setStarting(false); }
   }, [navigate]);
-
-  const [fixingBadges, setFixingBadges] = useState(false);
 
   const handleFixBadges = useCallback(async () => {
     setFixingBadges(true);
@@ -433,7 +440,7 @@ const Dashboard = () => {
   const weakestDim   = [...dimWithData].sort((a, b) => a.score - b.score)[0];
   const fixTarget    = useMemo(() => topROITarget(topicPerformance, dimensionProfile), [topicPerformance, dimensionProfile]);
 
-  const PCT_THRESHOLDS = { pct_50: 50, pct_25: 25, pct_10: 10, pct_5: 5 };
+  const PCT_THRESHOLDS = useMemo(() => ({ pct_50: 50, pct_25: 25, pct_10: 10, pct_5: 5 }), []);
   const percentile = analytics?.percentile ?? null;
 
   const badges = useMemo(() => {
@@ -448,7 +455,7 @@ const Dashboard = () => {
       const live = byId[def.id];
       return { ...def, unlocked: live?.unlocked ?? false, progress: live?.progress ?? null, meta: live?.meta ?? null };
     });
-  }, [badgesRaw, percentile]);
+  }, [badgesRaw, percentile, PCT_THRESHOLDS]);
 
   const unlockedCount = badges.filter(b => b.unlocked).length;
   const nextBadge = useMemo(() => {
@@ -456,15 +463,13 @@ const Dashboard = () => {
     return locked.sort((a, b) => (b.progress || 0) - (a.progress || 0))[0] || null;
   }, [badges]);
 
-  const sessionId = useMemo(() => Math.random().toString(36).slice(2, 8).toUpperCase(), []);
-
   if (loading)   return <PageLoader />;
   if (loadError) return <LoadError onRetry={handleRetry} retrying={retrying} />;
 
   return (
     <div style={S.page} className="mm-page">
       <GlobalStyles />
-      <Toast toast={toast} />
+      <ToastNotification toast={toast} />
 
       <AICoachDrawer
         open={coachOpen} onClose={() => setCoachOpen(false)}
@@ -482,7 +487,7 @@ const Dashboard = () => {
               <span style={S.mono}>mockmate readiness terminal</span>
             </div>
             <div style={S.stripR} className="mm-strip-r">
-              <span style={S.mono}>session {sessionId}</span>
+              <span style={S.mono}>session {sessionIdRef.current}</span>
               <span style={{ color: C.borderMd }}>·</span>
               <span style={S.mono}>{clock.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toLowerCase()} {clock.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
             </div>
@@ -605,7 +610,7 @@ const Dashboard = () => {
 
           <AnimatedSection delay={0}>
             <SectionBoundary>
-              <BadgeShowcase badges={badges} unlockedCount={unlockedCount} nextBadge={nextBadge} onFixBadges={handleFixBadges} />
+              <BadgeShowcase badges={badges} unlockedCount={unlockedCount} nextBadge={nextBadge} onFixBadges={handleFixBadges} fixingBadges={fixingBadges} />
             </SectionBoundary>
           </AnimatedSection>
 

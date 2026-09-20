@@ -229,9 +229,6 @@ const Interview = () => {
     return () => { mountedRef.current = false; };
   }, []);
 
-  useEffect(() => {
-  window.scrollTo({ top: 183, behavior: 'smooth' });
-}, []);
 
   useEffect(() => {
     let rafId;
@@ -292,7 +289,9 @@ const Interview = () => {
   }, [isSubmitted]);
 
   useEffect(() => {
+    if (sessionStarted) {
     window.scrollTo({ top: 183, behavior: 'smooth' });
+  }
     setTextAnswer('');
     textAnswerRef.current  = '';
     answerIndexRef.current = null;
@@ -328,7 +327,7 @@ const Interview = () => {
     return () => clearTimeout(id);
   }, [sessionStarted, currentQuestion?.id, isObjective, isSubmitted]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   useEffect(() => {
     if (!sessionStarted || !currentQuestion || isSubmitted || isLoading || !timerActive || transitionRef.current) {
       return undefined;
@@ -354,7 +353,7 @@ const Interview = () => {
     return () => window.clearInterval(timerId);
   }, [sessionStarted, currentQuestion?.id, isSubmitted, isLoading, timerActive]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   useEffect(() => {
     if (!sessionStarted || !currentQuestion || isSubmitted || isLoading || !timerActive) return undefined;
     if (secondsLeft > 0) return undefined;

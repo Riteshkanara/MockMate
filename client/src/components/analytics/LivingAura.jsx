@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { memo, useState, useEffect, useMemo, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { C as CT, F } from '../../styles/token';
 
@@ -53,6 +53,10 @@ function LivingAura({ data: radarData, irs, scoreTrend = [], onDrillDimension, c
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
+
+  const nowRef = useRef(Date.now());
+
+  useEffect(() => { nowRef.current = Date.now(); }, [scoreTrend]);
 
   const ghostScores = useMemo(() => {
     const now   = Date.now();
@@ -239,4 +243,4 @@ function LivingAura({ data: radarData, irs, scoreTrend = [], onDrillDimension, c
   );
 }
 
-export default React.memo(LivingAura);
+export default memo(LivingAura);

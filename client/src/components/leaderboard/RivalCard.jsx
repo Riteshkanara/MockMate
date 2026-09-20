@@ -1,15 +1,7 @@
 import PropTypes from 'prop-types';
-import { F, C } from '../leaderboard/tokens';
+import { C } from '../leaderboard/tokens';
 import S from '../leaderboard/styles';
 
-const DIMENSION_TO_TOPIC = {
-  technical: 'DSA',
-  problemSolving: 'DSA',
-  communication: 'HR',
-  behavioral: 'HR',
-  design: 'System Design',
-  fundamentals: 'OS',
-};
 
 const RivalCard = ({
   rival,

@@ -84,21 +84,6 @@ const buildTopicSparks = sessions => {
   return map;
 };
 
-const MODE_LABELS = {
-  quick: 'Quick Interview',
-  full: 'Full Interview',
-  company: 'Company Interview',
-  topic: 'Topic Practice',
-  challenge: 'Challenge',
-  mcq: 'MCQ Interview',
-  aptitude: 'Aptitude Interview',
-  mixed: 'Mixed Assessment',
-};
-
-const MODE_ICONS = {
-  quick: '⚡', full: '🎯', company: '🏢', topic: '📚',
-  challenge: '🔥', mcq: '☑', aptitude: '◈', mixed: '✦',
-};
 
 const getModeLabel = mode => {
   if (!mode) return 'Mock Interview';

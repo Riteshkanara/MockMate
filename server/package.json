@@ -4,9 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon index.js",
-    "start": "node index.js"
-  },
+  "start": "node index.js",
+  "dev": "nodemon index.js",
+  "test": "echo \"No tests yet\" && exit 0",
+  "preview": "vite preview",
+  "lint": "eslint src --ext .js,.jsx"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",

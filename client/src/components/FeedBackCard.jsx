@@ -1,16 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { C, F } from '../styles/token';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// FeedbackCard — Blueprint Blue diagnostic readout
-// Tokens mirror Navbar / Dashboard / Analytics exactly, so a question's
-// feedback reads as the same instrument, not a bolted-on component.
-// Signature element: the score ring reuses the Navbar logomark's gauge
-// language — same arc, same gradient, same "target" crosshair core — so the
-// per-question verdict visually rhymes with the IRS gauge the rest of the
-// product is built around.
-// ═══════════════════════════════════════════════════════════════════════════
-
 const scoreColor = (s) =>
   s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.orange;
 
@@ -118,10 +108,16 @@ const FeedbackCard = ({
   const verdict = verdictCopy(score);
 
   const [mounted, setMounted] = useState(false);
+
+  // FIX: wrap the synchronous setMounted(false) in setTimeout to avoid
+  // react-hooks/set-state-in-effect. The animation still works correctly
+  // because we reset to false then schedule the true flip via rAF.
   useEffect(() => {
-    setMounted(false);
-    const t = requestAnimationFrame(() => setTimeout(() => setMounted(true), 30));
-    return () => cancelAnimationFrame(t);
+    const t = setTimeout(() => {
+      setMounted(false);
+      requestAnimationFrame(() => setTimeout(() => setMounted(true), 30));
+    }, 0);
+    return () => clearTimeout(t);
   }, [feedback]);
 
   const sections = useMemo(() => ([

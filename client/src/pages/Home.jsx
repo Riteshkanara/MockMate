@@ -1,5 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef} from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import API_BASE from '../config/api.js';
@@ -137,22 +136,6 @@ const useCountUp = (target, duration = 1600, start = false) => {
   return val;
 };
 
-// ─── useScrollReveal hook ─────────────────────────────────────────────────────
-const useScrollReveal = () => {
-  useEffect(() => {
-    const els = document.querySelectorAll('[data-reveal]');
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach(e => {
-        if (e.isIntersecting) {
-          e.target.classList.add('mm-revealed');
-          io.unobserve(e.target);
-        }
-      });
-    }, { threshold: 0.12 });
-    els.forEach(el => io.observe(el));
-    return () => io.disconnect();
-  }, []);
-};
 
 // ─── Aurora Particle Canvas ───────────────────────────────────────────────────
 const AuroraCanvas = () => {
@@ -385,7 +368,7 @@ const useTypewriter = (text, speed = 28, active = true) => {
 };
 
 // ─── Dark glassmorphism session card (hero) ───────────────────────────────────
-const DemoSessionCard = ({ onStart }) => {
+const DemoSessionCard = () => {
   const [idx,  setIdx]  = useState(0);
   const [phase, setPhase] = useState('typing'); // 'typing' | 'showing' | 'fading'
 

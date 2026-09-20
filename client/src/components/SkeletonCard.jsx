@@ -54,10 +54,10 @@ const SkeletonCard = ({
         display: 'flex', gap: 20, alignItems: 'center',
         ...style,
       }}>
-        <div style={{ width: 52, height: 52, borderRadius: 14, background: C.bgDeep, flexShrink: 0,
-          backgroundSize: '400px 100%', animation: 'mm-shimmer 1.4s ease-in-out infinite',
-          background: `linear-gradient(90deg, ${C.bgDeep} 25%, ${C.border} 50%, ${C.bgDeep} 75%)`,
-        }} />
+        <div style={{ width: 52, height: 52, borderRadius: 14, flexShrink: 0,
+  backgroundSize: '400px 100%', animation: 'mm-shimmer 1.4s ease-in-out infinite',
+  background: `linear-gradient(90deg, ${C.bgDeep} 25%, ${C.border} 50%, ${C.bgDeep} 75%)`,
+}} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <SkeletonLine width="40%" height={14} />
           <SkeletonLine width="70%" height={12} />

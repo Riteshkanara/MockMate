@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import PropTypes from 'prop-types';
-import { F, C } from '../leaderboard/tokens';
+import { F } from '../leaderboard/tokens';
 
 let rankRingIdSeq = 0;
 

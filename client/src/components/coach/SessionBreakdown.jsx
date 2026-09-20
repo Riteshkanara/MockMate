@@ -112,10 +112,12 @@ export const SessionBreakdown = memo(({ breakdownData, analyticsData, cacheKeys 
   const [cacheTs, setCacheTs] = useState(null);
   const inFlight = useRef(false);
 
-  useEffect(() => {
+   useEffect(() => {
     const cached = readCache(cacheKeys.debrief);
-    if (cached?.debrief) { setDebrief(cached.debrief); setDone(true); setCacheTs(cached.ts); }
-    else { setDebrief(null); setDone(false); setCacheTs(null); }
+    Promise.resolve().then(() => {
+      if (cached?.debrief) { setDebrief(cached.debrief); setDone(true); setCacheTs(cached.ts); }
+      else { setDebrief(null); setDone(false); setCacheTs(null); }
+    });
   }, [cacheKeys.debrief]);
 
   const generate = useCallback(async () => {

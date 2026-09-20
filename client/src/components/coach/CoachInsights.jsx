@@ -103,8 +103,10 @@ export const TodayCard = memo(({ analyticsData, breakdownData, blindSpots, navig
 
   useEffect(() => {
     const cached = readCache(cacheKeys.today);
-    if (cached) { setTodayPlan(cached.text); setDone(true); setCacheTs(cached.ts); }
-    else { setTodayPlan(""); setDone(false); setCacheTs(null); }
+    Promise.resolve().then(() => {
+      if (cached) { setTodayPlan(cached.text); setDone(true); setCacheTs(cached.ts); }
+      else { setTodayPlan(""); setDone(false); setCacheTs(null); }
+    });
   }, [cacheKeys.today]);
 
   const generate = useCallback(async () => {
@@ -270,8 +272,10 @@ export const WeeklyPlan = memo(({ analyticsData, navigate, cacheKeys }) => {
 
   useEffect(() => {
     const cached = readCache(cacheKeys.weekly);
-    if (cached?.plan) { setPlan(cached.plan); setDone(true); setCacheTs(cached.ts); }
-    else { setPlan(null); setDone(false); setCacheTs(null); }
+    Promise.resolve().then(() => {
+      if (cached?.plan) { setPlan(cached.plan); setDone(true); setCacheTs(cached.ts); }
+      else { setPlan(null); setDone(false); setCacheTs(null); }
+    });
   }, [cacheKeys.weekly]);
 
   const generate = useCallback(async () => {

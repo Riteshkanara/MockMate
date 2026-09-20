@@ -16,7 +16,7 @@ const propTypes = {
 };
 
 
-const ScoreSummary = ({ topicAverages, topicStatus, averageTime, totalScore }) => {
+const ScoreSummary = ({ topicAverages, topicStatus, averageTime}) => {
   const strongestTopic = [...topicAverages].sort((a, b) => b.avg - a.avg)[0];
   const weakestTopic   = [...topicAverages].sort((a, b) => a.avg - b.avg)[0];
 

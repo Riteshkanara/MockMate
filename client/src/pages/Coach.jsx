@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo, useCallback, memo, Component} from "react";
+import { useEffect, useState, useRef, useMemo, useCallback, memo} from "react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
@@ -13,8 +13,7 @@ import {
   C, F,
   COMPANIES, DIM_META, TIER_META,
   buildCacheKeys, purgeOtherUsersCache,
-  readCache, writeCache,
-  cacheAgeMinutes, trendSlope, scoreColor,
+  readCache, writeCache, trendSlope, scoreColor,
   SectionErrorBoundary,
   Spin, Eyebrow, CacheTag,
   DarkCard, LightCard,

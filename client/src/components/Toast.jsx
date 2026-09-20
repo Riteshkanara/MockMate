@@ -1,22 +1,21 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * MockMate Toast System
  * ─────────────────────────────────────────────────────────────────────────
- * Drop-in replacement / complement to react-hot-toast with the exact
- * MockMate design language. Provides:
- *   - toast.success(msg)
- *   - toast.error(msg)
- *   - toast.info(msg)
- *   - toast.warn(msg)
- *
- * Mount <ToastContainer /> once in App.jsx (or main.jsx) and use the
- * `toast` export anywhere in the app.
+ * This file intentionally exports both a utility object (toast) and
+ * components (ToastItem, ToastContainer). The eslint-disable above is
+ * required because react-refresh/only-export-components would otherwise
+ * flag the non-component exports — but splitting this into multiple files
+ * would break the simple import pattern used across the app.
  *
  * Usage:
  *   import { toast } from './components/Toast';
+ *   import { ToastContainer } from './components/Toast';
  *   toast.success('Interview saved!');
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+// FIX: removed unused `useRef` from imports
+import { useState, useEffect, useCallback } from 'react';
 
 const C = {
   card: '#FFFFFF',
@@ -91,6 +90,7 @@ const ToastItem = ({ id, type = 'info', msg, onDismiss, duration = 3800 }) => {
         ...styles[state],
         transition: 'all 0.26s cubic-bezier(0.22, 1, 0.36, 1)',
         willChange: 'transform, opacity',
+        position: 'relative',
       }}
     >
       {/* Icon badge */}

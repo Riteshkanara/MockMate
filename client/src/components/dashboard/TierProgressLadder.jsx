@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
-import { C, F } from '../../styles/token';
+import { F } from '../../styles/token';
 
 const ALL_TIERS = [
   { label: '₹3–6 LPA',   minIRS: 0,  color: '#6B7280', fill: '#E5E7EB', text: '#374151' },

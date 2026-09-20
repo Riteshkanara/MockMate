@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useState,useEffect,Component,useRef } from "react";
 import PropTypes from "prop-types";
 import { C as CT, F } from "../../styles/token";

@@ -2,9 +2,11 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import MainLoader from './components/MainLoader';
+import ServerWakeScreen from './components/ServerWakeScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
+import API_BASE from './config/api';
 
 import Home        from './pages/Home';
 import AuthCallback from './pages/AuthCallback';
@@ -39,9 +41,6 @@ const RouteProgressBar = () => {
 
   const clear = () => timers.current.forEach(clearTimeout);
 
-  // This effect intentionally calls setState synchronously on mount to reset
-  // the progress bar — it is an animation sequencer, not a data-sync effect.
-   
   useEffect(() => {
     clear();
     setVisible(true);
@@ -55,7 +54,6 @@ const RouteProgressBar = () => {
       }, 620),
     ];
     return clear;
-   
   }, [location.pathname]);
 
   if (!visible) return null;
@@ -140,27 +138,70 @@ const NotFound = () => (
   </div>
 );
 
+// ── Server wake gate — shows loading screen until /health responds ─────────
+// Max wait: 45 s. After that, shows the app anyway (server might still wake).
+const useServerReady = () => {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const poll = async () => {
+      // Give up after 45 s and show the app regardless
+      const deadline = setTimeout(() => { if (!cancelled) setReady(true); }, 45000);
+
+      const attempt = async () => {
+        if (cancelled) return;
+        try {
+          const res = await fetch(`${API_BASE}/health`, { method: 'GET' });
+          if (res.ok) {
+            clearTimeout(deadline);
+            if (!cancelled) setReady(true);
+            return;
+          }
+        } catch {
+          // server still booting — retry
+        }
+        setTimeout(attempt, 3000); // retry every 3 s
+      };
+
+      attempt();
+    };
+
+    poll();
+    return () => { cancelled = true; };
+  }, []);
+
+  return ready;
+};
+
 // ── App-level splash (first paint only) ───────────────────────────────────
 const AppLoader = ({ children }) => {
-  const [ready, setReady] = useState(false);
+  const [painted, setPainted] = useState(false);
+  const serverReady = useServerReady();
+
   useEffect(() => {
-    requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)));
+    requestAnimationFrame(() => requestAnimationFrame(() => setPainted(true)));
   }, []);
+
+  // Phase 1: first paint placeholder (two frames, sub-100ms)
+  if (!painted) {
+    return (
+      <div style={{ position:'fixed', inset:0, background:'#F0F4FF',
+        display:'flex', alignItems:'center', justifyContent:'center', zIndex:99999 }}>
+        <MainLoader />
+      </div>
+    );
+  }
+
+  // Phase 2: server is still booting — show branded wake screen
+  if (!serverReady) return <ServerWakeScreen />;
+
+  // Phase 3: server is up — fade in the app
   return (
-    <AnimatePresence>
-      {!ready ? (
-        <motion.div key="splash"
-          initial={{ opacity:1 }} exit={{ opacity:0 }} transition={{ duration:0.28 }}
-          style={{ position:'fixed', inset:0, display:'flex', alignItems:'center',
-            justifyContent:'center', background:'#F0F4FF', zIndex:99999 }}>
-          <MainLoader />
-        </motion.div>
-      ) : (
-        <motion.div key="app" initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ duration:0.18 }}>
-          {children}
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ duration:0.18 }}>
+      {children}
+    </motion.div>
   );
 };
 

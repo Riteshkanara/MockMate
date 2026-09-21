@@ -9,7 +9,6 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 
-
 const passport = require('./config/passport');
 const authRoutes = require('./routes/auth');
 const interviewRoutes = require('./routes/interview');
@@ -48,14 +47,10 @@ const interviewLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    // Only limit AI-calling routes, skip all data-fetch GETs
     if (req.method === 'GET') return true;
-
-    // POST routes that are AI-heavy
     const aiPosts = ['/interview/start', '/interview/ai-coach', '/interview/ai-freeform'];
     const isDynamicAiPost =
       /^\/interview\/[^/]+\/(answer|complete)$/.test(req.path);
-
     return !aiPosts.includes(req.path) && !isDynamicAiPost;
   },
   message: { error: 'Too many interview requests. Slow down a bit.' },
@@ -73,7 +68,19 @@ mongoose.connect(process.env.MONGODB_URI)
     console.log('Database name:', mongoose.connection.name);
   })
   .catch((err) => console.error('MongoDB connection error:', err));
-// ── Health check ──────────────────────────────────────────────────────────
+
+// ── Health check — used by UptimeRobot to prevent Render cold starts ──────
+app.get('/health', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    db: dbStatus,
+  });
+});
+
+// ── Root ──────────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'MockMate API is running' });
 });
@@ -100,8 +107,3 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-
-
-
-

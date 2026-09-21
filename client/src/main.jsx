@@ -4,6 +4,10 @@ import './index.css';
 import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
+import { wakeServer } from './config/api';
+
+// Fire immediately — warms the Render instance before the user even logs in
+wakeServer();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

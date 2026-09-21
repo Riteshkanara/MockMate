@@ -1,4 +1,27 @@
+# Dependencies — installed fresh in container
 node_modules
-npm-debug.log
+
+# Environment secrets — never in image
 .env
+.env.local
+.env.example
+
+# Git history — not needed in container
 .git
+.gitignore
+
+# Tests — not needed in production image
+__tests__
+*.test.js
+
+# Documentation
+*.md
+README*
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db

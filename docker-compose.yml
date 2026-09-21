@@ -1,32 +1,61 @@
 version: '3.8'
 
 services:
-  server:
-    build: ./server
-    ports:
-      - "5000:5000"
-    env_file: ./server/.env
-    depends_on:
-      - redis
-      - mongo
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - NODE_ENV=production
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
+  # ─── MongoDB ──────────────────────────────────────────────────────────
   mongo:
-    image: mongo:7
+    image: mongo:7-jammy
+    container_name: mockmate-mongo
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
 
+  # ─── Redis ────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: mockmate-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ─── Node Server ──────────────────────────────────────────────────────
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: mockmate-server
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./server/.env
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - PORT=5000
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+# ─── Volumes ──────────────────────────────────────────────────────────────
 volumes:
-  redis_data:
   mongo_data:
+    driver: local
+  redis_data:
+    driver: local

@@ -6,9 +6,61 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="MockMate — AI-powered mock interview platform for Indian engineering students. Practice with voice answers, get scored across 6 dimensions, and track your Interview Readiness Score." />
     <meta name="theme-color" content="#1A6EFF" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
     <title>MockMate — AI Mock Interview for Placements</title>
+
+    <!--
+      Inline critical CSS: sets the page background colour to the same value
+      used by the wake screen (#F0F2F7) from byte 0. This kills the white flash
+      completely — the user sees the right background even before React boots.
+    -->
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #F0F2F7;
+        min-height: 100vh;
+        /* Prevent FOUC on colour-scheme switch */
+        color-scheme: light;
+      }
+      #root {
+        min-height: 100vh;
+      }
+      /* Tiny centred logo shown until JS kicks in (no-JS or very slow parse) */
+      #pre-boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #F0F2F7;
+        z-index: 99999;
+        pointer-events: none;
+      }
+      #pre-boot-icon {
+        width: 54px;
+        height: 54px;
+        border-radius: 15px;
+        background: linear-gradient(135deg, #1A6EFF 0%, #3B8EFF 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        box-shadow: 0 0 0 4px rgba(26,110,255,0.10), 0 6px 20px rgba(26,110,255,0.30);
+      }
+    </style>
   </head>
   <body>
+    <!--
+      Pre-boot placeholder: visible from the very first byte until React mounts.
+      React removes this element once the app is initialised (see main.jsx).
+    -->
+    <div id="pre-boot">
+      <div id="pre-boot-icon">⚡</div>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

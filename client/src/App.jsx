@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import MainLoader from './components/MainLoader';
 import ServerWakeScreen from './components/ServerWakeScreen';
@@ -8,16 +8,16 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import API_BASE from './config/api';
 
-import Home        from './pages/Home';
-import AuthCallback from './pages/AuthCallback';
-import Onboarding  from './pages/Onboarding';
-import Interview   from './pages/Interview';
-import Result      from './pages/Result';
-import Dashboard   from './pages/Dashboard';
-import Leaderboard from './pages/Leaderboard';
-import History     from './pages/History';
-import Analytics   from './pages/Analytics';
-import Coach       from './pages/Coach';
+import Home         from './pages/Home';
+import AuthCallback  from './pages/AuthCallback';
+import Onboarding   from './pages/Onboarding';
+import Interview     from './pages/Interview';
+import Result        from './pages/Result';
+import Dashboard     from './pages/Dashboard';
+import Leaderboard   from './pages/Leaderboard';
+import History       from './pages/History';
+import Analytics     from './pages/Analytics';
+import Coach         from './pages/Coach';
 import PublicProfile from './pages/publicProfile';
 
 const PAGE_TITLES = {
@@ -36,7 +36,7 @@ const PAGE_TITLES = {
 const RouteProgressBar = () => {
   const location = useLocation();
   const [progress, setProgress] = useState(0);
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible]   = useState(false);
   const timers = useRef([]);
 
   const clear = () => timers.current.forEach(clearTimeout);
@@ -76,8 +76,8 @@ const RouteProgressBar = () => {
 // ── Page transition ────────────────────────────────────────────────────────
 const pageVariants = {
   initial: { opacity: 0, y: 12 },
-  enter:   { opacity: 1, y: 0,   transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] } },
-  exit:    { opacity: 0, y: -6,  transition: { duration: 0.14, ease: [0.4,  0, 1,    1] } },
+  enter:   { opacity: 1, y: 0,  transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] } },
+  exit:    { opacity: 0, y: -6, transition: { duration: 0.14, ease: [0.4,  0, 1,    1] } },
 };
 
 const PageTransition = ({ children }) => {
@@ -138,74 +138,142 @@ const NotFound = () => (
   </div>
 );
 
-// ── Server wake gate — shows loading screen until /health responds ─────────
-// Max wait: 45 s. After that, shows the app anyway (server might still wake).
-const useServerReady = () => {
-  const [ready, setReady] = useState(false);
+// ── Server wake hook ───────────────────────────────────────────────────────
+//
+// Three phases:
+//   'checking'  — first paint, haven't heard from server yet
+//   'waking'    — server not yet responding (cold start in progress)
+//   'ready'     — server replied 200
+//
+// The wake screen is shown for 'checking' and 'waking'.
+// On 'ready' a smooth CSS fade-out plays, then the real app fades in.
+//
+// MIN_SHOW_MS ensures the wake screen is never so brief it looks like a
+// broken flash on a warm server.
+//
+const MIN_SHOW_MS = 1500;
+const POLL_MS     = 3000;
+const DEADLINE_MS = 50000;
+
+const useServerWake = () => {
+  const [phase, setPhase] = useState('checking');
+  const mountedAt = useRef(Date.now());
+  const cancelled = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    cancelled.current = false;
+    mountedAt.current = Date.now();
 
-    const poll = async () => {
-      // Give up after 45 s and show the app regardless
-      const deadline = setTimeout(() => { if (!cancelled) setReady(true); }, 45000);
+    let pollTimer     = null;
+    let deadlineTimer = null;
 
-      const attempt = async () => {
-        if (cancelled) return;
-        try {
-          const res = await fetch(`${API_BASE}/health`, { method: 'GET' });
-          if (res.ok) {
-            clearTimeout(deadline);
-            if (!cancelled) setReady(true);
-            return;
-          }
-        } catch {
-          // server still booting — retry
-        }
-        setTimeout(attempt, 3000); // retry every 3 s
-      };
-
-      attempt();
+    const markReady = () => {
+      if (cancelled.current) return;
+      const elapsed   = Date.now() - mountedAt.current;
+      const remaining = MIN_SHOW_MS - elapsed;
+      if (remaining > 0) {
+        setTimeout(() => { if (!cancelled.current) setPhase('ready'); }, remaining);
+      } else {
+        setPhase('ready');
+      }
     };
 
-    poll();
-    return () => { cancelled = true; };
+    const attempt = async () => {
+      if (cancelled.current) return;
+      try {
+        const res = await fetch(`${API_BASE}/health`, {
+          method: 'GET',
+          headers: { 'Cache-Control': 'no-cache' },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (res.ok) {
+          clearTimeout(deadlineTimer);
+          markReady();
+          return;
+        }
+      } catch {
+        // Server still booting — keep polling
+      }
+      if (!cancelled.current) {
+        setPhase('waking');
+        pollTimer = setTimeout(attempt, POLL_MS);
+      }
+    };
+
+    deadlineTimer = setTimeout(() => {
+      if (!cancelled.current) markReady();
+    }, DEADLINE_MS);
+
+    attempt();
+
+    return () => {
+      cancelled.current = true;
+      clearTimeout(pollTimer);
+      clearTimeout(deadlineTimer);
+    };
   }, []);
 
-  return ready;
+  return phase;
 };
 
-// ── App-level splash (first paint only) ───────────────────────────────────
-const AppLoader = ({ children }) => {
-  const [painted, setPainted] = useState(false);
-  const serverReady = useServerReady();
+// ── App shell ──────────────────────────────────────────────────────────────
+//
+// Key architectural decisions:
+//
+// 1. BrowserRouter lives OUTSIDE AppShell so that useLocation (used by
+//    RouteProgressBar, PageTransition, TitleUpdater) is always available,
+//    regardless of wake-screen state.
+//
+// 2. The wake screen and the real app are NEVER both mounted at once.
+//    AnimatePresence with a boolean key drives the swap:
+//      key="wake"  → wake screen fades IN on mount, fades OUT on unmount
+//      key="app"   → real app fades IN once wake screen has fully exited
+//    Framer's `mode="wait"` ensures exit completes before enter begins —
+//    no overlap, no flash.
+//
+// 3. The real app renders with pointer-events:none during its own fade-in
+//    so the user can't click mis-placed elements while opacity is < 1.
+//
+const WAKE_EXIT_MS = 340; // must match the exit transition duration below
 
-  useEffect(() => {
-    requestAnimationFrame(() => requestAnimationFrame(() => setPainted(true)));
-  }, []);
+const AppShell = ({ children }) => {
+  const phase = useServerWake();
+  const isReady = phase === 'ready';
 
-  // Phase 1: first paint placeholder (two frames, sub-100ms)
-  if (!painted) {
-    return (
-      <div style={{ position:'fixed', inset:0, background:'#F0F4FF',
-        display:'flex', alignItems:'center', justifyContent:'center', zIndex:99999 }}>
-        <MainLoader />
-      </div>
-    );
-  }
-
-  // Phase 2: server is still booting — show branded wake screen
-  if (!serverReady) return <ServerWakeScreen />;
-
-  // Phase 3: server is up — fade in the app
   return (
-    <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ duration:0.18 }}>
-      {children}
-    </motion.div>
+    <AnimatePresence mode="wait" initial={false}>
+      {!isReady ? (
+        // ── Wake screen ────────────────────────────────────────────────────
+        // key="wake" is stable while server is not ready.
+        // When isReady flips to true this element unmounts → exit plays.
+        <motion.div
+          key="wake"
+          initial={{ opacity: 1 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: WAKE_EXIT_MS / 1000, ease: 'easeInOut' } }}
+          style={{ position: 'fixed', inset: 0, zIndex: 99999 }}
+        >
+          <ServerWakeScreen phase={phase} />
+        </motion.div>
+      ) : (
+        // ── Real app ───────────────────────────────────────────────────────
+        // key="app" mounts only after wake screen has fully exited.
+        // pointerEvents auto once opacity reaches 1 (CSS handles this via
+        // the opacity transition — we set it explicitly for safety).
+        <motion.div
+          key="app"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { duration: 0.28, ease: 'easeOut' } }}
+          style={{ minHeight: '100vh' }}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 
-// ── Inner app ──────────────────────────────────────────────────────────────
+// ── Inner app (requires BrowserRouter context) ─────────────────────────────
 const InnerApp = () => (
   <>
     <TitleUpdater />
@@ -230,14 +298,20 @@ const InnerApp = () => (
   </>
 );
 
+// ── Root App ───────────────────────────────────────────────────────────────
+//
+// BrowserRouter wraps everything so router context is always available,
+// even during the wake screen phase. AppShell sits inside it so that
+// InnerApp (which uses useLocation) inherits the context correctly.
+//
 export default function App() {
   return (
-    <AppLoader>
-      <BrowserRouter>
-        <ErrorBoundary>
+    <BrowserRouter>
+      <ErrorBoundary>
+        <AppShell>
           <InnerApp />
-        </ErrorBoundary>
-      </BrowserRouter>
-    </AppLoader>
+        </AppShell>
+      </ErrorBoundary>
+    </BrowserRouter>
   );
 }

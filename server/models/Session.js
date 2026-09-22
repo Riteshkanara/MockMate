@@ -1,6 +1,42 @@
 const mongoose = require('mongoose');
 
-// ── Question sub-schema ────────────────────────────────────────────────────
+// ── CHANGE: Added voiceMetrics to questionSchema ──────────────────────────────
+// Stores the pre-computed client-side metrics alongside the transcript.
+// All fields are optional (null when the user typed their answer instead of
+// speaking) so existing sessions and MCQ/aptitude questions are unaffected.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── voiceMetrics sub-schema ──────────────────────────────────────────────────
+const fillerWordsSchema = new mongoose.Schema({
+  total:     { type: Number, default: 0 },
+  breakdown: [{ word: String, count: Number }],
+}, { _id: false });
+
+const wpmSchema = new mongoose.Schema({
+  wpm:   { type: Number, default: 0 },
+  band:  { type: String, enum: ['tooSlow', 'ideal', 'tooFast'], default: 'ideal' },
+  label: { type: String, default: '' },
+  hint:  { type: String, default: '' },
+}, { _id: false });
+
+const answerLengthSchema = new mongoose.Schema({
+  wordCount: { type: Number, default: 0 },
+  category:  { type: String, default: '' },
+  rating:    { type: String, enum: ['tooShort', 'ideal', 'tooLong'], default: 'ideal' },
+  min:       { type: Number, default: 0 },
+  max:       { type: Number, default: 0 },
+  hint:      { type: String, default: '' },
+}, { _id: false });
+
+const voiceMetricsSchema = new mongoose.Schema({
+  fillerWords:     { type: fillerWordsSchema,   default: null },
+  wpm:             { type: wpmSchema,            default: null },
+  answerLength:    { type: answerLengthSchema,   default: null },
+  durationSeconds: { type: Number,               default: 0   },
+  recordedAt:      { type: Number,               default: null },
+}, { _id: false });
+
+// ── Question sub-schema ───────────────────────────────────────────────────────
 const questionSchema = new mongoose.Schema({
   id:                 { type: String },
   text:               { type: String, required: true },
@@ -16,9 +52,11 @@ const questionSchema = new mongoose.Schema({
   feedback:           { type: String, default: '' },
   skipped:            { type: Boolean, default: false },
   timeTaken:          { type: Number, default: 0 },
+  // NEW: stores the pre-computed speech metrics (null when no voice was used)
+  voiceMetrics:       { type: voiceMetricsSchema, default: null },
 });
 
-// ── Session schema ─────────────────────────────────────────────────────────
+// ── Session schema ─────────────────────────────────────────────────────────────
 const sessionSchema = new mongoose.Schema(
   {
     // Primary owner field — all new sessions write here.
@@ -71,8 +109,3 @@ const sessionSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model('Session', sessionSchema);
-
-
-
-
-

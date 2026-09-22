@@ -4,7 +4,7 @@ import useAuth from '../hooks/useAuth';
 import API_BASE from '../config/api.js';
 import CommandPalette from './CommandPalette';
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
+// ─── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
   bg: '#F0F4FF',
   card: '#FFFFFF',
@@ -43,11 +43,11 @@ const F = {
 };
 
 const NAV_LINKS = [
-  { label: 'Dashboard',   path: '/dashboard',   icon: 'grid'  },
-  { label: 'History',     path: '/history',     icon: 'clock' },
-  { label: 'Coach',       path: '/coach',       icon: 'chat',  badge: 'AI' },
-  { label: 'Leaderboard', path: '/leaderboard', icon: 'trophy' },
-  { label: 'Analytics',   path: '/analytics',   icon: 'chart' },
+  { label: 'Dashboard',   path: '/dashboard',   emoji: '🏠' },
+  { label: 'History',     path: '/history',     emoji: '📋' },
+  { label: 'Coach',       path: '/coach',       emoji: '🤖', badge: 'AI' },
+  { label: 'Leaderboard', path: '/leaderboard', emoji: '🏆' },
+  { label: 'Analytics',   path: '/analytics',   emoji: '📊' },
 ];
 
 const HIDDEN_ROUTES = ['/auth/callback', '/onboarding'];
@@ -61,32 +61,6 @@ const scoreColor = (s) => {
 };
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
-const NavIcon = ({ name, size = 16 }) => {
-  const common = {
-    width: size, height: size,
-    viewBox: '0 0 24 24', fill: 'none',
-    stroke: 'currentColor', strokeWidth: 2.2,
-    strokeLinecap: 'round', strokeLinejoin: 'round',
-  };
-  const paths = {
-    grid:       <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
-    clock:      <><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></>,
-    trophy:     <><path d="M8 4h8v4.5a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5.5v1.5A3.5 3.5 0 0 0 9 11"/><path d="M16 6h2.5v1.5A3.5 3.5 0 0 1 15 11"/><path d="M12 12.5V17"/><path d="M9 20h6"/><path d="M9.5 17h5"/></>,
-    chart:      <><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-4 3 2 5-7"/></>,
-    chat:       <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8A2.5 2.5 0 0 1 17.5 16H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-8Z"/><circle cx="9" cy="9.5" r="1.05" fill="currentColor" stroke="none"/><circle cx="12.5" cy="9.5" r="1.05" fill="currentColor" stroke="none"/><circle cx="16" cy="9.5" r="1.05" fill="currentColor" stroke="none"/></>,
-    mic:        <><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/><path d="M8.5 21h7"/></>,
-    logout:     <><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"/><path d="M14 8l4 4-4 4M18 12H9"/></>,
-    flame:      <><path d="M13.2 2.8c.4 3-1.1 4.7-2.7 6.2-1.9 1.8-3.6 3.4-3.6 6.2A5.2 5.2 0 0 0 12 20.4a5.3 5.3 0 0 0 5.2-5.3c0-2.7-1.5-4.7-3.2-6.5-.8-.9-1-2.5-.8-5.8Z"/><path d="M11.9 11.4c-.8 1-1.6 2-1.6 3.5a1.8 1.8 0 0 0 3.6 0c0-1.3-.8-2.4-2-3.5Z"/></>,
-    spark:      <><path d="m12 3 1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3Z"/><path d="m19 14 .6 2 1.9.9-1.9.9-.6 2-.6-2-1.9-.9 1.9-.9.6-2Z"/></>,
-    arrowRight: <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round"/>,
-    chevDown:   <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/>,
-    close:      <><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>,
-    user:       <><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></>,
-    trend:      <><path d="M4 16.5 9 11l3.5 3.5L20 7"/><path d="M15.5 7H20v4.5"/></>,
-  };
-  return <svg {...common} aria-hidden="true">{paths[name] || paths.grid}</svg>;
-};
-
 const GoogleG = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
     <path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/>
@@ -97,19 +71,47 @@ const GoogleG = ({ size = 18 }) => (
 );
 
 const Logomark = ({ size = 36 }) => (
-  <svg width={size} height={size} viewBox="0 0 42 42" fill="none" aria-hidden="true">
-    <rect width="42" height="42" rx="10" fill="#0057E8" />
-    <path
-      d="M11 30V14l10 9 10-9v16"
-      stroke="#ffffff"
-      strokeWidth="3.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
+  <svg width={size} height={size} viewBox="0 0 52 52" fill="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="mm-logo-g" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#0057E8"/>
+        <stop offset="100%" stopColor="#00C8F0"/>
+      </linearGradient>
+    </defs>
+    <rect width="52" height="52" rx="13" fill="url(#mm-logo-g)"/>
+    <rect x="1" y="1" width="50" height="50" rx="12.5" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"/>
+    <path d="M13 36V19l13 10 13-10v17" fill="none" stroke="white" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="13" cy="19" r="2.2" fill="white" opacity="0.65"/>
+    <circle cx="39" cy="19" r="2.2" fill="white" opacity="0.65"/>
+    <path d="M18 39h16" stroke="rgba(255,255,255,0.40)" strokeWidth="2" strokeLinecap="round"/>
   </svg>
 );
 
-// ─── Score Ring ───────────────────────────────────────────────────────────────
+const MicGlyph = ({ size = 17 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <rect x="8.5" y="2" width="7" height="12" rx="3.5" fill="white" opacity="0.95"/>
+    <path d="M5 12.5a7 7 0 0 0 14 0" stroke="white" strokeWidth="2" strokeLinecap="round" fill="none"/>
+    <line x1="12" y1="19.5" x2="12" y2="22" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+    <line x1="8.5" y1="22" x2="15.5" y2="22" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
+const ChevronDown = ({ size = 14, open }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+    style={{ transition: 'transform .22s cubic-bezier(.22,1,.36,1)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+    <path d="M6 9l6 6 6-6"/>
+  </svg>
+);
+
+const CloseIcon = ({ size = 13 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+  </svg>
+);
+
+// ─── Score ring ───────────────────────────────────────────────────────────────
 const ScoreRing = ({ value = 0, size = 20, strokeW = 2, id = 'sr' }) => {
   const radius = (size - strokeW * 2) / 2;
   const circ   = 2 * Math.PI * radius;
@@ -121,7 +123,7 @@ const ScoreRing = ({ value = 0, size = 20, strokeW = 2, id = 'sr' }) => {
       style={{ transform: 'rotate(-90deg)', display: 'block', flexShrink: 0 }}>
       <defs>
         <linearGradient id={`sg-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stopColor={accent} stopOpacity="0.35"/>
+          <stop offset="0%" stopColor={accent} stopOpacity="0.35"/>
           <stop offset="100%" stopColor={accent}/>
         </linearGradient>
       </defs>
@@ -143,13 +145,11 @@ const NAVBAR_CSS = `
   body { padding-top: var(--navbar-h); }
 
   @keyframes mmDropIn    { from { opacity:0; transform:translateY(-8px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
-  @keyframes mmSlideDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
   @keyframes mmSheen     { 0% { transform:translateX(-120%) skewX(-14deg); } 100% { transform:translateX(260%) skewX(-14deg); } }
-  @keyframes mmItemRise  { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
   @keyframes mmOverlayIn { from { opacity:0; } to { opacity:1; } }
-  @keyframes mmPulse     { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+  @keyframes mmItemRise  { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
 
-  /* ── Root shell ───────────────────────────────────────────── */
+  /* ── Root shell ─────────────────────────────────────────── */
   .mm-root {
     position: fixed; top: 0; left: 0; right: 0;
     z-index: 1000;
@@ -157,16 +157,17 @@ const NAVBAR_CSS = `
     pointer-events: none;
   }
 
+  /* ── Backdrop (mobile overlay) ──────────────────────────── */
   .mm-backdrop {
-    position: fixed; inset: 0; z-index: 999;
-    background: rgba(10, 22, 40, 0.38);
-    backdrop-filter: blur(3px);
-    -webkit-backdrop-filter: blur(3px);
+    position: fixed; inset: 0; z-index: 1099;
+    background: rgba(10,22,40,0.40);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     animation: mmOverlayIn .2s ease;
     pointer-events: auto; cursor: pointer;
   }
 
-  /* ── Capsule ──────────────────────────────────────────────── */
+  /* ── Capsule ────────────────────────────────────────────── */
   .mm-capsule {
     position: relative;
     width: min(1440px, 100%); margin: 0 auto;
@@ -174,37 +175,44 @@ const NAVBAR_CSS = `
     display: flex; align-items: center; min-height: 64px;
     border-radius: 20px;
     border: 1px solid rgba(205,218,246,0.85);
-    background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(36px) saturate(200%);
-    -webkit-backdrop-filter: blur(36px) saturate(200%);
+    background: rgba(255,255,255,0.94);
+    backdrop-filter: blur(40px) saturate(210%);
+    -webkit-backdrop-filter: blur(40px) saturate(210%);
     box-shadow:
-      0 1px 0 rgba(255,255,255,.95) inset,
+      0 1px 0 rgba(255,255,255,.98) inset,
       0 2px 8px rgba(0,31,107,.04),
-      0 4px 20px rgba(0,31,107,.06);
-    transition: box-shadow .4s cubic-bezier(.22,1,.36,1), background .4s ease, border-color .4s ease;
+      0 6px 24px rgba(0,31,107,.07),
+      0 0 0 1px rgba(26,110,255,.04);
+    transition: box-shadow .4s cubic-bezier(.22,1,.36,1);
     pointer-events: auto;
   }
   .mm-capsule::before {
     content: '';
-    position: absolute; left: 6%; right: 6%; top: 0;
-    height: 1px; border-radius: 999px;
-    background: linear-gradient(90deg, transparent, rgba(26,110,255,.4), rgba(0,200,240,.32), rgba(26,110,255,.4), transparent);
-    opacity: .65; pointer-events: none;
+    position: absolute; left: 5%; right: 5%; top: 0;
+    height: 1.5px; border-radius: 999px;
+    background: linear-gradient(90deg,
+      transparent, rgba(91,163,255,.60), rgba(0,200,240,.50),
+      rgba(91,163,255,.60), transparent);
+    opacity: .80; pointer-events: none;
   }
 
-  /* ── Brand ────────────────────────────────────────────────── */
+  /* ── Brand ──────────────────────────────────────────────── */
   .mm-brand {
     display: flex; align-items: center; gap: 11px;
-    text-decoration: none; padding: 5px 14px 5px 6px;
+    text-decoration: none; padding: 5px 14px 5px 5px;
     border-radius: 15px; flex-shrink: 0;
     transition: background .18s ease, transform .18s cubic-bezier(.22,1,.36,1);
   }
-  .mm-brand:hover { background: rgba(235,242,255,.7); }
-  .mm-brand:hover .mm-brand-ring { box-shadow: 0 0 0 5px rgba(26,110,255,.10); }
+  .mm-brand:hover { background: rgba(235,242,255,.75); transform: translateY(-0.5px); }
   .mm-brand:active { transform: scale(.98); }
-  .mm-brand-ring {
-    border-radius: 12px; box-shadow: 0 0 0 0 rgba(26,110,255,0);
-    transition: box-shadow .22s cubic-bezier(.22,1,.36,1); display: flex; flex-shrink: 0;
+  .mm-brand-mark {
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 8px rgba(17,98,245,.32));
+    transition: filter .3s ease, transform .25s cubic-bezier(.22,1,.36,1);
+  }
+  .mm-brand:hover .mm-brand-mark {
+    filter: drop-shadow(0 4px 14px rgba(17,98,245,.48));
+    transform: translateY(-1px) scale(1.03);
   }
   .mm-brand-word  { display: flex; flex-direction: column; gap: 3px; }
   .mm-brand-title {
@@ -212,284 +220,225 @@ const NAVBAR_CSS = `
     letter-spacing: -.035em; line-height: 1; white-space: nowrap; color: ${C.text};
   }
   .mm-brand-tag {
-    display: inline-flex; align-items: center;
-    font: 500 10.5px ${F.body}; letter-spacing: 0.1px;
-    color: ${C.muted}; white-space: nowrap; width: fit-content;
+    font: 500 10.5px ${F.body}; letter-spacing: 0.08px;
+    color: ${C.muted}; white-space: nowrap;
+  }
+  .mm-brand-ring {
+    border-radius: 12px;
+    box-shadow: 0 0 0 0 rgba(37,99,235,0), 0 2px 8px rgba(37,99,235,.18);
+    transition: box-shadow .22s, transform .22s cubic-bezier(.22,1,.36,1);
+    display: flex; flex-shrink: 0;
+  }
+  .mm-brand:hover .mm-brand-ring {
+    box-shadow: 0 0 0 5px rgba(37,99,235,.10), 0 6px 16px rgba(37,99,235,.24);
+    transform: translateY(-1px);
   }
 
-  /* ── Desktop nav pill track ───────────────────────────────── */
+  /* ── Desktop nav pill track ─────────────────────────────── */
   .mm-nav {
     flex: 1; display: flex; align-items: center; justify-content: center;
     min-width: 0; padding: 0 14px; gap: 8px;
   }
   .mm-nav-track {
     position: relative; display: flex; align-items: center;
-    gap: 2px; padding: 4px; border-radius: 14px;
-    background: rgba(244,248,255,.75); border: 1px solid rgba(210,222,248,.55);
-    box-shadow: inset 0 1px 2px rgba(0,31,107,.03);
+    gap: 1px; padding: 4px; border-radius: 14px;
+    background: rgba(244,248,255,.85);
+    border: 1px solid rgba(210,222,248,.65);
+    box-shadow: inset 0 1px 2px rgba(0,31,107,.05);
     overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
   }
   .mm-nav-track::-webkit-scrollbar { display: none; }
   .mm-pill {
-    position: absolute; top: 50%; height: 38px;
+    position: absolute; top: 50%; height: 34px;
     border-radius: 10px; transform: translateY(-50%);
-    background: linear-gradient(160deg, rgba(110,168,255,.22) 0%, rgba(26,110,255,.13) 45%, rgba(0,68,196,.10) 100%);
-    border: 1px solid rgba(26,110,255,.30);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.6), inset 0 -1px 0 rgba(26,110,255,.12), 0 3px 16px rgba(26,110,255,.20), 0 0 0 1px rgba(26,110,255,.06);
+    background: linear-gradient(155deg, rgba(91,163,255,.18) 0%, rgba(37,99,235,.11) 100%);
+    border: 1px solid rgba(59,130,246,.24);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.70), 0 2px 8px rgba(59,130,246,.14);
     pointer-events: none; overflow: hidden;
     transition: left .42s cubic-bezier(.22,1,.36,1), width .42s cubic-bezier(.22,1,.36,1), opacity .2s ease;
   }
-  .mm-pill::before {
-    content: ''; position: absolute; inset: 0;
-    background: linear-gradient(180deg, rgba(255,255,255,.42) 0%, rgba(255,255,255,0) 55%);
-    border-radius: inherit; pointer-events: none;
-  }
   .mm-pill::after {
-    content: ''; position: absolute; left: 20%; right: 20%; bottom: 0;
-    height: 1.5px; border-radius: 999px; background: ${C.blue400};
-    box-shadow: 0 0 8px rgba(26,110,255,.55);
+    content: ''; position: absolute; left: 22%; right: 22%; bottom: 0;
+    height: 1.5px; border-radius: 999px;
+    background: linear-gradient(90deg, #0057E8, #00C8F0);
+    box-shadow: 0 0 6px rgba(0,87,232,.45);
   }
   .mm-link {
     position: relative; z-index: 2;
     display: inline-flex; align-items: center; justify-content: center;
-    gap: 6px; height: 38px; flex: 1 1 auto; min-width: 80px; padding: 0 14px;
-    border: none; border-radius: 10px; background: transparent; color: ${C.muted};
-    text-decoration: none; font: 500 13px ${F.body}; letter-spacing: -.008em;
+    gap: 5px; height: 34px; flex: 1 1 auto;
+    min-width: 0; padding: 0 11px;
+    border: none; border-radius: 10px;
+    background: transparent; color: ${C.muted};
+    text-decoration: none; font: 500 12.5px ${F.body}; letter-spacing: -.010em;
     white-space: nowrap; cursor: pointer;
-    transition: color .18s ease, background .18s ease, transform .18s cubic-bezier(.22,1,.36,1);
+    transition: color .15s ease, background .15s ease, transform .15s cubic-bezier(.22,1,.36,1);
   }
-  .mm-link:hover:not(.active) { color: ${C.sub}; background: rgba(255,255,255,.55); transform: translateY(-0.5px); }
-  .mm-link:active  { transform: translateY(0) scale(.98); }
-  .mm-link.active  { color: ${C.blue600}; font-weight: 700; }
+  .mm-link:hover:not(.active) { color: ${C.sub}; background: rgba(255,255,255,.70); transform: translateY(-0.5px); }
+  .mm-link:active { transform: translateY(0) scale(.97); }
+  .mm-link.active { color: #2563EB; font-weight: 650; }
+  .mm-link-emoji { font-size: 13px; line-height: 1; transition: transform .15s ease; }
+  .mm-link.active .mm-link-emoji, .mm-link:hover .mm-link-emoji { transform: scale(1.12); }
   .mm-link-badge {
-    padding: 1.5px 5px; border: 1px solid rgba(0,173,224,.22); border-radius: 4px;
-    color: ${C.cyan500}; background: rgba(0,200,240,.07);
-    font: 700 7px ${F.mono}; letter-spacing: .3px;
+    padding: 1px 4px; border-radius: 3px;
+    font: 700 6.5px ${F.mono}; letter-spacing: .3px;
+    color: #7C3AED; background: rgba(139,92,246,.09);
+    border: 1px solid rgba(139,92,246,.24);
   }
-  .mm-link.active .mm-link-badge { color: ${C.blue600}; border-color: rgba(26,110,255,.3); background: rgba(26,110,255,.08); }
+  .mm-link.active .mm-link-badge { color: #2563EB; border-color: rgba(59,130,246,.28); background: rgba(59,130,246,.10); }
 
+  /* ── Right cluster ──────────────────────────────────────── */
   .mm-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-    margin-left: auto;
-    padding-left: 10px;
-    justify-content: flex-end;
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0; margin-left: auto; padding-left: 10px; justify-content: flex-end;
   }
-  .mm-right .mm-cta {
-    margin-left: 2px;
-  }
-  .mm-right .mm-profile-wrap {
-    margin-left: 1px;
-  }
-  .mm-sep {
-    width: 1px; height: 22px; background: rgba(210,222,248,.8);
-    border-radius: 999px; flex-shrink: 0; margin: 0 2px;
-  }
+  .mm-sep { width: 1px; height: 22px; background: rgba(210,222,248,.9); border-radius: 999px; flex-shrink: 0; margin: 0 2px; }
 
-  /* ── Stats chip ───────────────────────────────────────────── */
+  /* ── Stats chip (desktop) ───────────────────────────────── */
   .mm-statschip {
     display: flex; align-items: center; gap: 0;
     height: 40px; padding: 0 3px;
-    border: 1px solid rgba(195,214,245,.9); border-radius: 13px;
-    background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(247,251,255,.9));
-    cursor: default; transition: border-color .18s ease;
+    border: 1px solid rgba(200,218,248,.9); border-radius: 13px;
+    background: linear-gradient(180deg, rgba(255,255,255,.97), rgba(247,251,255,.92));
+    box-shadow: 0 1px 3px rgba(0,31,107,.05);
+    cursor: default;
   }
   .mm-schip-seg   { display: flex; align-items: center; gap: 5px; padding: 0 10px; height: 100%; }
-  .mm-schip-label { font: 600 10px ${F.mono}; letter-spacing: .4px; text-transform: uppercase; color: ${C.muted}; line-height: 1; }
-  .mm-schip-val   { font: 700 14px ${F.display}; letter-spacing: -.04em; line-height: 1; }
+  .mm-schip-emoji { font-size: 14px; line-height: 1; }
+  .mm-schip-label { font: 600 9.5px ${F.mono}; letter-spacing: .4px; text-transform: uppercase; color: ${C.muted}; line-height: 1; }
+  .mm-schip-val   { font: 800 14px ${F.display}; letter-spacing: -.04em; line-height: 1; }
   .mm-schip-sep   { width: 1px; height: 16px; background: ${C.border}; flex-shrink: 0; }
 
-  /* ── CTA — Solid Logo-Blue, Authority-First ─────────────────────────── */
+  /* ── Desktop CTA ────────────────────────────────────────── */
   .mm-cta {
-    position: relative; overflow: hidden;
-    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
-    height: 42px; padding: 0 18px 0 6px;
-    border: 1px solid rgba(0,46,150,0.70);
-    border-radius: 12px;
-    color: #fff;
-    background: #0044C4;
-    font: 700 13px ${F.body}; letter-spacing: -.012em;
-    white-space: nowrap; cursor: pointer;
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.18),
-      inset 0 -1px 0 rgba(0,0,0,0.18),
-      0 1px 2px rgba(0,30,100,0.22),
-      0 3px 8px rgba(0,46,150,0.20);
-    transition:
-      transform .2s cubic-bezier(.22,1,.36,1),
-      box-shadow .2s ease,
-      background .18s ease;
-    flex-shrink: 0;
+    position: relative; overflow: hidden; isolation: isolate;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 44px; padding: 0 20px 0 14px;
+    border: 1px solid rgba(0,66,184,0.55); border-radius: 14px; color: #fff;
+    background: linear-gradient(135deg, #0057E8 0%, #00C8F0 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.32), 0 4px 10px rgba(0,87,232,.18), 0 8px 22px rgba(0,87,232,.18);
+    font: 700 13.5px ${F.body}; letter-spacing: -.012em;
+    white-space: nowrap; cursor: pointer; flex-shrink: 0;
+    transition: transform .22s cubic-bezier(.22,1,.36,1), box-shadow .22s ease, filter .22s ease;
   }
-
-  /* Surface sheen: white from top-left, simulates flat physical surface */
   .mm-cta::before {
-    content: '';
-    position: absolute; inset: 0;
-    border-radius: inherit;
-    background: linear-gradient(
-      160deg,
-      rgba(255,255,255,0.16) 0%,
-      rgba(255,255,255,0.00) 55%
-    );
-    pointer-events: none;
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,0) 55%);
   }
-
-  /* Sweep sheen on hover — single white band, no hue shift */
   .mm-cta::after {
-    content: '';
-    position: absolute; top: -20%; bottom: -20%; left: -55%;
-    width: 30%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+    content: ''; position: absolute; top: -20%; bottom: -20%; left: -55%; width: 30%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
     transform: skewX(-14deg); opacity: 0; pointer-events: none;
   }
-
-  .mm-cta:hover {
-    background: #0057E8;
-    transform: translateY(-1.5px);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.22),
-      inset 0 -1px 0 rgba(0,0,0,0.14),
-      0 0 0 3px rgba(0,87,232,0.14),
-      0 4px 14px rgba(0,46,150,0.28),
-      0 8px 24px rgba(0,46,150,0.18);
+  .mm-cta:hover { transform: translateY(-2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.32), 0 8px 24px rgba(0,87,232,.34); filter: brightness(1.04); }
+  .mm-cta:hover::after { opacity: 1; animation: mmSheen .7s ease-out; }
+  .mm-cta:active { transform: translateY(0) scale(.983); filter: brightness(.94); }
+  .mm-cta-glyph {
+    position: relative; z-index: 1; display: flex; flex-shrink: 0;
+    filter: drop-shadow(0 1px 2px rgba(0,40,120,.30));
+    transition: transform .22s cubic-bezier(.22,1,.36,1);
   }
-  .mm-cta:hover::after { opacity: 1; animation: mmSheen .75s ease-out; }
+  .mm-cta:hover .mm-cta-glyph { transform: translateY(-.5px) scale(1.10); }
+  .mm-cta-text { position: relative; z-index: 1; text-shadow: 0 1px 3px rgba(0,40,120,.18); }
 
-  .mm-cta:active {
-    background: #002E96;
-    transform: translateY(0) scale(.98);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.12),
-      inset 0 2px 6px rgba(0,0,0,0.14),
-      0 0 0 3px rgba(0,87,232,0.10),
-      0 1px 4px rgba(0,30,100,0.20);
-  }
-
-  .mm-cta-icon {
-    position: relative; z-index: 1;
-    width: 28px; height: 28px;
+  /* ── Desktop goal ring button ───────────────────────────── */
+  .mm-util-wrap { position: relative; flex-shrink: 0; }
+  .mm-util-btn {
+    position: relative; width: 40px; height: 40px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: 8px; color: #fff;
-    background: rgba(255,255,255,0.15);
-    border: 1px solid rgba(255,255,255,0.22);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.28),
-      0 1px 4px rgba(0,20,80,0.18);
-    flex-shrink: 0;
-    transition: transform .2s cubic-bezier(.22,1,.36,1), background .18s ease;
+    border: 1.5px solid rgba(195,214,245,.9); border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(247,251,255,.9));
+    color: ${C.sub}; cursor: pointer;
+    transition: border-color .18s, background .18s, box-shadow .18s, transform .18s cubic-bezier(.22,1,.36,1), color .18s;
   }
-  .mm-cta:hover .mm-cta-icon {
-    transform: scale(1.06) rotate(-2deg);
-    background: rgba(255,255,255,0.22);
-  }
-  .mm-cta-text { position: relative; z-index: 1; }
+  .mm-util-btn:hover { color: #3B82F6; border-color: rgba(59,130,246,.42); background: #fff; box-shadow: 0 4px 14px rgba(59,130,246,.16); transform: translateY(-1.5px); }
+  .mm-util-btn:active { transform: scale(.94); }
+  .mm-util-btn[aria-expanded="true"] { border-color: rgba(59,130,246,.55); color: #3B82F6; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
 
-  /* ── Profile avatar button — matches capsule material system ─────────── */
-  .mm-profile-wrap {
-    position: relative;
-    flex-shrink: 0;
+  /* Goal popover */
+  .mm-popover {
+    position: absolute; top: calc(100% + 12px); right: 0; width: 300px;
+    border: 1px solid rgba(210,222,248,.95); border-radius: 18px;
+    background: rgba(255,255,255,.99);
+    backdrop-filter: blur(28px) saturate(190%);
+    box-shadow: 0 24px 58px rgba(0,31,107,.18), 0 6px 16px rgba(0,31,107,.08), inset 0 1px 0 rgba(255,255,255,.96);
+    animation: mmDropIn .2s cubic-bezier(.22,1,.36,1); z-index: 100; overflow: hidden;
   }
+  .mm-popover-inner { border-radius: 18px; overflow: hidden; background: inherit; }
+  .mm-popover-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 14px 11px; border-bottom: 1px solid ${C.border}; }
+  .mm-popover-title { font: 700 13px ${F.display}; color: ${C.text}; }
+  .mm-popover-sub   { font: 500 10.5px ${F.body}; color: ${C.muted}; margin-top: 1px; }
+  .mm-goal-body { padding: 16px 14px; display: flex; align-items: center; gap: 14px; }
+  .mm-goal-copy-title { font: 700 14px ${F.display}; color: ${C.text}; }
+  .mm-goal-copy-sub   { font: 500 11.5px ${F.body}; color: ${C.muted}; margin-top: 3px; line-height: 1.4; }
+  .mm-goal-cta {
+    display: inline-flex; align-items: center; gap: 7px;
+    margin: 0 14px 14px; padding: 10px 14px; border-radius: 12px; border: none;
+    background: linear-gradient(130deg, #0057E8 0%, #00C8F0 100%);
+    color: #fff; font: 700 12.5px ${F.body}; cursor: pointer;
+    width: calc(100% - 28px); justify-content: center;
+    box-shadow: 0 4px 14px rgba(0,87,232,.28);
+    transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+  }
+  .mm-goal-cta:hover { transform: translateY(-1.5px); box-shadow: 0 8px 22px rgba(0,87,232,.38); filter: brightness(1.04); }
 
+  /* ── Desktop avatar button ──────────────────────────────── */
+  .mm-profile-wrap { position: relative; flex-shrink: 0; }
   .mm-av-btn {
-    position: relative;
-    width: 42px; height: 42px;
+    position: relative; width: 42px; height: 42px;
     display: inline-flex; align-items: center; justify-content: center;
-    padding: 6px;
-    border: 1px solid rgba(180,205,246,0.85);
-    border-radius: 13px;
-    background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(18px) saturate(180%);
-    -webkit-backdrop-filter: blur(18px) saturate(180%);
-    cursor: pointer; overflow: hidden;
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.96),
-      0 1px 3px rgba(0,31,107,0.06),
-      0 3px 10px rgba(0,31,107,0.07);
-    transition:
-      transform .2s cubic-bezier(.22,1,.36,1),
-      border-color .18s ease,
-      box-shadow .18s ease,
-      background .18s ease;
+    padding: 5px; border: 1.5px solid rgba(0,66,184,0.45); border-radius: 14px;
+    background: rgba(0,87,232,0.08); cursor: pointer; overflow: hidden;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.90), 0 2px 6px rgba(0,87,232,.12);
+    transition: transform .2s cubic-bezier(.22,1,.36,1), border-color .18s, box-shadow .18s, background .18s;
   }
-
-  /* Top-glass highlight */
   .mm-av-btn::before {
-    content: '';
-    position: absolute; inset: 0;
-    border-radius: inherit; pointer-events: none;
-    background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0));
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,.6), rgba(255,255,255,0));
   }
-
-  .mm-av-btn:hover {
-    transform: translateY(-1.5px);
-    border-color: rgba(0,68,196,0.38);
-    background: #fff;
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,1),
-      0 0 0 3px rgba(0,68,196,0.08),
-      0 4px 14px rgba(0,46,150,0.14),
-      0 8px 22px rgba(0,46,150,0.09);
-  }
-
-  .mm-av-btn:active {
-    transform: translateY(0) scale(.95);
-  }
-
-  .mm-av-btn[aria-expanded="true"] {
-    border-color: rgba(0,68,196,0.46);
-    background: #fff;
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,1),
-      0 0 0 3px rgba(0,68,196,0.10),
-      0 4px 12px rgba(0,46,150,0.12);
-  }
-
-  /* Initial tile — logo-exact blue, same material as Logomark fill */
+  .mm-av-btn:hover { transform: translateY(-1.5px); border-color: rgba(0,199,240,.60); background: rgba(0,87,232,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,1), 0 0 0 3px rgba(0,87,232,.10), 0 6px 18px rgba(0,87,232,.22); }
+  .mm-av-btn:active { transform: scale(.95); }
+  .mm-av-btn[aria-expanded="true"] { border-color: rgba(0,199,240,.55); background: rgba(0,87,232,.14); box-shadow: 0 0 0 3.5px rgba(0,87,232,.14), 0 4px 12px rgba(0,87,232,.20); }
   .mm-av-initial {
     position: relative; z-index: 2;
-    width: 28px; height: 28px;
+    width: 32px; height: 32px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: 8px;
-    background: #0057E8;
-    color: #ffffff;
-    font: 800 12px ${F.display};
-    letter-spacing: -.02em;
-    border: 1px solid rgba(0,46,150,0.30);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.22),
-      inset 0 -1px 0 rgba(0,0,0,0.12),
-      0 1px 4px rgba(0,30,100,0.22);
+    border-radius: 10px;
+    background: linear-gradient(135deg, #0057E8 0%, #00C8F0 100%);
+    color: #ffffff; font: 800 14px ${F.display}; letter-spacing: -.02em;
+    border: 1px solid rgba(0,66,184,.35);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.32), 0 2px 8px rgba(0,87,232,.30);
   }
 
-  /* ══ DESKTOP DROPDOWN ═════════════════════════════════════════════════════ */
+  /* ── Desktop Dropdown ───────────────────────────────────── */
   .mm-drop {
-    position: absolute; top: calc(100% + 10px); right: 0;
-    width: 310px;
-    border: 1px solid rgba(210,222,248,.9); border-radius: 22px;
-    background: rgba(255,255,255,.98);
-    backdrop-filter: blur(36px) saturate(200%);
-    -webkit-backdrop-filter: blur(36px) saturate(200%);
-    box-shadow: 0 0 0 1px rgba(26,110,255,.06), 0 8px 24px rgba(0,31,107,.10), 0 28px 64px rgba(0,31,107,.18), inset 0 1px 0 rgba(255,255,255,.96);
+    position: absolute; top: calc(100% + 12px); right: 0; width: 310px;
+    border: 1px solid rgba(168,216,255,.70); border-radius: 24px;
+    background: rgba(248,252,255,.98);
+    backdrop-filter: blur(48px) saturate(220%);
+    -webkit-backdrop-filter: blur(48px) saturate(220%);
+    box-shadow: 0 0 0 1px rgba(96,180,255,.12), 0 4px 16px rgba(58,154,255,.08), 0 16px 40px rgba(30,100,200,.12), 0 40px 80px rgba(0,40,140,.16), inset 0 1px 0 rgba(255,255,255,.99);
     animation: mmDropIn .22s cubic-bezier(.22,1,.36,1);
-    z-index: 100; overflow: hidden;
-    max-height: min(640px, calc(100vh - 96px));
-    display: flex; flex-direction: column;
+    z-index: 100; overflow: hidden; display: flex; flex-direction: column;
   }
-  .mm-drop-scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .mm-drop::before {
+    content: ''; position: absolute; left: 8%; right: 8%; top: 0; height: 1.5px;
+    border-radius: 999px; pointer-events: none; z-index: 2;
+    background: linear-gradient(90deg, transparent, #A8D8FF, #60B4FF, #00C8F0, #60B4FF, #A8D8FF, transparent);
+    opacity: .85;
+  }
   .mm-drop-head {
-    padding: 16px 16px 12px; border-bottom: 1px solid ${C.border};
-    background: linear-gradient(145deg, rgba(235,242,255,.6), rgba(255,255,255,.9));
+    padding: 18px 16px 16px;
+    background: linear-gradient(145deg, rgba(220,240,255,.82), rgba(235,248,255,.90), rgba(255,255,255,.99));
   }
   .mm-drop-toprow { display: flex; align-items: center; gap: 11px; }
   .mm-drop-avatar {
-    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(145deg, ${C.blue500}, ${C.blue800});
+    width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0;
+    background: linear-gradient(135deg, #0057E8 0%, #00C8F0 100%);
     display: flex; align-items: center; justify-content: center;
-    color: #fff; font: 700 16px ${F.display};
-    box-shadow: 0 3px 12px rgba(26,110,255,.28), inset 0 1px 0 rgba(255,255,255,.22);
+    color: #fff; font: 800 18px ${F.display};
+    box-shadow: 0 4px 18px rgba(0,87,232,.34), inset 0 1px 0 rgba(255,255,255,.32);
+    border: 1px solid rgba(0,66,184,.35);
   }
   .mm-drop-user-info { flex: 1; min-width: 0; }
   .mm-drop-name { font: 700 14px ${F.display}; color: ${C.text}; letter-spacing: -.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -497,586 +446,353 @@ const NAVBAR_CSS = `
   .mm-drop-close {
     width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    border: 1px solid ${C.border}; background: rgba(248,250,255,.85);
+    border: 1px solid ${C.border}; background: rgba(248,250,255,.9);
     color: ${C.muted}; cursor: pointer;
-    transition: background .14s ease, color .14s ease, border-color .14s ease;
+    transition: background .14s, color .14s, border-color .14s;
   }
-  .mm-drop-close:hover { background: ${C.redTint}; color: ${C.red}; border-color: rgba(220,38,38,.2); }
+  .mm-drop-close:hover { background: ${C.redTint}; color: ${C.red}; border-color: rgba(220,38,38,.22); }
   .mm-drop-tier {
-    display: inline-flex; align-items: center; gap: 5px;
-    margin-top: 10px; padding: 4px 10px 4px 7px; border-radius: 999px;
-    background: linear-gradient(100deg, rgba(108,92,232,.08), rgba(26,110,255,.09));
-    border: 1px solid rgba(108,92,232,.2); color: ${C.violet700};
-    font: 600 10px ${F.body}; letter-spacing: .08px;
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 12px; padding: 5px 11px 5px 7px; border-radius: 999px;
+    background: linear-gradient(100deg, rgba(168,216,255,.18), rgba(96,180,255,.16));
+    border: 1px solid rgba(100,180,255,.38); color: #1558CC;
+    font: 600 10.5px ${F.body}; letter-spacing: .06px;
   }
   .mm-drop-tier-icon {
-    width: 14px; height: 14px; display: grid; place-items: center; border-radius: 50%;
-    background: linear-gradient(135deg, ${C.violet500}, ${C.blue500}); color: #fff; flex-shrink: 0;
+    width: 16px; height: 16px; display: grid; place-items: center; border-radius: 50%;
+    background: linear-gradient(135deg, #A8D8FF, #3A9AFF); color: #fff; flex-shrink: 0; font-size: 9px;
   }
-  .mm-drop-tier b { color: ${C.blue700}; font-weight: 800; }
-  .mm-drop-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+  .mm-drop-tier b { color: #1558CC; font-weight: 800; }
+  .mm-drop-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 12px; }
   .mm-drop-stat {
-    padding: 8px 4px 7px; text-align: center;
-    border: 1px solid ${C.border}; border-radius: 11px; background: rgba(255,255,255,.9);
-    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; cursor: default;
+    padding: 10px 5px 9px; text-align: center;
+    border: 1px solid ${C.border}; border-radius: 12px; background: rgba(255,255,255,.95);
+    transition: border-color .15s, transform .15s, box-shadow .15s; cursor: default;
   }
-  .mm-drop-stat:hover { border-color: rgba(26,110,255,.26); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(26,110,255,.10); }
+  .mm-drop-stat:hover { border-color: rgba(96,180,255,.30); transform: translateY(-1.5px); box-shadow: 0 4px 14px rgba(96,180,255,.14); }
   .mm-drop-stat-val   { font: 800 15px ${F.display}; letter-spacing: -.03em; line-height: 1.1; }
   .mm-drop-stat-label { font: 600 8px ${F.body}; letter-spacing: .18px; color: ${C.muted}; margin-top: 3px; text-transform: uppercase; }
-  .mm-drop-section-label { font: 700 9.5px ${F.mono}; letter-spacing: .55px; text-transform: uppercase; color: ${C.faint}; padding: 10px 14px 5px; }
-  .mm-drop-menu { padding: 4px 6px 6px; }
-  .mm-drop-item {
-    width: 100%; display: flex; align-items: center; gap: 10px;
-    padding: 8px 10px; border: none; border-radius: 11px;
-    background: transparent; color: ${C.sub}; font: 500 13px ${F.body};
-    text-align: left; cursor: pointer; text-decoration: none;
-    transition: background .13s ease, color .13s ease, transform .13s ease;
-    animation: mmItemRise .26s cubic-bezier(.22,1,.36,1) backwards;
-  }
-  .mm-drop-item:hover  { color: ${C.blue700}; background: ${C.blue50}; transform: translateX(2px); }
-  .mm-drop-item:active { transform: translateX(2px) scale(.99); }
-  .mm-drop-item.active-page { color: ${C.blue600}; background: rgba(26,110,255,.07); font-weight: 650; }
-  .mm-drop-item-arrow { margin-left: auto; opacity: 0; transform: translateX(-3px); transition: all .14s ease; color: ${C.faint}; }
-  .mm-drop-item:hover .mm-drop-item-arrow { opacity: 1; transform: translateX(0); }
-  .mm-drop-item.active-page .mm-drop-item-arrow { opacity: .5; transform: translateX(0); }
-  .mm-drop-icon {
-    width: 30px; height: 30px; display: grid; place-items: center;
-    border: 1px solid ${C.border}; border-radius: 9px;
-    background: rgba(248,250,255,.9); flex-shrink: 0; color: ${C.sub};
-    transition: background .13s ease, border-color .13s ease, color .13s ease;
-  }
-  .mm-drop-item:hover .mm-drop-icon { background: ${C.blue50}; border-color: rgba(26,110,255,.26); color: ${C.blue600}; }
-  .mm-drop-item.active-page .mm-drop-icon { background: rgba(26,110,255,.10); border-color: rgba(26,110,255,.22); color: ${C.blue600}; }
-  .mm-drop-divider { height: 1px; background: ${C.border}; margin: 5px 10px; }
+  .mm-drop-stat-emoji { font-size: 13px; }
   .mm-drop-footer {
-    flex-shrink: 0; padding: 8px 10px 10px;
-    border-top: 1px solid rgba(210,220,245,.65);
-    background: linear-gradient(180deg, rgba(250,252,255,.97), rgba(246,249,255,.98));
+    padding: 14px 12px 14px;
+    border-top: 1px solid rgba(168,216,255,.35);
+    background: linear-gradient(180deg, rgba(245,251,255,.99), rgba(238,248,255,.99));
   }
   .mm-drop-signout {
-    width: 100%; display: flex; align-items: center; gap: 10px;
-    padding: 11px 14px; border-radius: 14px;
-    border: 1px solid rgba(220,38,38,.14);
-    background: linear-gradient(135deg, rgba(254,242,242,.9), rgba(255,248,248,.97));
-    color: ${C.red}; font: 650 13px ${F.body}; cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px;
+    padding: 12px 16px; border-radius: 13px; border: none;
+    background: linear-gradient(135deg, #EF4444 0%, #DC2626 55%, #B91C1C 100%);
+    color: #ffffff; font: 700 13.5px ${F.body}; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(185,28,28,.22), 0 6px 18px rgba(220,38,38,.20);
+    transition: transform .16s, box-shadow .16s, filter .16s;
   }
-  .mm-drop-signout:hover { background: rgba(254,226,226,.95); border-color: rgba(220,38,38,.28); transform: translateX(1.5px); box-shadow: 0 4px 14px rgba(220,38,38,.10); }
-  .mm-drop-signout:active { transform: scale(.98); }
-  .mm-drop-signout-icon {
-    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
-    display: grid; place-items: center;
-    background: rgba(220,38,38,.08); border: 1px solid rgba(220,38,38,.14); color: ${C.red};
-    transition: background .15s ease, border-color .15s ease;
-  }
-  .mm-drop-signout:hover .mm-drop-signout-icon { background: rgba(220,38,38,.14); border-color: rgba(220,38,38,.28); }
-  .mm-drop-signout-label { flex: 1; text-align: left; font-size: 13px; font-weight: 650; }
-  .mm-drop-signout-arrow { color: rgba(220,38,38,.45); transition: transform .15s ease, color .15s ease; }
-  .mm-drop-signout:hover .mm-drop-signout-arrow { transform: translateX(2px); color: ${C.red}; }
-  .mm-drop-cmd-hint {
-    display: flex; align-items: center; justify-content: center; gap: 5px;
-    padding: 6px 0 2px; font: 500 10px ${F.mono}; color: ${C.faint};
-  }
-  .mm-drop-cmd-hint kbd {
-    padding: 1px 5px; border: 1px solid ${C.border}; border-radius: 4px;
-    font: inherit; font-size: 9.5px; background: rgba(255,255,255,.8); color: ${C.muted};
-  }
+  .mm-drop-signout:hover { filter: brightness(1.06); transform: translateY(-1.5px); box-shadow: 0 4px 14px rgba(185,28,28,.30), 0 10px 26px rgba(220,38,38,.28); }
+  .mm-drop-signout:active { transform: scale(.98); filter: brightness(.94); }
 
-  /* ── Login button ─────────────────────────────────────────── */
+  /* ── Login button (guest) ───────────────────────────────── */
   .mm-login {
     display: inline-flex; align-items: center; justify-content: center; gap: 9px;
     height: 40px; padding: 0 15px 0 8px;
-    border: 1px solid rgba(26,110,255,.22); border-radius: 12px;
-    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(246,250,255,.96));
-    color: #111827 !important; text-decoration: none;
-    font: 650 13px ${F.body};
-    box-shadow: 0 2px 8px rgba(0,31,107,.05), 0 5px 14px rgba(26,110,255,.06), inset 0 1px 0 rgba(255,255,255,.96);
-    transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s ease, border-color .2s ease, background .2s ease;
+    border: 1px solid rgba(59,130,246,.24); border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255,255,255,.99), rgba(246,250,255,.97));
+    color: #111827 !important; text-decoration: none; font: 650 13px ${F.body};
+    box-shadow: 0 2px 8px rgba(0,31,107,.06), 0 5px 14px rgba(59,130,246,.07), inset 0 1px 0 rgba(255,255,255,.97);
+    transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s, border-color .2s;
     white-space: nowrap; flex-shrink: 1; min-width: 0; overflow: hidden;
   }
-  .mm-login-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .mm-login:hover { color: #111827 !important; transform: translateY(-1.5px); border-color: rgba(26,110,255,.42); background: linear-gradient(180deg, #fff, #f3f8ff); box-shadow: 0 0 0 3px rgba(26,110,255,.07), 0 10px 26px rgba(26,110,255,.16), inset 0 1px 0 rgba(255,255,255,.98); }
+  .mm-login:hover { color: #111827 !important; transform: translateY(-1.5px); border-color: rgba(59,130,246,.44); box-shadow: 0 0 0 3px rgba(59,130,246,.08), 0 10px 26px rgba(59,130,246,.17), inset 0 1px 0 rgba(255,255,255,.99); }
   .mm-login:active { transform: translateY(0) scale(.98); }
   .mm-google-wrap {
     width: 26px; height: 26px; display: grid; place-items: center;
-    border-radius: 7px; background: ${C.blue50}; border: 1px solid rgba(26,110,255,.10);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.8); flex-shrink: 0;
+    border-radius: 7px; background: ${C.blue50}; border: 1px solid rgba(59,130,246,.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.85); flex-shrink: 0;
   }
+  .mm-login-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
-  /* ── Goal ring utility ────────────────────────────────────── */
-  .mm-util-wrap { position: relative; flex-shrink: 0; }
-  .mm-util-btn {
-    position: relative; width: 40px; height: 40px;
-    display: flex; align-items: center; justify-content: center;
-    border: 1px solid rgba(195,214,245,.9); border-radius: 12px;
-    background: linear-gradient(180deg, rgba(255,255,255,.94), rgba(247,251,255,.9));
-    color: ${C.sub}; cursor: pointer;
-    transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s cubic-bezier(.22,1,.36,1), color .18s ease;
-  }
-  .mm-util-btn:hover { color: ${C.blue600}; border-color: rgba(26,110,255,.38); background: #fff; box-shadow: 0 4px 14px rgba(26,110,255,.14); transform: translateY(-1.5px); }
-  .mm-util-btn:active { transform: translateY(0) scale(.94); }
-  .mm-util-btn[aria-expanded="true"] { border-color: rgba(26,110,255,.5); color: ${C.blue600}; box-shadow: 0 0 0 3px rgba(26,110,255,.12); }
-  .mm-goal-btn { padding: 0; }
-  .mm-popover {
-    position: absolute; top: calc(100% + 12px); right: 0; width: 300px;
-    border: 1px solid rgba(210,222,248,.9); border-radius: 18px;
-    background: rgba(255,255,255,.98);
-    backdrop-filter: blur(28px) saturate(190%);
-    -webkit-backdrop-filter: blur(28px) saturate(190%);
-    box-shadow: 0 24px 58px rgba(0,31,107,.16), 0 6px 16px rgba(0,31,107,.07), inset 0 1px 0 rgba(255,255,255,.95);
-    animation: mmDropIn .2s cubic-bezier(.22,1,.36,1); z-index: 100; overflow: visible;
-    max-height: calc(100vh - 96px);
-  }
-  .mm-popover::before {
-    content: ''; position: absolute; top: -6px; right: 16px; width: 12px; height: 12px;
-    background: rgba(255,255,255,.98);
-    border-left: 1px solid rgba(210,222,248,.9); border-top: 1px solid rgba(210,222,248,.9);
-    transform: rotate(45deg); border-radius: 3px 0 0 0;
-  }
-  .mm-popover-inner { position: relative; border-radius: 18px; overflow: hidden; background: inherit; max-height: calc(100vh - 96px); overflow-y: auto; }
-  .mm-popover-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 14px 11px; border-bottom: 1px solid ${C.border}; }
-  .mm-popover-title { font: 700 13px ${F.display}; color: ${C.text}; letter-spacing: -.01em; }
-  .mm-popover-sub   { font: 500 10.5px ${F.body}; color: ${C.muted}; margin-top: 1px; }
-  .mm-goal-body { padding: 16px 14px; display: flex; align-items: center; gap: 14px; }
-  .mm-goal-ring-big { flex-shrink: 0; }
-  .mm-goal-copy-title { font: 700 14px ${F.display}; color: ${C.text}; }
-  .mm-goal-copy-sub   { font: 500 11.5px ${F.body}; color: ${C.muted}; margin-top: 3px; line-height: 1.4; }
-  .mm-goal-cta {
-    display: inline-flex; align-items: center; gap: 6px;
-    margin: 0 14px 14px; padding: 9px 12px; border-radius: 11px;
-    border: 1px solid rgba(26,110,255,.24); background: ${C.blue50}; color: ${C.blue700};
-    font: 650 12px ${F.body}; cursor: pointer; width: calc(100% - 28px); justify-content: center;
-    transition: background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
-  }
-  .mm-goal-cta:hover { background: #dfe9ff; border-color: rgba(26,110,255,.4); transform: translateY(-1.5px); box-shadow: 0 6px 16px rgba(26,110,255,.16); }
-  .mm-goal-cta:active { transform: translateY(0) scale(.98); }
-
-  /* ── Mobile controls row ──────────────────────────────────── */
+  /* ══════════════════════════════════════════════════════════
+     MOBILE — top bar controls
+     Only the hamburger + "New" pill visible in the bar
+     ══════════════════════════════════════════════════════════ */
   .mm-mobile-controls {
     display: none;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     flex-shrink: 0;
   }
 
-  /* ═══════════════════════════════════════════════════════════
-     MOBILE INTERVIEW — Frosted Elevated
-     ═══════════════════════════════════════════════════════════ */
-  .mm-mobile-interview-pill {
-    position: relative;
-    display: inline-flex; align-items: center; gap: 8px;
-    height: 40px; padding: 4px 11px 4px 4px;
+  /* ── "New" interview pill (mobile) ──────────────────────── */
+  .mm-mob-new-btn {
+    position: relative; overflow: hidden;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 40px; padding: 0 14px 0 10px;
     border-radius: 13px;
-    background: rgba(255,255,255,0.98);
-    border: 1px solid rgba(180,205,246,0.92);
-    box-shadow:
-      0 1px 0 rgba(255,255,255,0.98) inset,
-      0 2px 6px rgba(0,31,107,0.06),
-      0 5px 14px rgba(0,46,150,0.09);
-    backdrop-filter: blur(18px) saturate(180%);
-    -webkit-backdrop-filter: blur(18px) saturate(180%);
-    overflow: hidden; cursor: pointer; flex-shrink: 0;
-    -webkit-tap-highlight-color: transparent;
-    transition:
-      transform .2s cubic-bezier(.22,1,.36,1),
-      box-shadow .18s ease,
-      border-color .18s ease,
-      background .18s ease;
-  }
-
-  /* subtle top glass highlight */
-  .mm-mobile-interview-pill::before {
-    content: '';
-    position: absolute; inset: 0;
-    border-radius: inherit; pointer-events: none;
-    background: linear-gradient(180deg, rgba(255,255,255,0.68), rgba(255,255,255,0));
-  }
-
-  /* tiny blue bottom accent */
-  .mm-mobile-interview-pill::after {
-    content: '';
-    position: absolute; left: 18%; right: 18%; bottom: 0;
-    height: 1px; border-radius: 999px;
-    background: linear-gradient(90deg, transparent, rgba(0,87,232,.55), transparent);
-    opacity: .7;
-  }
-
-  .mm-mobile-interview-pill:hover {
-    transform: translateY(-1.5px);
-    border-color: rgba(0,68,196,.38);
-    background: linear-gradient(180deg, #ffffff 0%, #f5f9ff 100%);
-    box-shadow:
-      0 0 0 3px rgba(0,68,196,.07),
-      0 6px 16px rgba(0,46,150,.13),
-      0 10px 24px rgba(0,46,150,.08),
-      inset 0 1px 0 rgba(255,255,255,1);
-  }
-
-  .mm-mobile-interview-pill:active { transform: scale(.97); }
-
-  /* blue icon square — logo-exact color */
-  .mm-pill-icon-box {
-    position: relative; z-index: 2;
-    width: 30px; height: 30px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 8px;
-    background: #0057E8;
-    color: #ffffff;
-    border: 1px solid rgba(0,46,150,0.30);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.22),
-      0 1px 4px rgba(0,30,100,0.22);
-    flex-shrink: 0;
-    transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .18s ease;
-  }
-
-  .mm-mobile-interview-pill:hover .mm-pill-icon-box {
-    transform: scale(1.04);
+    background: linear-gradient(135deg, #0057E8 0%, #00C8F0 100%);
+    border: 1px solid rgba(0,66,184,.45);
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,.28),
-      0 2px 8px rgba(0,46,150,.24);
-  }
-
-  .mm-pill-label {
-    position: relative; z-index: 2;
-    padding: 0;
-    font: 700 13px ${F.body}; letter-spacing: -.015em;
-    color: ${C.text}; white-space: nowrap;
-  }
-
-  /* ═══════════════════════════════════════════════════════════
-     MOBILE MENU / DROPDOWN TRIGGER — Frosted Elevated
-     ═══════════════════════════════════════════════════════════ */
-  .mm-ham {
-    position: relative;
-    width: 40px; height: 40px;
-    display: inline-flex; align-items: center; justify-content: center;
-    flex-direction: column; gap: 4px; padding: 0;
-    border-radius: 13px;
-    border: 1px solid rgba(180,205,246,0.92);
-    background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(247,251,255,0.96) 100%);
-    box-shadow:
-      0 1px 0 rgba(255,255,255,0.98) inset,
-      0 2px 6px rgba(0,31,107,0.05),
-      0 5px 14px rgba(26,110,255,0.07);
-    backdrop-filter: blur(18px) saturate(180%);
-    -webkit-backdrop-filter: blur(18px) saturate(180%);
+      0 3px 8px rgba(0,87,232,.22),
+      0 6px 18px rgba(0,87,232,.16);
     cursor: pointer; flex-shrink: 0;
     -webkit-tap-highlight-color: transparent;
-    transition:
-      transform .2s cubic-bezier(.22,1,.36,1),
-      box-shadow .18s ease,
-      border-color .18s ease,
-      background .18s ease;
+    transition: transform .2s cubic-bezier(.22,1,.36,1), filter .18s ease, box-shadow .2s;
+  }
+  .mm-mob-new-btn::before {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,0) 55%);
+  }
+  .mm-mob-new-btn::after {
+    content: ''; position: absolute; top: -20%; bottom: -20%; left: -55%; width: 30%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.26), transparent);
+    transform: skewX(-14deg); opacity: 0; pointer-events: none;
+  }
+  .mm-mob-new-btn:hover { transform: translateY(-1.5px); filter: brightness(1.06); }
+  .mm-mob-new-btn:hover::after { opacity: 1; animation: mmSheen .65s ease-out; }
+  .mm-mob-new-btn:active { transform: scale(.93); filter: brightness(.92); }
+
+  .mm-mob-new-icon {
+    position: relative; z-index: 2;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; line-height: 1;
+  }
+  .mm-mob-new-text {
+    position: relative; z-index: 2;
+    font: 700 13px ${F.body}; color: #fff;
+    letter-spacing: -.01em; white-space: nowrap;
+    text-shadow: 0 1px 3px rgba(0,40,120,.18);
   }
 
-  .mm-ham:hover {
-    transform: translateY(-1.5px);
-    border-color: rgba(26,110,255,.38);
-    background: linear-gradient(180deg, #ffffff 0%, #f5f9ff 100%);
-    box-shadow:
-      0 0 0 3px rgba(26,110,255,.07),
-      0 6px 16px rgba(26,110,255,.12),
-      0 10px 22px rgba(26,110,255,.08),
-      inset 0 1px 0 rgba(255,255,255,1);
+  /* ── Hamburger (mobile) ─────────────────────────────────── */
+  .mm-ham {
+    position: relative; width: 40px; height: 40px;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 4.5px;
+    padding: 0; border-radius: 12px;
+    border: 1.5px solid rgba(147,197,253,.90);
+    background: linear-gradient(180deg, rgba(235,242,255,.95), rgba(219,234,254,.90));
+    box-shadow: 0 2px 6px rgba(37,99,235,.06);
+    cursor: pointer; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .18s, border-color .18s;
   }
-
+  .mm-ham:hover { transform: translateY(-1px); border-color: rgba(59,130,246,.50); box-shadow: 0 0 0 3px rgba(59,130,246,.10), 0 4px 12px rgba(59,130,246,.14); }
   .mm-ham:active { transform: scale(.94); }
+  .mm-ham .mm-bar { width: 15px; height: 1.8px; border-radius: 999px; background: #2563EB; transition: transform .24s cubic-bezier(.22,1,.36,1), opacity .18s; }
+  .mm-ham.open .mm-bar:nth-child(1) { transform: rotate(45deg) translate(4.5px, 4.5px); }
+  .mm-ham.open .mm-bar:nth-child(2) { opacity: 0; transform: scaleX(0); }
+  .mm-ham.open .mm-bar:nth-child(3) { transform: rotate(-45deg) translate(4.5px, -4.5px); }
 
-  /* hamburger lines */
-  .mm-ham .bar {
-    width: 16px; height: 1.8px;
-    border-radius: 999px;
-    background: ${C.blue700};
-    transition:
-      transform .24s cubic-bezier(.22,1,.36,1),
-      opacity .18s ease,
-      background .18s ease;
-  }
-
-  /* open state */
-  .mm-ham.open {
-    border-color: rgba(26,110,255,.42);
-    box-shadow:
-      0 0 0 3px rgba(26,110,255,.08),
-      0 6px 16px rgba(26,110,255,.12),
-      inset 0 1px 0 rgba(255,255,255,1);
-  }
-
-  .mm-ham.open .bar:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-  .mm-ham.open .bar:nth-child(2) { opacity: 0; transform: scaleX(0); }
-  .mm-ham.open .bar:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
-
-  /* ── Very small phones ───────────────────────────────────── */
-  @media (max-width: 400px) {
-    .mm-pill-label { display: none; }
-    .mm-mobile-interview-pill { width: 40px; padding: 4px; justify-content: center; }
-  }
-
-  /* ── Mobile dropdown / navigation panel ─────────────────────
-     Contained, scrollable and safe on narrow phone screens. */
-  .mm-mobile-panel {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0; right: 0;
-    width: 100%; max-width: 100%;
-    max-height: min(680px, calc(100dvh - 104px));
+  /* ══════════════════════════════════════════════════════════
+     MOBILE DROPDOWN PANEL
+     Appears below the capsule, right-anchored
+     ══════════════════════════════════════════════════════════ */
+  .mm-mob-panel {
+    position: fixed;
+    top: 80px;
+    right: 10px;
+    left: auto;
+    width: 300px;
+    max-height: calc(100dvh - 96px);
     display: flex; flex-direction: column;
-    overflow: hidden;
-    border: 1px solid rgba(210,220,245,.9);
-    border-radius: 20px;
-    background: rgba(255,255,255,.98);
-    backdrop-filter: blur(30px) saturate(180%);
-    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    border: 1px solid rgba(200,218,248,.95); border-radius: 22px;
+    background: rgba(255,255,255,.99);
+    backdrop-filter: blur(40px) saturate(200%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
     box-shadow:
-      0 0 0 1px rgba(26,110,255,.04),
-      0 12px 32px rgba(0,31,107,.10),
-      0 24px 60px rgba(0,31,107,.16),
-      inset 0 1px 0 rgba(255,255,255,.96);
-    animation: mmSlideDown .22s cubic-bezier(.22,1,.36,1);
-    z-index: 110;
-    overscroll-behavior: contain;
-    isolation: isolate;
+      0 0 0 1px rgba(59,130,246,.06),
+      0 8px 24px rgba(0,31,107,.10),
+      0 24px 60px rgba(0,31,107,.20),
+      inset 0 1px 0 rgba(255,255,255,.99);
+    animation: mmDropIn .22s cubic-bezier(.22,1,.36,1);
+    z-index: 1100;
+    overflow: hidden;
+  }
+  /* Top hairline */
+  .mm-mob-panel::before {
+    content: ''; position: absolute; left: 8%; right: 8%; top: 0; height: 1.5px;
+    border-radius: 999px; pointer-events: none; z-index: 2;
+    background: linear-gradient(90deg, transparent, #0057E8, #00C8F0, #0057E8, transparent);
+    opacity: .75;
   }
 
-  /* ── Panel header: user identity ──────────────────────────── */
-  .mm-panel-head {
-    flex-shrink: 0; padding: 14px 14px 12px;
-    border-bottom: 1px solid rgba(210,220,245,.65);
-    background: linear-gradient(145deg, rgba(235,242,255,.5), rgba(255,255,255,.9));
+  /* ── User card header ───────────────────────────────────── */
+  .mm-mob-head {
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #0057E8 0%, #0096D4 55%, #00C8F0 100%);
+    position: relative; overflow: hidden;
   }
-  .mm-panel-user { display: flex; align-items: center; gap: 10px; }
-  .mm-panel-avatar {
-    width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(145deg, ${C.blue500}, ${C.blue800});
-    display: flex; align-items: center; justify-content: center;
-    color: #fff; font: 800 17px ${F.display};
-    box-shadow: 0 3px 12px rgba(26,110,255,.28), inset 0 1px 0 rgba(255,255,255,.2);
+  .mm-mob-head::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(130% 200% at 0% 0%, rgba(255,255,255,.22) 0%, transparent 50%);
   }
-  .mm-panel-identity { flex: 1; min-width: 0; }
-  .mm-panel-name     { font: 700 14.5px ${F.display}; color: ${C.text}; letter-spacing: -.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .mm-panel-college  { font: 500 11px ${F.body}; color: ${C.muted}; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .mm-panel-tier-badge {
-    font: 700 9px ${F.mono}; color: ${C.blue600};
-    background: ${C.blue50}; border: 1px solid rgba(26,110,255,.22);
-    border-radius: 999px; padding: 4px 10px; flex-shrink: 0; white-space: nowrap;
-    letter-spacing: .1px;
-  }
-
-  /* ── Scrollable body ──────────────────────────────────────── */
-  .mm-panel-scroll {
-    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain; padding: 14px 12px 8px;
-  }
-
-  /* ── Stats row ────────────────────────────────────────────── */
-  .mm-panel-stats {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 14px;
-  }
-  .mm-panel-stat {
-    padding: 10px 5px 9px; text-align: center;
-    border: 1px solid ${C.border}; border-radius: 13px; background: #fff;
-    transition: border-color .14s ease, transform .14s ease; cursor: default;
-  }
-  .mm-panel-stat:hover { border-color: rgba(26,110,255,.22); transform: translateY(-1px); }
-  .mm-panel-stat-val   { font: 800 16px ${F.display}; letter-spacing: -.04em; line-height: 1.1; }
-  .mm-panel-stat-label { font: 600 7.5px ${F.mono}; letter-spacing: .4px; color: ${C.muted}; margin-top: 3px; text-transform: uppercase; }
-
-  /* ── Goal progress bar ─── */
-  .mm-panel-goal {
+  .mm-mob-head-row {
+    position: relative; z-index: 1;
+    padding: 14px 14px 12px;
     display: flex; align-items: center; gap: 10px;
-    padding: 10px 12px; margin-bottom: 14px;
-    border: 1px solid ${C.border}; border-radius: 13px;
-    background: rgba(248,250,255,.7);
   }
-  .mm-panel-goal-ring { flex-shrink: 0; }
-  .mm-panel-goal-info { flex: 1; min-width: 0; }
-  .mm-panel-goal-title { font: 700 12px ${F.body}; color: ${C.text}; }
-  .mm-panel-goal-sub   { font: 500 10.5px ${F.body}; color: ${C.muted}; margin-top: 2px; }
-  .mm-panel-goal-bar-track {
-    height: 3px; border-radius: 999px; background: ${C.border};
-    margin-top: 6px; overflow: hidden;
-  }
-  .mm-panel-goal-bar-fill {
-    height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, ${C.blue600}, ${C.blue400});
-    transition: width .5s cubic-bezier(.22,1,.36,1);
-  }
-
-  /* ── Nav section label ────────────────────────────────────── */
-  .mm-panel-section-label {
-    font: 700 9.5px ${F.mono}; letter-spacing: .55px; text-transform: uppercase;
-    color: ${C.faint}; margin-bottom: 8px; padding: 0 2px;
-  }
-
-  /* ── 2-column nav tile grid ───────────────────────────────── */
-  .mm-panel-grid {
-    display: grid; grid-template-columns: repeat(2, 1fr);
-    gap: 8px; margin-bottom: 6px;
-  }
-  .mm-panel-tile {
-    position: relative;
-    display: flex; flex-direction: column; align-items: flex-start;
-    gap: 9px; padding: 13px 13px 12px;
-    border: 1px solid ${C.border}; border-radius: 16px;
-    background: #fff; text-decoration: none; min-height: 88px;
-    transition: border-color .14s ease, background .14s ease, transform .14s cubic-bezier(.22,1,.36,1), box-shadow .14s ease;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .mm-panel-tile:hover:not(.mm-tile-active) {
-    border-color: rgba(26,110,255,.28); background: ${C.blue50};
-    transform: translateY(-1px); box-shadow: 0 4px 12px rgba(26,110,255,.10);
-  }
-  .mm-panel-tile:active { transform: scale(.97); }
-  .mm-tile-active {
-    background: linear-gradient(145deg, ${C.blue600}, ${C.blue800});
-    border-color: transparent;
-    box-shadow: 0 6px 18px rgba(0,68,196,.30);
-  }
-  .mm-panel-tile-icon {
-    width: 34px; height: 34px; border-radius: 11px;
+  .mm-mob-avatar {
+    width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0;
+    background: rgba(255,255,255,.20); border: 1.5px solid rgba(255,255,255,.30);
     display: flex; align-items: center; justify-content: center;
-    color: ${C.blue600}; background: ${C.blue50};
-    border: 1px solid rgba(26,110,255,.12); flex-shrink: 0;
-    transition: background .14s ease, color .14s ease, border-color .14s ease;
+    color: #fff; font: 800 15px ${F.display};
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 2px 8px rgba(0,0,0,.14);
   }
-  .mm-tile-active .mm-panel-tile-icon { color: rgba(255,255,255,.9); background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.2); }
-  .mm-panel-tile-label { font: 650 13px ${F.body}; color: ${C.sub}; letter-spacing: -.01em; }
-  .mm-tile-active .mm-panel-tile-label { color: #fff; font-weight: 700; }
-  .mm-panel-tile-badge {
-    position: absolute; top: 11px; right: 11px;
-    font: 700 7px ${F.mono}; letter-spacing: .3px;
-    padding: 2px 5px; border-radius: 4px;
-    color: ${C.cyan500}; background: rgba(0,200,240,.09); border: 1px solid rgba(0,173,224,.22);
+  .mm-mob-identity { flex: 1; min-width: 0; }
+  .mm-mob-name  { font: 700 13.5px ${F.display}; color: #fff; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mm-mob-email { font: 500 10.5px ${F.body}; color: rgba(255,255,255,.65); margin-top: 1.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mm-mob-tier-pill {
+    font: 700 7.5px ${F.mono}; color: rgba(255,255,255,.88);
+    background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.26);
+    border-radius: 999px; padding: 3.5px 7px; flex-shrink: 0; white-space: nowrap;
   }
-  .mm-tile-active .mm-panel-tile-badge { color: rgba(255,255,255,.9); background: rgba(255,255,255,.2); border-color: rgba(255,255,255,.3); }
 
-  /* ── Panel footer: sign out ───────────────────────────────── */
-  .mm-panel-footer {
-    flex-shrink: 0; padding: 10px 12px 14px;
-    border-top: 1px solid rgba(210,220,245,.65);
-    background: linear-gradient(180deg, rgba(250,252,255,.97), rgba(246,249,255,.99));
+  /* Stats stripe */
+  .mm-mob-stats {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid rgba(255,255,255,.14);
+    position: relative; z-index: 1;
   }
-  .mm-panel-signout {
-    width: 100%; display: flex; align-items: center; gap: 12px;
-    padding: 13px 15px; border-radius: 16px;
-    border: 1px solid rgba(220,38,38,.14);
-    background: linear-gradient(135deg, rgba(254,242,242,.92), rgba(255,250,250,.97));
-    color: ${C.red}; font: 650 13.5px ${F.body}; cursor: pointer;
+  .mm-mob-stat { padding: 8px 4px 9px; text-align: center; border-right: 1px solid rgba(255,255,255,.12); }
+  .mm-mob-stat:last-child { border-right: none; }
+  .mm-mob-stat-val   { font: 800 13.5px ${F.display}; letter-spacing: -.04em; color: #fff; line-height: 1.1; }
+  .mm-mob-stat-label { font: 600 7px ${F.mono}; letter-spacing: .45px; color: rgba(255,255,255,.55); margin-top: 3px; text-transform: uppercase; }
+
+  /* ── Nav grid ───────────────────────────────────────────── */
+  .mm-mob-body {
+    flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+    padding: 12px 10px 10px;
+    display: flex; flex-direction: column; gap: 10px;
+    min-height: 0; scrollbar-width: none;
+  }
+  .mm-mob-body::-webkit-scrollbar { display: none; }
+  .mm-mob-section-label {
+    font: 700 8px ${F.mono}; letter-spacing: .55px; text-transform: uppercase;
+    color: ${C.muted}; padding: 0 3px;
+  }
+  .mm-mob-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;
+  }
+  .mm-mob-tile {
+    position: relative; overflow: hidden;
+    display: flex; align-items: center; gap: 8px; padding: 10px 11px;
+    border: 1px solid rgba(206,220,246,.90); border-radius: 13px;
+    background: linear-gradient(180deg, #fff, #FAFCFF);
+    text-decoration: none;
+    box-shadow: 0 1px 3px rgba(0,31,107,.04);
+    transition: border-color .15s, background .15s, transform .15s cubic-bezier(.22,1,.36,1), box-shadow .15s;
     -webkit-tap-highlight-color: transparent;
-    transition: background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+    animation: mmItemRise .22s cubic-bezier(.22,1,.36,1) both;
   }
-  .mm-panel-signout:hover { background: rgba(254,226,226,.92); border-color: rgba(220,38,38,.26); box-shadow: 0 4px 14px rgba(220,38,38,.10); }
-  .mm-panel-signout:active { transform: scale(.98); }
-  .mm-panel-signout-icon {
-    width: 34px; height: 34px; border-radius: 11px; flex-shrink: 0;
+  .mm-mob-tile:nth-child(1) { animation-delay: .03s; }
+  .mm-mob-tile:nth-child(2) { animation-delay: .06s; }
+  .mm-mob-tile:nth-child(3) { animation-delay: .09s; }
+  .mm-mob-tile:nth-child(4) { animation-delay: .12s; }
+  .mm-mob-tile:nth-child(5) { animation-delay: .15s; }
+  .mm-mob-tile:hover:not(.mm-mob-tile-active) {
+    border-color: rgba(0,87,232,.24);
+    background: linear-gradient(180deg, #fff, #EBF2FF);
+    transform: translateY(-1.5px);
+    box-shadow: 0 4px 12px rgba(0,87,232,.10);
+  }
+  .mm-mob-tile:active { transform: scale(.975); }
+  .mm-mob-tile-active {
+    background: linear-gradient(135deg, #0057E8 0%, #00C8F0 100%);
+    border-color: rgba(0,66,184,.35);
+    box-shadow: 0 4px 14px rgba(0,87,232,.28);
+  }
+  .mm-mob-tile-active::before {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(120% 180% at 0% 0%, rgba(255,255,255,.18) 0%, transparent 55%);
+  }
+  .mm-mob-tile-emoji {
+    position: relative; z-index: 1;
+    width: 28px; height: 28px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(220,38,38,.07); border: 1px solid rgba(220,38,38,.14); color: ${C.red};
-    transition: background .15s ease, border-color .15s ease;
+    font-size: 14px; line-height: 1;
+    background: rgba(255,255,255,.88); border: 1px solid rgba(0,0,0,.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,.07); flex-shrink: 0;
   }
-  .mm-panel-signout:hover .mm-panel-signout-icon { background: rgba(220,38,38,.13); border-color: rgba(220,38,38,.26); }
-  .mm-panel-signout-text { flex: 1; text-align: left; }
-  .mm-panel-signout-sub  { font: 500 10px ${F.body}; color: rgba(220,38,38,.6); margin-top: 1px; }
-  .mm-panel-signout-arrow { color: rgba(220,38,38,.4); transition: transform .15s ease, color .15s ease; }
-  .mm-panel-signout:hover .mm-panel-signout-arrow { transform: translateX(2px); color: ${C.red}; }
-
-  .mm-panel-cmd-hint {
-    display: flex; align-items: center; justify-content: center; gap: 5px;
-    padding: 8px 0 0; font: 500 10px ${F.mono}; color: ${C.faint};
+  .mm-mob-tile-active .mm-mob-tile-emoji { background: rgba(255,255,255,.20); border-color: rgba(255,255,255,.28); }
+  .mm-mob-tile-label {
+    position: relative; z-index: 1;
+    font: 600 12px ${F.body}; color: #4A5878; letter-spacing: -.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .mm-panel-cmd-hint kbd {
-    padding: 1px 5px; border: 1px solid ${C.border}; border-radius: 4px;
-    font: inherit; font-size: 9.5px; background: rgba(255,255,255,.8); color: ${C.muted};
+  .mm-mob-tile-active .mm-mob-tile-label { color: #fff; font-weight: 700; }
+  .mm-mob-tile-badge {
+    position: absolute; top: 6px; right: 7px; z-index: 2;
+    font: 700 6.5px ${F.mono}; padding: 1px 4px; border-radius: 3px;
+    color: #7C3AED; background: rgba(139,92,246,.11); border: 1px solid rgba(139,92,246,.22);
   }
+  .mm-mob-tile-active .mm-mob-tile-badge { color: #fff; background: rgba(255,255,255,.20); border-color: rgba(255,255,255,.28); }
 
-  /* ── Focus ────────────────────────────────────────────────── */
-  .mm-focus { -webkit-tap-highlight-color: transparent; }
-  .mm-focus:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 0 0 4px rgba(0,68,196,.55);
+  /* Last tile spans full width when odd count */
+  .mm-mob-grid .mm-mob-tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+  /* ── Footer ─────────────────────────────────────────────── */
+  .mm-mob-footer { flex-shrink: 0; padding: 0 10px 12px; }
+  .mm-mob-signout {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 11px 16px; border-radius: 13px; border: none;
+    background: linear-gradient(135deg, #EF4444 0%, #DC2626 55%, #B91C1C 100%);
+    color: #fff; font: 700 13px ${F.body}; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(185,28,28,.20), 0 4px 12px rgba(220,38,38,.16);
+    -webkit-tap-highlight-color: transparent;
+    transition: filter .15s, transform .15s, box-shadow .15s;
   }
-  .mm-brand:focus-visible { border-radius: 15px; }
+  .mm-mob-signout:hover { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(185,28,28,.28), 0 8px 22px rgba(220,38,38,.22); }
+  .mm-mob-signout:active { transform: scale(.98); filter: brightness(.93); }
 
-  /* ── Responsive ───────────────────────────────────────────── */
-  @media (min-width: 1441px) { .mm-capsule { width: min(1520px, calc(100% - 40px)); } }
-  @media (max-width: 1160px) { .mm-brand-tag { display: none; } }
-  @media (max-width: 1020px) { .mm-link { min-width: 52px; padding: 0 8px; font-size: 12px; } }
-  @media (max-width: 900px)  { .mm-schip-label { display: none; } .mm-statschip { padding: 0 2px; } .mm-schip-seg { padding: 0 7px; } }
+  /* ══════════════════════════════════════════════════════════
+     RESPONSIVE BREAKPOINTS
+     ══════════════════════════════════════════════════════════ */
 
-  /* ── Mobile breakpoint ≤830px ─────────────────────────────── */
+  /* Hide desktop nav/stats/cta on mobile, show mobile controls */
   @media (max-width: 830px) {
-    body { padding-top: 88px; }
-    .mm-root { padding: max(8px, env(safe-area-inset-top)) 12px 8px; }
-    .mm-nav              { display: none; }
-    .mm-profile-wrap     { display: none; }
-    .mm-cta.desktop-only { display: none; }
-    .mm-sep              { display: none; }
-    .mm-mobile-controls  { display: flex; }
-    .mm-right            { margin-left: auto; }
-    .mm-util-wrap        { display: none !important; }
-    .mm-statschip.desktop-only { display: none !important; }
-    .mm-popover { position: fixed; top: 82px; left: 12px; right: 12px; width: auto; max-width: 100%; }
-    .mm-popover::before { display: none; }
+    .mm-nav            { display: none !important; }
+    .mm-statschip      { display: none !important; }
+    .mm-cta            { display: none !important; }
+    .mm-util-wrap      { display: none !important; }
+    .mm-av-btn         { display: none !important; }
+    .mm-sep            { display: none !important; }
+    .mm-mobile-controls { display: flex !important; }
   }
+
+  /* Show desktop nav/controls, hide mobile on ≥831px */
   @media (min-width: 831px) {
     .mm-mobile-controls { display: none !important; }
-    .mm-mobile-panel    { display: none !important; }
+    .mm-mob-panel       { display: none !important; }
     .mm-backdrop        { display: none !important; }
   }
 
-  /* ── Small phones ≤560px ──────────────────────────────────── */
+  /* Narrow mobile: shrink brand */
   @media (max-width: 560px) {
-    .mm-root { padding: max(8px, env(safe-area-inset-top)) 8px 8px; }
-    .mm-brand-title { font-size: 17px; }
-    .mm-brand { padding: 5px 8px 5px 6px; gap: 8px; }
-    .mm-statschip { display: none; }
-    .mm-right { overflow: hidden; min-width: 0; flex-shrink: 1; }
-    .mm-login { padding: 0 12px 0 7px; gap: 7px; font-size: 12px; }
-    .mm-google-wrap { width: 22px; height: 22px; flex-shrink: 0; }
+    .mm-root { padding: max(6px, env(safe-area-inset-top)) 10px 6px; }
+    .mm-brand { padding: 4px 8px 4px 4px; gap: 8px; }
+    .mm-brand-title { font-size: 18px; }
+    .mm-brand-tag { display: none; }
+    .mm-brand-ring svg { width: 34px; height: 34px; }
   }
-
-  /* ── Very small ≤400px ────────────────────────────────────── */
   @media (max-width: 400px) {
-    .mm-brand-title { font-size: 15px; }
-    .mm-login-text-full  { display: none; }
-    .mm-login-text-short { display: inline; }
-    .mm-panel-grid { grid-template-columns: 1fr 1fr; }
+    .mm-brand-title { font-size: 16px; }
+    .mm-brand-ring svg { width: 30px; height: 30px; }
+    .mm-mob-panel { width: calc(100vw - 20px); right: 10px; }
+    .mm-mob-new-btn { padding: 0 11px 0 9px; }
+    .mm-mob-new-text { font-size: 12px; }
   }
-  @media (min-width: 401px) { .mm-login-text-short { display: none; } }
-
-  @media (max-width: 380px) {
-    .mm-brand-title { font-size: 14px; letter-spacing: -.04em; }
-    .mm-panel-grid  { grid-template-columns: 1fr; }
-  }
-
-  /* ── Responsive mobile dropdown refinements ─────────────────── */
-  @media (max-width: 830px) {
-    .mm-mobile-panel {
-      left: 0; right: 0;
-      width: 100%;
-      max-height: min(680px, calc(100dvh - 104px));
-    }
-    .mm-panel-scroll { min-height: 0; }
+  @media (max-width: 360px) {
+    .mm-mob-new-text { display: none; }
+    .mm-mob-new-btn { width: 40px; padding: 0; }
+    .mm-mob-grid { grid-template-columns: 1fr; }
+    .mm-mob-grid .mm-mob-tile:last-child:nth-child(odd) { grid-column: auto; }
   }
 
-  @media (max-width: 560px) {
-    .mm-mobile-panel {
-      top: calc(100% + 7px);
-      border-radius: 18px;
-      max-height: calc(100dvh - 96px);
-    }
-    .mm-panel-head { padding: 12px 12px 10px; }
-    .mm-panel-scroll { padding: 12px 10px 7px; }
-    .mm-panel-grid { gap: 7px; }
-    .mm-panel-tile { min-height: 82px; padding: 12px 11px 11px; }
-    .mm-panel-footer { padding: 9px 10px 12px; }
+  /* Desktop nav density */
+  @media (max-width: 1080px) {
+    .mm-link { padding: 0 9px; font-size: 12px; gap: 4px; }
+    .mm-link-emoji { display: none; }
   }
-
-  @media (max-width: 380px) {
-    .mm-mobile-panel { max-height: calc(100dvh - 92px); }
-    .mm-panel-grid { grid-template-columns: 1fr; }
-    .mm-panel-tile { min-height: 70px; }
+  @media (max-width: 960px) {
+    .mm-link { padding: 0 8px; font-size: 11.5px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1090,7 +806,7 @@ const NAVBAR_CSS = `
 const Navbar = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dropOpen,   setDropOpen]   = useState(false);
@@ -1118,12 +834,13 @@ const Navbar = () => {
   const goalDone      = goalCompleted >= goalTarget;
   const goalPct       = Math.min(100, Math.round((goalCompleted / Math.max(1, goalTarget)) * 100));
 
-  // ── Side-effects ────────────────────────────────────────────────────────
+  // Prevent body scroll when mobile panel is open
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
 
+  // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e) => {
       if (dropRef.current && !dropRef.current.contains(e.target)) setDropOpen(false);
@@ -1133,10 +850,14 @@ const Navbar = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Close all panels on route change
   useEffect(() => {
-    setMobileOpen(false); setDropOpen(false); setGoalOpen(false);
+    setMobileOpen(false);
+    setDropOpen(false);
+    setGoalOpen(false);
   }, [location.pathname]);
 
+  // Escape key closes everything
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
@@ -1146,6 +867,7 @@ const Navbar = () => {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
+  // Desktop sliding pill indicator
   useLayoutEffect(() => {
     const updateIndicator = () => {
       const active = linkRefs.current[location.pathname];
@@ -1172,50 +894,51 @@ const Navbar = () => {
   if (HIDDEN_ROUTES.includes(location.pathname)) return null;
   const isActive = (path) => location.pathname === path;
 
-  const DROPDOWN_ITEMS = [
-    { icon: 'grid',   label: 'Dashboard',   path: '/dashboard'   },
-    { icon: 'clock',  label: 'History',     path: '/history'     },
-    { icon: 'chart',  label: 'Analytics',   path: '/analytics'   },
-    { icon: 'trophy', label: 'Leaderboard', path: '/leaderboard' },
-    { icon: 'chat',   label: 'AI Coach',    path: '/coach',      badge: 'AI' },
-  ];
-
-  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <>
       <style>{NAVBAR_CSS}</style>
 
+      {/* Mobile backdrop — only for logged-in users */}
       {mobileOpen && user && (
-        <div className="mm-backdrop" onClick={() => setMobileOpen(false)} aria-hidden="true"/>
+        <div
+          className="mm-backdrop"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
       )}
 
       <nav className="mm-root" aria-label="Main navigation">
         <div className="mm-capsule">
 
-          {/* ── Brand ─────────────────────────────────────────── */}
-          <Link to={user ? '/dashboard' : '/'} className="mm-brand mm-focus">
-            <div className="mm-brand-ring"><Logomark size={40}/></div>
+          {/* ── Brand ─────────────────────────────────────── */}
+          <Link to={user ? '/dashboard' : '/'} className="mm-brand">
+            <div className="mm-brand-ring">
+              <Logomark size={40}/>
+            </div>
             <div className="mm-brand-word">
               <div className="mm-brand-title">MockMate</div>
               <div className="mm-brand-tag">Practice. Improve. Get hired.</div>
             </div>
           </Link>
 
-          {/* ── Desktop nav track ──────────────────────────────── */}
+          {/* ── Desktop nav (hidden on mobile via CSS) ────── */}
           {user && (
             <div className="mm-nav">
               <div ref={shellRef} className="mm-nav-track" role="list">
-                <div className="mm-pill"
+                <div
+                  className="mm-pill"
                   style={{ left: indicator.left, width: indicator.width, opacity: indicator.opacity }}
                 />
                 {NAV_LINKS.map((link) => (
-                  <Link key={link.path}
+                  <Link
+                    key={link.path}
                     ref={(el) => { linkRefs.current[link.path] = el; }}
                     to={link.path}
-                    className={`mm-link mm-focus${isActive(link.path) ? ' active' : ''}`}
+                    className={`mm-link${isActive(link.path) ? ' active' : ''}`}
                     role="listitem"
                     aria-current={isActive(link.path) ? 'page' : undefined}
                   >
+                    <span className="mm-link-emoji">{link.emoji}</span>
                     {link.label}
                     {link.badge && <span className="mm-link-badge">{link.badge}</span>}
                   </Link>
@@ -1224,23 +947,25 @@ const Navbar = () => {
             </div>
           )}
 
-          {/* ── Right section ──────────────────────────────────── */}
+          {/* ── Right cluster ─────────────────────────────── */}
           <div className="mm-right">
             {user ? (
               <>
-                {/* Daily goal ring — desktop only, when not done */}
+                {/* ── DESKTOP ONLY controls ── */}
+
+                {/* Daily goal ring */}
                 {!goalDone && (
                   <div ref={goalRef} className="mm-util-wrap">
-                    <button type="button"
-                      className="mm-util-btn mm-goal-btn mm-focus"
+                    <button
+                      type="button"
+                      className="mm-util-btn"
                       onClick={() => setGoalOpen(v => !v)}
                       aria-expanded={goalOpen}
-                      aria-haspopup="menu"
-                      aria-label={`Daily goal: ${goalCompleted} of ${goalTarget} done`}
+                      aria-label={`Daily goal: ${goalCompleted} of ${goalTarget}`}
                     >
                       <svg width={24} height={24} viewBox="0 0 24 24" style={{ transform: 'rotate(-90deg)' }}>
                         <circle cx="12" cy="12" r="9.5" fill="none" stroke={C.border} strokeWidth="2.4"/>
-                        <circle cx="12" cy="12" r="9.5" fill="none" stroke={C.blue600} strokeWidth="2.4"
+                        <circle cx="12" cy="12" r="9.5" fill="none" stroke="#3B82F6" strokeWidth="2.4"
                           strokeDasharray={2 * Math.PI * 9.5}
                           strokeDashoffset={2 * Math.PI * 9.5 * (1 - goalPct / 100)}
                           strokeLinecap="round"
@@ -1248,20 +973,21 @@ const Navbar = () => {
                         />
                       </svg>
                     </button>
+
                     {goalOpen && (
-                      <div className="mm-popover" role="menu">
+                      <div className="mm-popover">
                         <div className="mm-popover-inner">
                           <div className="mm-popover-head">
                             <div>
-                              <div className="mm-popover-title">Today's goal</div>
+                              <div className="mm-popover-title">🎯 Today's goal</div>
                               <div className="mm-popover-sub">{goalCompleted} of {goalTarget} interviews</div>
                             </div>
                           </div>
                           <div className="mm-goal-body">
                             <svg width={54} height={54} viewBox="0 0 54 54"
-                              className="mm-goal-ring-big" style={{ transform: 'rotate(-90deg)' }}>
+                              style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
                               <circle cx="27" cy="27" r="23" fill="none" stroke={C.border} strokeWidth="5"/>
-                              <circle cx="27" cy="27" r="23" fill="none" stroke={C.blue600} strokeWidth="5"
+                              <circle cx="27" cy="27" r="23" fill="none" stroke="#3B82F6" strokeWidth="5"
                                 strokeDasharray={2 * Math.PI * 23}
                                 strokeDashoffset={2 * Math.PI * 23 * (1 - goalPct / 100)}
                                 strokeLinecap="round"
@@ -1270,12 +996,15 @@ const Navbar = () => {
                             </svg>
                             <div>
                               <div className="mm-goal-copy-title">{goalTarget - goalCompleted} more to go</div>
-                              <div className="mm-goal-copy-sub">Practicing daily keeps your IRS climbing steadily.</div>
+                              <div className="mm-goal-copy-sub">Daily practice keeps your IRS climbing steadily.</div>
                             </div>
                           </div>
-                          <button type="button" className="mm-goal-cta mm-focus"
-                            onClick={() => { setGoalOpen(false); navigate('/interview'); }}>
-                            <NavIcon name="mic" size={13}/> Start now
+                          <button
+                            type="button"
+                            className="mm-goal-cta"
+                            onClick={() => { setGoalOpen(false); navigate('/interview'); }}
+                          >
+                            🎙️ Start now
                           </button>
                         </div>
                       </div>
@@ -1283,10 +1012,10 @@ const Navbar = () => {
                   </div>
                 )}
 
-                {/* Stats chip — desktop */}
-                <div className="mm-statschip desktop-only" aria-label="Your stats">
+                {/* Stats chip */}
+                <div className="mm-statschip">
                   <div className="mm-schip-seg">
-                    <span style={{ fontSize: 13 }}>🔥</span>
+                    <span className="mm-schip-emoji">🔥</span>
                     <div>
                       <div className="mm-schip-label">Streak</div>
                       <div className="mm-schip-val" style={{ color: C.orange }}>{streak}d</div>
@@ -1294,6 +1023,7 @@ const Navbar = () => {
                   </div>
                   <div className="mm-schip-sep"/>
                   <div className="mm-schip-seg">
+                    <span className="mm-schip-emoji">⚡</span>
                     <div>
                       <div className="mm-schip-label">IRS</div>
                       <div className="mm-schip-val" style={{ color: accent }}>{irs}</div>
@@ -1303,6 +1033,7 @@ const Navbar = () => {
                     <>
                       <div className="mm-schip-sep"/>
                       <div className="mm-schip-seg">
+                        <span className="mm-schip-emoji">📈</span>
                         <div>
                           <div className="mm-schip-label">Avg</div>
                           <div className="mm-schip-val" style={{ color: C.cyan500 }}>{avgScore}</div>
@@ -1312,27 +1043,27 @@ const Navbar = () => {
                   )}
                 </div>
 
-                {/* Cmd+K — hidden trigger */}
+                {/* Hidden Cmd+K */}
                 <div style={{ display: 'none' }}><CommandPalette /></div>
 
                 <div className="mm-sep" aria-hidden="true"/>
 
+                {/* CTA desktop */}
                 <button
                   type="button"
-                  className="mm-cta desktop-only mm-focus"
+                  className="mm-cta"
                   onClick={() => navigate('/interview')}
                   aria-label="Start a new interview"
                 >
-                  <span className="mm-cta-icon">
-                    <NavIcon name="mic" size={14}/>
-                  </span>
+                  <span className="mm-cta-glyph" style={{ fontSize: 16, lineHeight: 1 }}>🎙️</span>
                   <span className="mm-cta-text">New Interview</span>
                 </button>
 
-                {/* ── Profile avatar + dropdown ──────────────── */}
+                {/* Avatar + desktop dropdown */}
                 <div ref={dropRef} className="mm-profile-wrap">
-                  <button type="button"
-                    className="mm-av-btn mm-focus"
+                  <button
+                    type="button"
+                    className="mm-av-btn"
                     onClick={() => setDropOpen(v => !v)}
                     aria-expanded={dropOpen}
                     aria-haspopup="menu"
@@ -1342,7 +1073,7 @@ const Navbar = () => {
                   </button>
 
                   {dropOpen && (
-                    <div className="mm-drop" role="menu" aria-label="Profile and navigation">
+                    <div className="mm-drop" role="menu">
                       <div className="mm-drop-head">
                         <div className="mm-drop-toprow">
                           <div className="mm-drop-avatar">{initials}</div>
@@ -1350,27 +1081,30 @@ const Navbar = () => {
                             <div className="mm-drop-name">{user.name?.split(' ')[0]}</div>
                             <div className="mm-drop-sub">{user.college ?? 'MockMate User'}</div>
                           </div>
-                          <button type="button"
-                            className="mm-drop-close mm-focus"
+                          <button
+                            type="button"
+                            className="mm-drop-close"
                             onClick={() => setDropOpen(false)}
-                            aria-label="Close profile menu"
+                            aria-label="Close"
                           >
-                            <NavIcon name="close" size={13}/>
+                            <CloseIcon size={13}/>
                           </button>
                         </div>
+
                         <div className="mm-drop-tier">
-                          <span className="mm-drop-tier-icon"><NavIcon name="spark" size={9}/></span>
+                          <span className="mm-drop-tier-icon">✨</span>
                           Tracking toward <b>{tierLabel}</b>
                         </div>
+
                         <div className="mm-drop-stats-row">
                           {[
-                            { val: `${streak}d`, color: C.orange,  icon: '🔥', label: 'Streak'   },
-                            { val: irs,           color: accent,    icon: null,  label: 'IRS'      },
-                            { val: avgScore ?? '—', color: C.cyan500, icon: null, label: 'Avg'    },
-                          ].map(({ val, color, icon, label }) => (
+                            { val: `${streak}d`, color: C.orange,    emoji: '🔥', label: 'Streak' },
+                            { val: irs,           color: accent,      emoji: '⚡', label: 'IRS'    },
+                            { val: avgScore ?? '—', color: C.cyan500, emoji: '📊', label: 'Avg'    },
+                          ].map(({ val, color, emoji, label }) => (
                             <div className="mm-drop-stat" key={label}>
                               <div className="mm-drop-stat-val" style={{ color }}>
-                                {icon && <span style={{ marginRight: 2 }}>{icon}</span>}{val}
+                                <span className="mm-drop-stat-emoji">{emoji}</span> {val}
                               </div>
                               <div className="mm-drop-stat-label">{label}</div>
                             </div>
@@ -1378,199 +1112,128 @@ const Navbar = () => {
                         </div>
                       </div>
 
-                      <div className="mm-drop-scroll">
-                        <div className="mm-drop-section-label">Navigate</div>
-                        <div className="mm-drop-menu">
-                          {DROPDOWN_ITEMS.map((item, i) => (
-                            <Link key={item.path} to={item.path}
-                              className={`mm-drop-item mm-focus${isActive(item.path) ? ' active-page' : ''}`}
-                              role="menuitem"
-                              style={{ animationDelay: `${i * 24}ms` }}
-                              onClick={() => setDropOpen(false)}
-                            >
-                              <span className="mm-drop-icon"><NavIcon name={item.icon} size={14}/></span>
-                              {item.label}
-                              {item.badge && (
-                                <span style={{
-                                  fontSize: 7, fontFamily: F.mono, fontWeight: 700,
-                                  color: C.cyan500, background: 'rgba(0,200,240,.09)',
-                                  border: '1px solid rgba(0,173,224,.22)',
-                                  borderRadius: 4, padding: '2px 5px', letterSpacing: '.3px', marginLeft: 2,
-                                }}>{item.badge}</span>
-                              )}
-                              <span className="mm-drop-item-arrow"><NavIcon name="arrowRight" size={12}/></span>
-                            </Link>
-                          ))}
-                        </div>
-                      </div>
-
                       <div className="mm-drop-footer">
-                        <button type="button"
-                          className="mm-drop-signout mm-focus"
+                        <button
+                          type="button"
+                          className="mm-drop-signout"
                           role="menuitem"
                           onClick={() => { setDropOpen(false); logout(); }}
                         >
-                          <span className="mm-drop-signout-icon"><NavIcon name="logout" size={14}/></span>
-                          <span className="mm-drop-signout-label">Sign out of MockMate</span>
-                          <span className="mm-drop-signout-arrow"><NavIcon name="arrowRight" size={12}/></span>
+                          <span>🚪</span>
+                          <span>Sign Out</span>
                         </button>
-                        <div className="mm-drop-cmd-hint">
-                          Press <kbd>⌘</kbd><kbd>K</kbd> to jump anywhere
-                        </div>
                       </div>
                     </div>
                   )}
                 </div>
 
+                {/* ── MOBILE controls (hidden on desktop via CSS) ── */}
                 <div className="mm-mobile-controls">
+
+                  {/* 🎙️ New — pill button */}
                   <button
                     type="button"
-                    className="mm-mobile-interview-pill mm-focus"
+                    className="mm-mob-new-btn"
                     onClick={() => navigate('/interview')}
                     aria-label="Start new interview"
                   >
-                    <span className="mm-pill-icon-box">
-                      <NavIcon name="mic" size={15} />
-                    </span>
-                    <span className="mm-pill-label">Interview</span>
+                    <span className="mm-mob-new-icon" aria-hidden="true">🎙️</span>
+                    <span className="mm-mob-new-text">New</span>
                   </button>
 
+                  {/* ☰ Hamburger */}
                   <button
                     type="button"
-                    className={`mm-ham mm-focus${mobileOpen ? ' open' : ''}`}
+                    className={`mm-ham${mobileOpen ? ' open' : ''}`}
                     onClick={() => setMobileOpen(v => !v)}
                     aria-expanded={mobileOpen}
                     aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
                   >
-                    <span className="bar" />
-                    <span className="bar" />
-                    <span className="bar" />
+                    <span className="mm-bar"/>
+                    <span className="mm-bar"/>
+                    <span className="mm-bar"/>
                   </button>
                 </div>
               </>
             ) : (
-              <a href={`${API_BASE}/auth/google`} className="mm-login mm-focus">
+              /* ── Guest login ── */
+              <a href={`${API_BASE}/auth/google`} className="mm-login">
                 <span className="mm-google-wrap"><GoogleG size={16}/></span>
-                <span className="mm-login-text">
-                  <span className="mm-login-text-full">Sign in with Google</span>
-                  <span className="mm-login-text-short">Google</span>
-                </span>
+                <span className="mm-login-text">Sign in with Google</span>
               </a>
             )}
           </div>
 
-          {/* ══════════════════════════════════════════════════════
-              MOBILE PANEL
-              ══════════════════════════════════════════════════════ */}
-          {mobileOpen && user && (
-            <div className="mm-mobile-panel" role="dialog" aria-label="Navigation menu">
-
-              {/* ── Header: user identity ──────────────────────── */}
-              <div className="mm-panel-head">
-                <div className="mm-panel-user">
-                  <div className="mm-panel-avatar">{initials}</div>
-                  <div className="mm-panel-identity">
-                    <div className="mm-panel-name">{user.name ?? 'MockMate User'}</div>
-                    <div className="mm-panel-college">{user.college ?? 'Ready to practice'}</div>
-                  </div>
-                  <span className="mm-panel-tier-badge">{tierLabel}</span>
-                </div>
-              </div>
-
-              {/* ── Scrollable body ────────────────────────────── */}
-              <div className="mm-panel-scroll">
-
-                {/* Stats row */}
-                <div className="mm-panel-stats">
-                  <div className="mm-panel-stat">
-                    <div className="mm-panel-stat-val" style={{ color: C.orange }}>🔥 {streak}</div>
-                    <div className="mm-panel-stat-label">Streak</div>
-                  </div>
-                  <div className="mm-panel-stat">
-                    <div className="mm-panel-stat-val" style={{ color: accent }}>{irs}</div>
-                    <div className="mm-panel-stat-label">IRS</div>
-                  </div>
-                  <div className="mm-panel-stat">
-                    <div className="mm-panel-stat-val" style={{ color: C.cyan500 }}>{avgScore ?? '—'}</div>
-                    <div className="mm-panel-stat-label">Avg score</div>
-                  </div>
-                </div>
-
-                {/* Goal progress (compact bar) — when not done */}
-                {!goalDone && (
-                  <div className="mm-panel-goal">
-                    <svg width={30} height={30} viewBox="0 0 34 34"
-                      className="mm-panel-goal-ring"
-                      style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
-                      <circle cx="17" cy="17" r="14" fill="none" stroke={C.border} strokeWidth="3.5"/>
-                      <circle cx="17" cy="17" r="14" fill="none" stroke={C.blue600} strokeWidth="3.5"
-                        strokeDasharray={2 * Math.PI * 14}
-                        strokeDashoffset={2 * Math.PI * 14 * (1 - goalPct / 100)}
-                        strokeLinecap="round"
-                        style={{ transition: 'stroke-dashoffset .5s cubic-bezier(.22,1,.36,1)' }}
-                      />
-                    </svg>
-                    <div className="mm-panel-goal-info">
-                      <div className="mm-panel-goal-title">Today's goal</div>
-                      <div className="mm-panel-goal-sub">{goalCompleted} of {goalTarget} interviews done</div>
-                      <div className="mm-panel-goal-bar-track">
-                        <div className="mm-panel-goal-bar-fill" style={{ width: `${goalPct}%` }}/>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Nav section label */}
-                <div className="mm-panel-section-label">Navigate</div>
-
-                {/* 2-column tile grid — all 5 pages */}
-                <div className="mm-panel-grid">
-                  {NAV_LINKS.map(link => (
-                    <Link key={link.path} to={link.path}
-                      className={`mm-panel-tile mm-focus${isActive(link.path) ? ' mm-tile-active' : ''}`}
-                      aria-current={isActive(link.path) ? 'page' : undefined}
-                      onClick={() => setMobileOpen(false)}
-                    >
-                      {link.badge && (
-                        <span className="mm-panel-tile-badge">{link.badge}</span>
-                      )}
-                      <span className="mm-panel-tile-icon">
-                        <NavIcon name={link.icon} size={18}/>
-                      </span>
-                      <span className="mm-panel-tile-label">{link.label}</span>
-                    </Link>
-                  ))}
-                </div>
-
-              </div>
-
-              {/* ── Footer: sign out ───────────────────────────── */}
-              <div className="mm-panel-footer">
-                <button type="button"
-                  className="mm-panel-signout mm-focus"
-                  onClick={() => { setMobileOpen(false); logout(); }}
-                >
-                  <span className="mm-panel-signout-icon">
-                    <NavIcon name="logout" size={16}/>
-                  </span>
-                  <span className="mm-panel-signout-text">
-                    <div>Sign out of MockMate</div>
-                    <div className="mm-panel-signout-sub">You'll be taken back to the home screen</div>
-                  </span>
-                  <span className="mm-panel-signout-arrow">
-                    <NavIcon name="arrowRight" size={14}/>
-                  </span>
-                </button>
-                <div className="mm-panel-cmd-hint">
-                  Press <kbd>⌘</kbd><kbd>K</kbd> to jump anywhere
-                </div>
-              </div>
-
-            </div>
-          )}
-
         </div>
       </nav>
+
+      {/* ══ MOBILE DROPDOWN PANEL ══════════════════════════════════ */}
+      {mobileOpen && user && (
+        <div className="mm-mob-panel" role="dialog" aria-label="Navigation menu" aria-modal="true">
+
+          {/* User card */}
+          <div className="mm-mob-head">
+            <div className="mm-mob-head-row">
+              <div className="mm-mob-avatar">{initials}</div>
+              <div className="mm-mob-identity">
+                <div className="mm-mob-name">{user.name ?? 'MockMate User'}</div>
+                <div className="mm-mob-email">{user.college ?? 'Ready to practice'}</div>
+              </div>
+              <span className="mm-mob-tier-pill">{tierLabel}</span>
+            </div>
+
+            <div className="mm-mob-stats">
+              <div className="mm-mob-stat">
+                <div className="mm-mob-stat-val">🔥 {streak}</div>
+                <div className="mm-mob-stat-label">Streak</div>
+              </div>
+              <div className="mm-mob-stat">
+                <div className="mm-mob-stat-val">⚡ {irs}</div>
+                <div className="mm-mob-stat-label">IRS</div>
+              </div>
+              <div className="mm-mob-stat">
+                <div className="mm-mob-stat-val">📊 {avgScore ?? '—'}</div>
+                <div className="mm-mob-stat-label">Avg</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Nav grid */}
+          <div className="mm-mob-body">
+            <div className="mm-mob-section-label">Navigate</div>
+            <div className="mm-mob-grid">
+              {NAV_LINKS.map((link) => (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  className={`mm-mob-tile${isActive(link.path) ? ' mm-mob-tile-active' : ''}`}
+                  aria-current={isActive(link.path) ? 'page' : undefined}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <span className="mm-mob-tile-emoji">{link.emoji}</span>
+                  <span className="mm-mob-tile-label">{link.label}</span>
+                  {link.badge && (
+                    <span className="mm-mob-tile-badge">{link.badge}</span>
+                  )}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Sign out */}
+          <div className="mm-mob-footer">
+            <button
+              type="button"
+              className="mm-mob-signout"
+              onClick={() => { setMobileOpen(false); logout(); }}
+            >
+              <span>🚪</span>
+              <span>Sign Out</span>
+            </button>
+          </div>
+
+        </div>
+      )}
     </>
   );
 };

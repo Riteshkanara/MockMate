@@ -2,13 +2,18 @@ import PropTypes from 'prop-types';
 import { useState } from 'react';
 import { C as CT, F } from '../../styles/token';
 
+// ── CHANGES vs original ───────────────────────────────────────────────────────
+// 1. Added `voiceMetrics` prop (null when voice wasn't used — no behaviour change)
+// 2. Added DeliveryResultCard internal component — renders WPM + filler +
+//    length + AI delivery tip when voiceMetrics is present in the answered variant
+// 3. Everything else is identical to the original file.
+// ─────────────────────────────────────────────────────────────────────────────
 
 const C = {
   ...CT,
   violet:     '#6D5BEE',
   violetTint: '#F0EEFF',
 };
-
 
 const S = {
   feedback:       { display: 'flex', flexDirection: 'column', gap: 10 },
@@ -77,7 +82,6 @@ const scoreConfig = (score) => {
 };
 
 // ─── Internal: FeedbackBlock ─────────────────────────────────────────────────
-// Renders a coloured card with a title, icon, and bullet list of feedback points.
 
 const feedbackBlockPropTypes = {
   icon:    PropTypes.string.isRequired,
@@ -115,8 +119,6 @@ FeedbackBlock.propTypes = feedbackBlockPropTypes;
 FeedbackBlock.defaultProps = { bullets: [], size: 'full' };
 
 // ─── Internal: McqExplanation ─────────────────────────────────────────────────
-// Shows the correct answer, user's answer, explanation text, and full option
-// list after an MCQ or aptitude question is submitted (or skipped).
 
 const mcqExplanationPropTypes = {
   question:        PropTypes.object.isRequired,
@@ -254,37 +256,148 @@ function McqExplanation({ question, correct, userAnswerIndex, skipped }) {
 McqExplanation.propTypes = mcqExplanationPropTypes;
 McqExplanation.defaultProps = { userAnswerIndex: null, skipped: false };
 
-// ─── PropTypes ───────────────────────────────────────────────────────────────
+// ─── NEW: DeliveryResultCard ──────────────────────────────────────────────────
+// Shows WPM gauge, filler word breakdown, length rating, and the AI-generated
+// delivery tip (returned from Gemini). Only rendered when voiceMetrics is present.
+
+const wpmColor  = (band) => ({ tooSlow: C.amber, ideal: C.green, tooFast: C.danger }[band] || C.blue500);
+const lenColor  = (rat)  => ({ tooShort: C.amber, ideal: C.green, tooLong: C.warning }[rat]  || C.blue500);
+const lenLabel  = (rat)  => ({ tooShort: 'Too short', ideal: 'Ideal', tooLong: 'Too long' }[rat] || '—');
+const wpmPct    = (wpm)  => Math.min(100, Math.round((wpm / 200) * 100));
+
+function DeliveryResultCard({ voiceMetrics, deliveryTip }) {
+  if (!voiceMetrics) return null;
+
+  const { fillerWords, wpm, answerLength } = voiceMetrics;
+
+  return (
+    <div className="iv-fade-in" style={{
+      borderRadius: 14, border: `1.5px solid ${C.violet}30`,
+      background: C.violetTint, overflow: 'hidden', marginBottom: 4,
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px',
+        borderBottom: `1px solid ${C.violet}20`, background: `${C.violet}10`,
+      }}>
+        <span style={{ fontSize: 15 }}>🎤</span>
+        <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '0.8px', color: C.violet, textTransform: 'uppercase' }}>
+          Delivery analysis
+        </span>
+      </div>
+
+      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+        {/* WPM row */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+            <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: '0.4px', textTransform: 'uppercase' }}>⚡ Speaking pace</span>
+            <span style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: wpmColor(wpm.band) }}>
+              {wpm.wpm > 0 ? `${wpm.wpm} wpm · ${wpm.label}` : '—'}
+            </span>
+          </div>
+          <div style={{ height: 5, borderRadius: 999, background: C.border, overflow: 'hidden' }}>
+            <div style={{ height: '100%', borderRadius: 999, width: `${wpmPct(wpm.wpm)}%`, background: wpmColor(wpm.band), transition: 'width 0.8s cubic-bezier(.16,1,.3,1)' }} className="iv-fb-bar" />
+          </div>
+          <div style={{ fontSize: 11.5, color: C.sub, marginTop: 3, fontWeight: 500 }}>{wpm.hint}</div>
+        </div>
+
+        {/* Filler words row */}
+        <div style={{ padding: '9px 11px', borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: fillerWords.breakdown.length > 0 ? 7 : 0 }}>
+            <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: '0.4px', textTransform: 'uppercase' }}>🔤 Filler words</span>
+            <span style={{
+              fontFamily: F.display, fontSize: 13, fontWeight: 800,
+              color: fillerWords.total === 0 ? C.green : fillerWords.total <= 3 ? C.amber : C.danger,
+            }}>
+              {fillerWords.total === 0 ? 'None 🎯' : `${fillerWords.total} detected`}
+            </span>
+          </div>
+          {fillerWords.breakdown.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {fillerWords.breakdown.map(({ word, count }) => (
+                <span key={word} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  padding: '2px 8px', borderRadius: 999,
+                  background: count >= 3 ? C.dangerTint : C.warningTint,
+                  border: `1px solid ${count >= 3 ? C.danger : C.warning}30`,
+                  fontSize: 11, fontWeight: 700,
+                  color: count >= 3 ? C.danger : C.warning,
+                  fontFamily: F.mono,
+                }}>
+                  "{word}" ×{count}
+                </span>
+              ))}
+            </div>
+          )}
+          {fillerWords.total === 0 && (
+            <div style={{ fontSize: 11.5, color: C.green, fontWeight: 600, marginTop: 2 }}>
+              Clean delivery — no filler words detected.
+            </div>
+          )}
+        </div>
+
+        {/* Answer length row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 11px', borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: '0.4px', textTransform: 'uppercase', marginBottom: 2 }}>
+              📏 Length · {answerLength.category}
+            </div>
+            <div style={{ fontSize: 11.5, color: C.sub, fontWeight: 500 }}>
+              Target {answerLength.min}–{answerLength.max} words · {answerLength.hint}
+            </div>
+          </div>
+          <span style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: lenColor(answerLength.rating), flexShrink: 0 }}>
+            {answerLength.wordCount}w · {lenLabel(answerLength.rating)}
+          </span>
+        </div>
+
+        {/* AI delivery tip — generated by Gemini from the pre-computed metrics */}
+        {deliveryTip && (
+          <div style={{
+            padding: '10px 13px', borderRadius: 11,
+            background: `${C.violet}12`, border: `1px solid ${C.violet}25`,
+            display: 'flex', alignItems: 'flex-start', gap: 9,
+          }}>
+            <span style={{ fontSize: 15, flexShrink: 0, lineHeight: 1.3 }}>🎯</span>
+            <div>
+              <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, color: C.violet, letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 4 }}>
+                Delivery tip
+              </div>
+              <div style={{ fontSize: 12.5, lineHeight: 1.6, color: C.text, fontWeight: 500 }}>
+                {deliveryTip}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+DeliveryResultCard.propTypes = {
+  voiceMetrics: PropTypes.object,
+  deliveryTip:  PropTypes.string,
+};
+DeliveryResultCard.defaultProps = { voiceMetrics: null, deliveryTip: null };
+
+// ─── PropTypes ────────────────────────────────────────────────────────────────
 const feedbackPanelPropTypes = {
-  /** The full question object for the answered question. */
-  question: PropTypes.object.isRequired,
-  /** AI-generated feedback object. Null while loading. */
-  feedback: PropTypes.object,
-  /** Advances to the next question (or navigates to results on the last). */
-  onNext: PropTypes.func.isRequired,
-  /** True while the next question or results page is loading. */
-  isLoading: PropTypes.bool.isRequired,
-  /** True when this feedback is for the final question in the session. */
-  isLast: PropTypes.bool.isRequired,
-  /** Hex accent colour from the current session mode (used for the Next button). */
-  accent: PropTypes.string.isRequired,
-  /** Index of the option the user picked (null for open questions or skips). */
+  question:        PropTypes.object.isRequired,
+  feedback:        PropTypes.object,
+  onNext:          PropTypes.func.isRequired,
+  isLoading:       PropTypes.bool.isRequired,
+  isLast:          PropTypes.bool.isRequired,
+  accent:          PropTypes.string.isRequired,
   userAnswerIndex: PropTypes.number,
-  /** True when the user hit Skip rather than submitting an answer. */
-  skipped: PropTypes.bool,
-  /** 0-based index of this question within the session. */
-  questionIndex: PropTypes.number,
-  /** Total number of questions in the session. */
-  totalQuestions: PropTypes.number,
+  skipped:         PropTypes.bool,
+  questionIndex:   PropTypes.number,
+  totalQuestions:  PropTypes.number,
+  // NEW: voice metrics from the client-side computation + AI delivery tip
+  voiceMetrics:    PropTypes.object,
 };
 
-// ─── Component ───────────────────────────────────────────────────────────────
-// Renders the post-submission panel inside the answer section:
-//   • Score strip + animated score bar (open questions)
-//   • Good / Missing / Key idea / Next move feedback blocks
-//   • MCQ correct/incorrect breakdown with explanation
-//   • Collapsible model answer
-//   • Next question / View results button
+// ─── Component ────────────────────────────────────────────────────────────────
 function FeedbackPanel({
   question,
   feedback,
@@ -296,6 +409,7 @@ function FeedbackPanel({
   skipped,
   questionIndex,
   totalQuestions,
+  voiceMetrics,
 }) {
   const [showSample, setShowSample] = useState(false);
 
@@ -309,6 +423,10 @@ function FeedbackPanel({
   const objVibe   = correct
     ? 'Nailed it. On to the next one.'
     : 'Scroll down — the correct answer and explanation are right below.';
+
+  // deliveryTip lives in feedback.deliveryTip — set by the server when
+  // voiceMetrics were sent alongside the answer.
+  const deliveryTip = feedback?.deliveryTip || null;
 
   // ── Skipped variant ───────────────────────────────────────────────────────
   if (skipped) {
@@ -448,6 +566,11 @@ function FeedbackPanel({
         <McqExplanation question={question} correct={correct} userAnswerIndex={userAnswerIndex} />
       )}
 
+      {/* ── NEW: Delivery analysis card (open questions with voice only) ── */}
+      {!objective && !skipped && voiceMetrics && (
+        <DeliveryResultCard voiceMetrics={voiceMetrics} deliveryTip={deliveryTip} />
+      )}
+
       {/* ── Collapsible model answer (open questions only) ── */}
       {!objective && feedback?.sampleAnswer && (
         <div style={S.fbSampleWrap}>
@@ -502,6 +625,7 @@ FeedbackPanel.defaultProps = {
   skipped:         false,
   questionIndex:   0,
   totalQuestions:  1,
+  voiceMetrics:    null,
 };
 
 export default FeedbackPanel;

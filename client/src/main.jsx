@@ -4,11 +4,27 @@ import './index.css';
 import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
-import { wakeServer } from './config/api';
+import { startKeepAlive } from './config/api';
 
-// Fire immediately — warms the Render instance before the user even logs in
-wakeServer();
+// ── 1. Start keep-alive pinging immediately ────────────────────────────────
+// Fires /health right away (wakes the Render instance from cold sleep)
+// then every 10 min to keep it warm during the session.
+startKeepAlive();
 
+// ── 2. Remove the pre-boot placeholder ────────────────────────────────────
+// index.html renders a tiny ⚡ from byte 0 so there is never a white flash,
+// not even for a single frame.  Now that JS has parsed, remove it so it
+// doesn't sit on top of the React tree.
+const preBoot = document.getElementById('pre-boot');
+if (preBoot) preBoot.remove();
+
+// ── 3. Mount React ────────────────────────────────────────────────────────
+//
+// Note: BrowserRouter now lives inside App.jsx (not here) so that the router
+// context is available throughout the AppShell/ServerWakeScreen layer. The
+// AuthProvider and Toaster stay here — they don't need router context and
+// need to wrap the entire tree.
+//
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <AuthProvider>

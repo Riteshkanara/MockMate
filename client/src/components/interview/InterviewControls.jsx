@@ -1,6 +1,16 @@
 import PropTypes from 'prop-types';
 import { C as CT, F } from '../../styles/token';
+import MicButton, { DeliveryCard } from './MicButton';
 
+// ── CHANGES vs original ───────────────────────────────────────────────────────
+// 1. Imported MicButton and DeliveryCard from ./MicButton
+// 2. Added 4 new props: isRecording, isVoiceSupported, voiceMetrics,
+//    onMicStart, onMicStop  (all optional; gracefully no-ops when undefined)
+// 3. In the open-question branch: MicButton appears after the textarea,
+//    DeliveryCard appears below MicButton when voiceMetrics is present
+// 4. The short-answer warning now references voice answers too
+// Everything else is pixel-for-pixel identical to the original.
+// ─────────────────────────────────────────────────────────────────────────────
 
 const C = {
   ...CT,
@@ -29,51 +39,37 @@ const S = {
   kbd:                  { display: 'inline-block', padding: '2px 7px', borderRadius: 5, borderStyle: 'solid', borderWidth: 1, borderColor: C.borderMd, borderBottomWidth: 2, background: C.cardAlt, color: C.sub, fontFamily: F.mono, fontSize: 10, fontWeight: 700, lineHeight: 1.4, verticalAlign: 'middle' },
 };
 
-// ─── PropTypes ───────────────────────────────────────────────────────────────
+// ─── PropTypes ───────────────────────────────────────────────────────────────────
 const interviewControlsPropTypes = {
-  /** The full question object. Used for option list and question id. */
-  currentQuestion: PropTypes.shape({
-    id:      PropTypes.string,
-    options: PropTypes.arrayOf(PropTypes.string),
-  }).isRequired,
-  /** True when the question is MCQ or aptitude — renders option buttons instead of textarea. */
-  isObjective: PropTypes.bool.isRequired,
-  /** Currently selected MCQ option index (null if nothing selected). */
-  selectedAnswerIndex: PropTypes.number,
-  /** Current value of the open-answer textarea. */
-  textAnswer: PropTypes.string.isRequired,
-  /** textarea onChange handler from the parent. */
-  onTextChange: PropTypes.func.isRequired,
-  /** Callback to select an MCQ option by index. */
-  onSelectAnswer: PropTypes.func.isRequired,
-  /** True when the answer is non-empty (or an option is selected). Enables the submit button. */
-  canSubmit: PropTypes.bool.isRequired,
-  /** True while the AI is evaluating the submitted answer. */
-  isLoading: PropTypes.bool.isRequired,
-  /** True when this is the last question in the session. Changes button label. */
-  isLastQuestion: PropTypes.bool.isRequired,
-  /** True when the parent has flagged the answer as too short and is awaiting confirmation. */
+  currentQuestion:    PropTypes.shape({ id: PropTypes.string, options: PropTypes.arrayOf(PropTypes.string) }).isRequired,
+  isObjective:        PropTypes.bool.isRequired,
+  selectedAnswerIndex:PropTypes.number,
+  textAnswer:         PropTypes.string.isRequired,
+  onTextChange:       PropTypes.func.isRequired,
+  onSelectAnswer:     PropTypes.func.isRequired,
+  canSubmit:          PropTypes.bool.isRequired,
+  isLoading:          PropTypes.bool.isRequired,
+  isLastQuestion:     PropTypes.bool.isRequired,
   shortSubmitPending: PropTypes.bool.isRequired,
-  /** Live word count of the open answer (from parent useMemo). Used in the short-answer warning. */
-  wordCount: PropTypes.number.isRequired,
-  /** Fires when the user clicks Skip — parent sets wasSkipped and calls handleSkip. */
-  onSkip: PropTypes.func.isRequired,
-  /** Fires when the user clicks Submit (or confirms a short answer). */
-  onSubmit: PropTypes.func.isRequired,
-  /** Ref forwarded to the textarea for auto-focus management. */
-  textAreaRef: PropTypes.shape({ current: PropTypes.any }),
-  /** Mode metadata object from MODE_META. Used for accent + soft colours on MCQ options. */
-  mode: PropTypes.shape({
-    accent: PropTypes.string.isRequired,
-    soft:   PropTypes.string.isRequired,
-  }).isRequired,
+  wordCount:          PropTypes.number.isRequired,
+  onSkip:             PropTypes.func.isRequired,
+  onSubmit:           PropTypes.func.isRequired,
+  textAreaRef:        PropTypes.shape({ current: PropTypes.any }),
+  mode:               PropTypes.shape({ accent: PropTypes.string.isRequired, soft: PropTypes.string.isRequired }).isRequired,
+  // ── NEW voice props (all optional — feature degrades gracefully) ──────────
+  /** True while the mic is actively recording */
+  isRecording:        PropTypes.bool,
+  /** False when the browser doesn't support SpeechRecognition */
+  isVoiceSupported:   PropTypes.bool,
+  /** Computed metrics object returned by useVoiceAnswer after recording */
+  voiceMetrics:       PropTypes.object,
+  /** Called when user clicks the mic button to start recording */
+  onMicStart:         PropTypes.func,
+  /** Called when user clicks the mic button to stop recording */
+  onMicStop:          PropTypes.func,
 };
 
-// ─── Component ───────────────────────────────────────────────────────────────
-// Renders the pre-submission half of the answer panel:
-//   • "YOUR ANSWER" heading + mode tag
-//   • MCQ option buttons (objective) OR textarea (open)
-//   • Answer footer: hint text, short-answer warning, Skip + Submit buttons
+// ─── Component ───────────────────────────────────────────────────────────────────
 function InterviewControls({
   currentQuestion,
   isObjective,
@@ -90,7 +86,17 @@ function InterviewControls({
   onSubmit,
   textAreaRef,
   mode,
+  // voice props
+  isRecording,
+  isVoiceSupported,
+  voiceMetrics,
+  onMicStart,
+  onMicStop,
 }) {
+  // Voice feature is active only for open (non-objective) questions
+  // and only when the parent wired up the voice props.
+  const showVoice = !isObjective && onMicStart != null;
+
   return (
     <>
       {/* ── Section heading ── */}
@@ -101,7 +107,19 @@ function InterviewControls({
             {isObjective ? 'Choose an option' : 'Write your response'}
           </strong>
         </div>
-        <div style={S.answerModeTag}>{isObjective ? 'SELECT' : 'WRITE'}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* ── MicButton — only for open questions ── */}
+          {showVoice && (
+            <MicButton
+              isRecording={Boolean(isRecording)}
+              isSupported={isVoiceSupported !== false}
+              isSubmitted={isLoading}
+              onStart={onMicStart}
+              onStop={onMicStop}
+            />
+          )}
+          <div style={S.answerModeTag}>{isObjective ? 'SELECT' : 'WRITE'}</div>
+        </div>
       </div>
 
       {/* ── MCQ options OR open textarea ── */}
@@ -147,15 +165,37 @@ function InterviewControls({
           })}
         </div>
       ) : (
-        <textarea
-          ref={textAreaRef}
-          style={S.answerBox}
-          value={textAnswer}
-          onChange={onTextChange}
-          placeholder="Write your answer here... (Enter to submit, Shift+Enter for a new line)"
-          rows={9}
-          aria-label="Your answer"
-        />
+        <>
+          <textarea
+            ref={textAreaRef}
+            style={S.answerBox}
+            value={textAnswer}
+            onChange={onTextChange}
+            placeholder={
+              isRecording
+                ? '🎙️ Listening… speak your answer'
+                : 'Write your answer here... (Enter to submit, Shift+Enter for a new line)'
+            }
+            rows={9}
+            aria-label="Your answer"
+          />
+
+          {/* ── Delivery snapshot card (appears after recording stops) ── */}
+          {showVoice && voiceMetrics && (
+            <DeliveryCard voiceMetrics={voiceMetrics} />
+          )}
+
+          {/* ── Unsupported browser fallback (when voice was requested but unavailable) ── */}
+          {showVoice && isVoiceSupported === false && (
+            <MicButton
+              isRecording={false}
+              isSupported={false}
+              isSubmitted={false}
+              onStart={() => {}}
+              onStop={() => {}}
+            />
+          )}
+        </>
       )}
 
       {/* ── Footer: hint, short-answer warning, actions ── */}
@@ -170,8 +210,8 @@ function InterviewControls({
           {isObjective
             ? selectedAnswerIndex !== null ? '✓ Answer selected' : 'Select one option to continue'
             : textAnswer.trim().length > 0
-              ? `${textAnswer.trim().split(/\s+/).filter(Boolean).length} words · ${textAnswer.length} chars`
-              : 'Start typing your answer…'}
+              ? `${textAnswer.trim().split(/\s+/).filter(Boolean).length} words · ${textAnswer.length} chars${isRecording ? ' · 🎙️ recording' : ''}`
+              : 'Start typing or use the mic above…'}
         </span>
 
         {shortSubmitPending && (
@@ -234,7 +274,12 @@ InterviewControls.propTypes = interviewControlsPropTypes;
 InterviewControls.defaultProps = {
   selectedAnswerIndex: null,
   textAreaRef:         null,
+  // voice defaults — feature is disabled when these are absent
+  isRecording:        false,
+  isVoiceSupported:   true,
+  voiceMetrics:       null,
+  onMicStart:         null,
+  onMicStop:          null,
 };
-
 
 export default InterviewControls;

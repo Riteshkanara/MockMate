@@ -815,15 +815,17 @@ Return ONLY JSON.
   }
 };
 
-const evaluateOpenAnswer = async ({ question, answer, topic }) => {
-  const questionText = typeof question === 'string' ? question : question?.text || '';
-  const userAnswer = String(answer || '').trim();
-  const questionTopic = topic || (typeof question === 'string' ? 'General' : question?.topic) || 'General';
 
+
+const evaluateOpenAnswer = async ({ question, answer, topic, voiceMetrics = null }) => {
+  const questionText  = typeof question === 'string' ? question : question?.text || '';
+  const userAnswer    = String(answer || '').trim();
+  const questionTopic = topic || (typeof question === 'string' ? 'General' : question?.topic) || 'General';
+ 
   if (!userAnswer) {
     return {
       score: 0,
-      feedback: 'No answer was provided. Try to answer the question directly and explain your reasoning.',
+      feedback: 'No answer was provided.',
       good: 'No answer was provided.',
       missing: 'The question was not answered.',
       idealHint: 'Start with the main concept or definition asked by the question.',
@@ -833,102 +835,266 @@ const evaluateOpenAnswer = async ({ question, answer, topic }) => {
       fallback: false,
     };
   }
-
+ 
+  // ── Voice-metrics block (injected only when available) ──────────────────
+  const voiceBlock = voiceMetrics
+    ? `
+Voice delivery metrics (collected from the student's microphone):
+- Words per minute  : ${voiceMetrics.wpm?.wpm ?? voiceMetrics.wpm ?? '—'}
+- WPM rating        : ${voiceMetrics.wpm?.label ?? '—'}
+- Filler word count : ${voiceMetrics.fillerWords?.total ?? voiceMetrics.fillerWords ?? '—'}
+- Filler breakdown  : ${JSON.stringify(voiceMetrics.fillerWords?.breakdown ?? [])}
+- Answer word count : ${voiceMetrics.answerLength?.wordCount ?? '—'}
+- Length rating     : ${voiceMetrics.answerLength?.rating ?? '—'}
+ 
+Use these to populate the toneAnalysis, vocabularyRichness, hesitationPattern,
+and deliveryTip fields. If a metric is "—" (unavailable), omit that sub-field.
+`
+    : 'No voice metrics were recorded (student typed their answer).';
+ 
   const prompt = `
-You are a strict but fair technical placement interviewer.
-
+You are a strict but fair technical placement interviewer and speech coach.
+ 
 Question:
 ${questionText}
-
+ 
 Topic:
 ${questionTopic}
-
+ 
 Student Answer:
 ${userAnswer}
-
-Evaluate based on:
-
-1. Correctness
-2. Technical understanding
-3. Relevance
-4. Clarity
-5. Completeness
-6. Practical reasoning or examples where appropriate
-
-Give a score from 0 to 100.
-
-IMPORTANT:
-- Do not reward length by itself.
-- A concise but technically correct answer can score highly.
-- Penalize incorrect technical claims.
-- Penalize answers that avoid the question.
-- For behavioral questions, evaluate relevance, clarity, ownership, reasoning, and outcome.
-- Do not require an example when one is unnecessary.
-- Be constructive but honest.
-
-Return ONLY JSON.
+ 
+${voiceBlock}
+ 
+────────────────────────────────────────────
+CONTENT EVALUATION (score 0–100):
+ 
+Evaluate on:
+1. Correctness — are the technical claims accurate?
+2. Technical depth — does the student show real understanding?
+3. Relevance — does the answer address exactly what was asked?
+4. Clarity — is it structured and easy to follow?
+5. Completeness — are the key points covered?
+6. Practical reasoning — examples or applied thinking where appropriate.
+ 
+RULES:
+- Concise but technically correct answers can score highly.
+- Penalise incorrect technical claims and question-avoidance.
+- For behavioural questions, evaluate relevance, clarity, ownership,
+  reasoning, and stated outcome.
+- Do not require examples when the question does not warrant them.
+ 
+────────────────────────────────────────────
+STAR METHOD BREAKDOWN:
+ 
+Assess how well the student structured their answer using the STAR framework.
+Each pillar gets:
+  - score (0–100)
+  - note  (one short sentence of specific feedback for that pillar, max 15 words)
+ 
+Only evaluate STAR when the question is behavioural or situational.
+For purely technical questions, set every STAR pillar score to 0 and set
+overall to "STAR structure is not applicable for this technical question."
+ 
+────────────────────────────────────────────
+KEYWORD COVERAGE:
+ 
+Identify the 4–8 technical keywords or concepts a strong answer to THIS
+specific question must include. Then classify each as:
+  - hit    : the student explicitly mentioned or clearly addressed it
+  - missed : the student omitted it entirely
+ 
+────────────────────────────────────────────
+CONFIDENCE SCORE:
+ 
+Read the student's language for assertiveness vs hedging.
+- score (0–100): 100 = fully assertive, 0 = extremely hesitant
+- label : "Assertive" | "Measured" | "Hesitant"
+- formalPct  : estimated % of language that is formal/technical (0–100)
+- hedgingPct : estimated % of language that uses hedges ("I think", "maybe", "sort of") (0–100)
+- note  : one short insight (max 20 words)
+ 
+────────────────────────────────────────────
+FOLLOW-UP QUESTIONS:
+ 
+Write exactly 3 questions a real interviewer would ask NEXT based on this
+specific answer. Make them targeted — not generic interview questions.
+ 
+────────────────────────────────────────────
+VOICE DELIVERY ANALYSIS (only when voice metrics are provided):
+ 
+toneAnalysis:
+  - score      : 0–100 (how professional/appropriate the tone sounds)
+  - label      : "Professional" | "Conversational" | "Casual"
+  - formalPct  : estimated formal-language ratio (0–100)
+  - casualPct  : estimated casual-language ratio (0–100)
+  - note       : one actionable sentence (max 20 words)
+ 
+vocabularyRichness:
+  - score       : 0–100 (how varied and precise the vocabulary is)
+  - label       : "Rich" | "Average" | "Basic"
+  - uniqueRatio : estimated ratio of unique words to total words (0.0–1.0)
+  - note        : one actionable sentence (max 20 words)
+ 
+hesitationPattern:
+  - score   : 0–100 (100 = very fluent / no hesitation, 0 = very hesitant)
+  - pattern : "Confident" | "Moderate" | "Hesitant"
+  - where   : "start-heavy" | "end-heavy" | "distributed" | null
+              (where pauses / fillers were most concentrated)
+  - note    : one actionable sentence (max 20 words)
+ 
+deliveryTip:
+  A single, specific, actionable coaching tip based on the voice metrics
+  and the content of the answer. Max 30 words.
+  If no voice metrics were recorded, set deliveryTip to null.
+ 
+────────────────────────────────────────────
+Return ONLY valid JSON matching the schema below. No markdown, no extra keys.
 `;
-
+ 
+  // ── JSON schema for Gemini structured output ────────────────────────────
+  const EVAL_SCHEMA = {
+    type: 'object',
+    properties: {
+      score:         { type: 'number' },
+      good:          { type: 'string' },
+      missing:       { type: 'string' },
+      idealHint:     { type: 'string' },
+      tip:           { type: 'string' },
+      sampleAnswer:  { type: 'string' },
+      deliveryTip:   { type: 'string' },
+ 
+      starBreakdown: {
+        type: 'object',
+        properties: {
+          S:       { type: 'object', properties: { score: { type: 'number' }, note: { type: 'string' } }, required: ['score', 'note'] },
+          T:       { type: 'object', properties: { score: { type: 'number' }, note: { type: 'string' } }, required: ['score', 'note'] },
+          A:       { type: 'object', properties: { score: { type: 'number' }, note: { type: 'string' } }, required: ['score', 'note'] },
+          R:       { type: 'object', properties: { score: { type: 'number' }, note: { type: 'string' } }, required: ['score', 'note'] },
+          overall: { type: 'string' },
+        },
+        required: ['S', 'T', 'A', 'R', 'overall'],
+      },
+ 
+      followUpQuestions: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+ 
+      keywordCoverage: {
+        type: 'object',
+        properties: {
+          hit:    { type: 'array', items: { type: 'string' } },
+          missed: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['hit', 'missed'],
+      },
+ 
+      confidenceScore: {
+        type: 'object',
+        properties: {
+          score:      { type: 'number' },
+          label:      { type: 'string' },
+          formalPct:  { type: 'number' },
+          hedgingPct: { type: 'number' },
+          note:       { type: 'string' },
+        },
+        required: ['score', 'label', 'note'],
+      },
+ 
+      toneAnalysis: {
+        type: 'object',
+        properties: {
+          score:     { type: 'number' },
+          label:     { type: 'string' },
+          formalPct: { type: 'number' },
+          casualPct: { type: 'number' },
+          note:      { type: 'string' },
+        },
+        required: ['score', 'label', 'note'],
+      },
+ 
+      vocabularyRichness: {
+        type: 'object',
+        properties: {
+          score:       { type: 'number' },
+          label:       { type: 'string' },
+          uniqueRatio: { type: 'number' },
+          note:        { type: 'string' },
+        },
+        required: ['score', 'label', 'note'],
+      },
+ 
+      hesitationPattern: {
+        type: 'object',
+        properties: {
+          score:   { type: 'number' },
+          pattern: { type: 'string' },
+          where:   { type: 'string' },
+          note:    { type: 'string' },
+        },
+        required: ['score', 'pattern', 'note'],
+      },
+    },
+    required: ['score', 'good', 'missing', 'idealHint', 'tip', 'sampleAnswer',
+               'starBreakdown', 'followUpQuestions', 'keywordCoverage', 'confidenceScore'],
+  };
+ 
   try {
     const result = await withRetry({
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
-        responseJsonSchema: {
-          type: 'object',
-          properties: {
-            score: { type: 'number' },
-            good: { type: 'string' },
-            missing: { type: 'string' },
-            idealHint: { type: 'string' },
-            tip: { type: 'string' },
-            sampleAnswer: { type: 'string' },
-          },
-          required: ['score', 'good', 'missing', 'idealHint', 'tip', 'sampleAnswer'],
-        },
+        responseJsonSchema: EVAL_SCHEMA,
       },
     });
-
+ 
     const parsed = parseJson(result.text);
+ 
     let score = Number(parsed.score);
-
     if (!Number.isFinite(score)) throw new Error('Gemini returned an invalid score.');
-
     score = Math.max(0, Math.min(100, Math.round(score)));
-
-    const feedback = {
-      good: String(parsed.good || '').trim(),
-      missing: String(parsed.missing || '').trim(),
-      idealHint: String(parsed.idealHint || '').trim(),
-      tip: String(parsed.tip || '').trim(),
-      sampleAnswer: String(parsed.sampleAnswer || '').trim(),
+ 
+    const base = {
+      good:         String(parsed.good         || '').trim(),
+      missing:      String(parsed.missing       || '').trim(),
+      idealHint:    String(parsed.idealHint     || '').trim(),
+      tip:          String(parsed.tip           || '').trim(),
+      sampleAnswer: String(parsed.sampleAnswer  || '').trim(),
+      deliveryTip:  parsed.deliveryTip ? String(parsed.deliveryTip).trim() : null,
     };
-
+ 
+    // ── new enriched fields ───────────────────────────────────────────────
+    const enriched = {
+      starBreakdown:      parsed.starBreakdown      || null,
+      followUpQuestions:  Array.isArray(parsed.followUpQuestions) ? parsed.followUpQuestions.filter(Boolean) : [],
+      keywordCoverage:    parsed.keywordCoverage    || null,
+      confidenceScore:    parsed.confidenceScore    || null,
+      toneAnalysis:       parsed.toneAnalysis       || null,
+      vocabularyRichness: parsed.vocabularyRichness || null,
+      hesitationPattern:  parsed.hesitationPattern  || null,
+    };
+ 
     return {
       score,
-      feedback: JSON.stringify(feedback),
-      ...feedback,
+      feedback: JSON.stringify({ ...base, ...enriched }),
+      ...base,
+      ...enriched,
       aiAvailable: true,
       fallback: false,
     };
   } catch (error) {
     console.error('Gemini evaluateOpenAnswer error:', getErrorMessage(error));
-
     const fb = fallbackEval({ userAnswer });
-
     return {
       ...fb,
       feedback: JSON.stringify({
-        good: fb.good,
-        missing: fb.missing,
-        idealHint: fb.idealHint,
-        tip: fb.tip,
-        sampleAnswer: fb.sampleAnswer,
+        good: fb.good, missing: fb.missing, idealHint: fb.idealHint,
+        tip: fb.tip, sampleAnswer: fb.sampleAnswer,
       }),
     };
   }
 };
-
 const getSkippedAnswer = async ({ question, topic }) => {
   const questionText = typeof question === 'string' ? question : question?.text || '';
   const questionTopic = topic || (typeof question === 'string' ? 'General' : question?.topic) || 'General';

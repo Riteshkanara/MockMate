@@ -27,6 +27,7 @@ const parseFeedback = feedback => {
       idealHint: '',
       tip: '',
       sampleAnswer: '',
+      deliveryTip: '',
       aiAvailable: false,
       fallback: true,
     };
@@ -60,18 +61,21 @@ const normalizeQuestion = question => ({
 });
 
 // Shapes raw API response + parsed feedback into the feedback state object.
+// CHANGED: added deliveryTip and voiceMetrics so FeedbackPanel can display them.
 const buildFeedback = (data, parsed) => ({
   score:        Number(data?.score) || 0,
   correct:      data?.correct ?? null,
-  timeTaken:    Number(data?.timeTaken) || 0,  // FeedbackPanel displays "Xs · Q2/5"
+  timeTaken:    Number(data?.timeTaken) || 0,
   aiAvailable:  parsed.aiAvailable !== false,
   fallback:     parsed.fallback === true,
-  good:         parsed.good || '',
-  missing:      parsed.missing || '',
-  idealHint:    parsed.idealHint || '',
-  tip:          parsed.tip || '',
+  good:         parsed.good         || '',
+  missing:      parsed.missing      || '',
+  idealHint:    parsed.idealHint    || '',
+  tip:          parsed.tip          || '',
   sampleAnswer: parsed.sampleAnswer || '',
-  raw:          data?.feedback || '',
+  deliveryTip:  parsed.deliveryTip  || '',   // NEW — AI tip generated from voice metrics
+  raw:          data?.feedback      || '',
+  voiceMetrics: data?.voiceMetrics  || null, // NEW — echoed back from server for FeedbackPanel
 });
 
 // Extracts the most useful error string from an Axios error or plain Error.
@@ -186,9 +190,10 @@ export const useInterview = ({ notify } = {}) => {
   );
 
   // ── SUBMIT CURRENT QUESTION ────────────────────────────────────────────
+  // CHANGED: added voiceMetrics param (null when user typed instead of speaking)
 
   const handleSubmit = useCallback(
-    async (answer = '', answerIndex = null, timeTaken = 0, skipped = false) => {
+    async (answer = '', answerIndex = null, timeTaken = 0, skipped = false, voiceMetrics = null) => {
       if (!sessionId) { setError('Interview session is missing.'); return null; }
       const question = questions[currentIndex];
       if (!question)  { setError('Current question is missing.');  return null; }
@@ -199,11 +204,12 @@ export const useInterview = ({ notify } = {}) => {
       notify_.loading(skipped ? 'Saving…' : 'Evaluating your answer…');
       try {
         const data = await submitAnswer(sessionId, {
-          questionId:  question.id,
-          answer:      answer || '',
-          answerIndex: answerIndex ?? null,
-          timeTaken:   Number(timeTaken) || 0,
-          skipped:     Boolean(skipped),
+          questionId:   question.id,
+          answer:       answer || '',
+          answerIndex:  answerIndex ?? null,
+          timeTaken:    Number(timeTaken) || 0,
+          skipped:      Boolean(skipped),
+          voiceMetrics: voiceMetrics || null, // NEW — passed to server for storage + Gemini tip
         });
         const parsed = parseFeedback(data?.feedback);
         setFeedback(buildFeedback(data, parsed));

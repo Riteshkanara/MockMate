@@ -4,11 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import { useInterview } from '../hooks/useInterview';
+import { useVoiceAnswer } from '../hooks/useVoiceAnswer';   
 import InterviewLoader from '../components/InterviewLoader';
 import { C as CT, F } from '../styles/token';
 import QuestionDisplay   from '../components/interview/QuestionDisplay';
 import InterviewControls from '../components/interview/InterviewControls';
-import FeedbackPanel     from '../components/interview/FeedbackPanel';
+import { FeedbackPanel } from '../components/interview/FeedbackPanel';
 
 
 const C = {
@@ -224,11 +225,40 @@ const Interview = () => {
   const submitTimeRef   = useRef(0);
   const secondsLeftRef  = useRef(90);
 
+  const currentQuestion   = questions?.[currentIndex];
+  const isObjective       = currentQuestion && ['mcq', 'aptitude'].includes(currentQuestion.questionType);
+
+  // ── NEW: Voice answer hook ─────────────────────────────────────────────
+  // Scoped to open questions only. The hook auto-resets when questionId changes.
+  const handleVoiceTranscript = useCallback((text) => {
+    setTextAnswer(text);
+    textAnswerRef.current = text;
+    if (shortSubmitPending) setShortSubmitPending(false);
+  }, [shortSubmitPending]);
+
+  const {
+    isRecording,
+    isSupported:    isVoiceSupported,
+    voiceMetrics,
+    startRecording: handleMicStart,
+    stopRecording:  handleMicStop,
+    clearVoiceData,
+  } = useVoiceAnswer({
+    onTranscriptChange: handleVoiceTranscript,
+    topic:        currentQuestion?.topic        || '',
+    questionType: currentQuestion?.questionType || 'open',
+    questionId:   currentQuestion?.id           || '',
+  });
+
+  // Keep a stable ref to voiceMetrics so the timer closure can read it
+  const voiceMetricsRef = useRef(null);
+  useEffect(() => { voiceMetricsRef.current = voiceMetrics; }, [voiceMetrics]);
+  // ──────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
-
 
   useEffect(() => {
     let rafId;
@@ -242,11 +272,9 @@ const Interview = () => {
     };
   }, []);
 
-  const currentQuestion   = questions?.[currentIndex];
   const mode              = MODE_META[selectedMode] || MODE_META.quick;
   const totalQuestions    = questions?.length ?? 0;
   const progress          = totalQuestions ? ((currentIndex + 1) / totalQuestions) * 100 : 0;
-  const isObjective       = currentQuestion && ['mcq', 'aptitude'].includes(currentQuestion.questionType);
   const currentDifficulty = difficultyMeta(currentQuestion?.difficulty);
   const isLastQuestion    = currentIndex === totalQuestions - 1;
   const questionsLeft     = Math.max(0, totalQuestions - currentIndex - 1);
@@ -290,8 +318,8 @@ const Interview = () => {
 
   useEffect(() => {
     if (sessionStarted) {
-    window.scrollTo({ top: 183, behavior: 'smooth' });
-  }
+      window.scrollTo({ top: 183, behavior: 'smooth' });
+    }
     setTextAnswer('');
     textAnswerRef.current  = '';
     answerIndexRef.current = null;
@@ -301,6 +329,7 @@ const Interview = () => {
     beepedTicksRef.current = new Set();
     submitLockRef.current  = false;
     setTimerActive(false);
+    clearVoiceData(); // NEW — reset voice state when question changes
 
     if (!currentQuestion) {
       setSecondsLeft(0);
@@ -319,6 +348,7 @@ const Interview = () => {
     });
 
     return () => { window.cancelAnimationFrame(frameId); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentQuestion?.id, currentQuestion?.timeLimit]);
 
   useEffect(() => {
@@ -327,19 +357,11 @@ const Interview = () => {
     return () => clearTimeout(id);
   }, [sessionStarted, currentQuestion?.id, isObjective, isSubmitted]);
 
-  // ── Single timer effect keyed purely on currentIndex ─────────────────
-  // FIXED: The previous design had `isLoading` in the interval effect's dep array.
-  // Every time the user hit Submit, isLoading flipped true → the interval was
-  // torn down and re-created, resetting transitionRef checks mid-tick and
-  // causing the timer to freeze while the answer was being evaluated.
-  // Solution: drive everything off a ref so the interval never needs to
-  // restart due to loading/submission state changes.
   const timerActiveRef = useRef(false);
   const isSubmittedRef = useRef(false);
 
-  // Keep refs in sync with state so the interval closure always sees fresh values
-  useEffect(() => { timerActiveRef.current = timerActive; },    [timerActive]);
-  useEffect(() => { isSubmittedRef.current = isSubmitted; },   [isSubmitted]);
+  useEffect(() => { timerActiveRef.current = timerActive; },  [timerActive]);
+  useEffect(() => { isSubmittedRef.current = isSubmitted; }, [isSubmitted]);
 
   useEffect(() => {
     if (!sessionStarted || !currentQuestion) return undefined;
@@ -348,13 +370,11 @@ const Interview = () => {
     const timeLimit   = currentQuestion.timeLimit;
 
     const timerId = window.setInterval(() => {
-      // Read current flags via refs — never via closure-captured state
       if (!timerActiveRef.current || isSubmittedRef.current) return;
 
       setSecondsLeft((prev) => {
         if (prev <= 0) return 0;
 
-        // Time is up: trigger submission once
         if (prev <= 1) {
           window.clearInterval(timerId);
           if (!submitLockRef.current) {
@@ -362,7 +382,8 @@ const Interview = () => {
             const isObj = ['mcq', 'aptitude'].includes(currentQuestion?.questionType);
             if (isObj) {
               if (answerIndexRef.current !== null && answerIndexRef.current !== undefined) {
-                handleSubmit(null, answerIndexRef.current, timeLimit, false)
+                // Pass null voiceMetrics for objective questions
+                handleSubmit(null, answerIndexRef.current, timeLimit, false, null)
                   .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
               } else {
                 setWasSkipped(true);
@@ -370,7 +391,8 @@ const Interview = () => {
                   .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
               }
             } else if (textAnswerRef.current.trim()) {
-              handleSubmit(textAnswerRef.current, null, timeLimit, false)
+              // NEW: pass voiceMetrics from ref so timer closure has latest value
+              handleSubmit(textAnswerRef.current, null, timeLimit, false, voiceMetricsRef.current)
                 .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
             } else {
               setWasSkipped(true);
@@ -384,7 +406,6 @@ const Interview = () => {
         const next = prev - 1;
         secondsLeftRef.current = next;
 
-        // Beep in the last 10 seconds
         if (next >= 1 && next <= 10) {
           const beepKey = `${questionId ?? 'unknown'}-${next}`;
           if (!beepedTicksRef.current.has(beepKey)) {
@@ -397,8 +418,6 @@ const Interview = () => {
     }, 1000);
 
     return () => window.clearInterval(timerId);
-    // Intentionally excludes isLoading, isSubmitted, timerActive — those are
-    // read through refs so the interval is never recreated mid-question.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionStarted, currentQuestion?.id]);
 
@@ -426,13 +445,15 @@ const Interview = () => {
       return;
     }
     setShortSubmitPending(false);
+    // NEW: pass voiceMetrics as 5th argument
     handleSubmit(
       textAnswer,
       isObjective ? selectedAnswerIndex : null,
       currentQuestion.timeLimit - secondsLeftRef.current,
-      false
+      false,
+      isObjective ? null : voiceMetrics,
     );
-  }, [canSubmit, isSubmitted, handleSubmit, textAnswer, isObjective, selectedAnswerIndex, currentQuestion, isShortAnswer, shortSubmitPending]);
+  }, [canSubmit, isSubmitted, handleSubmit, textAnswer, isObjective, selectedAnswerIndex, currentQuestion, isShortAnswer, shortSubmitPending, voiceMetrics]);
 
   const doAdvance = useCallback(() => {
     if (isAdvancing || isLoading) return;
@@ -812,7 +833,7 @@ const Interview = () => {
               )}
               <div style={S.questionNumber}>
                 <strong style={{ color: mode.accent }}>{String(currentIndex + 1).padStart(2, '0')}</strong>
-                <span>/{String(totalQuestions).padStart(2, '0')}</span>
+                <span>/{String(totalQuestions).padStart(2, '00')}</span>
               </div>
               {questionsLeft > 0 && (
                 <span style={{ fontFamily: F.mono, fontSize: 10, color: C.faint, whiteSpace: 'nowrap', letterSpacing: '0.2px' }}>
@@ -854,9 +875,6 @@ const Interview = () => {
         {/* ── Two-column room grid ── */}
         <main style={S.roomGrid} className="iv-room-grid">
 
-          {/* Left: question display
-              key causes QuestionDisplay to remount on question change,
-              re-triggering the iv-question-slide CSS animation. */}
           <QuestionDisplay
             key={`q-${questionKey}`}
             currentQuestion={currentQuestion}
@@ -868,7 +886,6 @@ const Interview = () => {
             mode={mode}
           />
 
-          {/* Right: answer input (pre-submission) or feedback (post-submission) */}
           <section style={S.answerPanel} className="iv-answer-panel">
             {!isSubmitted ? (
               <InterviewControls
@@ -887,6 +904,12 @@ const Interview = () => {
                 onSubmit={doSubmit}
                 textAreaRef={textAreaRef}
                 mode={mode}
+                // NEW: voice props — only wired for open questions
+                isRecording={isRecording}
+                isVoiceSupported={isVoiceSupported}
+                voiceMetrics={voiceMetrics}
+                onMicStart={handleMicStart}
+                onMicStop={handleMicStop}
               />
             ) : (
               <FeedbackPanel
@@ -900,6 +923,7 @@ const Interview = () => {
                 skipped={wasSkipped}
                 questionIndex={currentIndex}
                 totalQuestions={totalQuestions}
+                  voiceMetrics={voiceMetrics || feedback?.voiceMetrics || null} 
               />
             )}
           </section>
@@ -1095,16 +1119,13 @@ const GlobalStyles = () => (
 // ═══════════════════════════════════════════════════════════════════════════
 
 const S = {
-  // ── Layout ──────────────────────────────────────────────────────────────
   page:             { minHeight:'100vh', background:C.bg, backgroundImage:`radial-gradient(ellipse at 8% 0%, rgba(26,110,255,0.07) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(0,173,224,0.05) 0%, transparent 42%)`, padding:'20px 24px 64px', fontFamily:F.body },
   container:        { margin:'0 auto', transition:'opacity 0.5s ease, transform 0.5s cubic-bezier(.16,1,.3,1)' },
-  // ── Top strip ───────────────────────────────────────────────────────────
   strip:            { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 14px', marginBottom:16, borderRadius:10, background:C.card, border:`1px solid ${C.border}`, boxShadow:C.shadow },
   stripL:           { display:'flex', alignItems:'center', gap:9 },
   stripR:           { display:'flex', alignItems:'center', gap:10 },
   liveDot:          { width:7, height:7, borderRadius:'50%', background:C.green, animation:'ivLivePulse 2.4s ease-in-out infinite', boxShadow:`0 0 8px ${C.greenGlow}` },
   mono:             { fontFamily:F.mono, fontSize:10.5, letterSpacing:'0.5px', color:C.muted },
-  // ── Hero ────────────────────────────────────────────────────────────────
   hero:             { position:'relative', overflow:'hidden', padding:'28px 28px', marginBottom:14, borderRadius:22, background:`linear-gradient(135deg, ${C.blue900} 0%, ${C.blue700} 45%, ${C.blue600} 75%, ${C.cyan600} 100%)`, boxShadow:'0 20px 56px rgba(0,31,107,0.30)' },
   heroScan:         { position:'absolute', top:0, left:0, width:'25%', height:'100%', background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent)', animation:'ivScan 9s linear infinite', willChange:'transform', pointerEvents:'none' },
   heroGrid:         { position:'relative', display:'grid', gridTemplateColumns:'260px 1fr', gap:30, alignItems:'center' },
@@ -1121,7 +1142,6 @@ const S = {
   eyebrowDot:       { width:6, height:6, borderRadius:'50%', background:C.cyan400, flexShrink:0 },
   heroH1:           { margin:0, fontFamily:F.display, fontSize:'clamp(26px, 4vw, 42px)', fontWeight:900, color:'#fff', lineHeight:1.1, letterSpacing:'-0.8px', maxWidth:600 },
   heroSub:          { margin:'14px 0 0', fontSize:'clamp(13px, 1.4vw, 15px)', lineHeight:1.7, color:'rgba(255,255,255,0.80)', maxWidth:520 },
-  // ── Builder card ────────────────────────────────────────────────────────
   card:             { background:C.card, border:`1px solid ${C.border}`, borderRadius:20, boxShadow:C.shadow, overflow:'hidden' },
   groupBlock:       { padding:'16px 22px' },
   groupHead:        { display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, marginBottom:11 },
@@ -1129,7 +1149,6 @@ const S = {
   groupTitleAccent: { width:3, height:14, borderRadius:2, background:C.blue500, flexShrink:0, display:'inline-block' },
   groupTag:         { color:C.faint, fontFamily:F.mono, fontSize:9.5, letterSpacing:'0.5px' },
   divider:          { height:1, background:C.border },
-  // ── Mode grid ───────────────────────────────────────────────────────────
   modeGrid:         { display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:9 },
   modeCard:         { display:'flex', alignItems:'center', gap:12, minHeight:78, borderStyle:'solid', borderWidth:1.5, borderColor:C.border, background:C.card, borderRadius:14, padding:'12px 13px', cursor:'pointer', textAlign:'left', transition:'border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease' },
   modeCardActive:   { background:`linear-gradient(135deg, ${C.cardAlt}, #fff)`, boxShadow:`0 0 0 2px ${C.blue500}30, ${C.shadow}`, borderStyle:'solid', borderWidth:1.5, borderColor:`${C.blue500}60` },
@@ -1138,7 +1157,6 @@ const S = {
   modeLabel:        { color:C.text, fontFamily:F.display, fontSize:13.5, fontWeight:800, lineHeight:1.2 },
   modeDesc:         { marginTop:3, color:C.muted, fontSize:12, lineHeight:1.4 },
   modeCheck:        { width:20, height:20, borderStyle:'solid', borderWidth:1.5, borderColor:C.borderMd, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:9, flexShrink:0, transition:'transform 0.22s cubic-bezier(.34,1.56,.64,1), background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease' },
-  // ── Difficulty grid ─────────────────────────────────────────────────────
   difficultyGrid:       { display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:8 },
   difficultyCard:       { display:'flex', alignItems:'center', gap:9, minHeight:64, borderStyle:'solid', borderWidth:1.5, borderColor:C.border, background:C.card, borderRadius:13, padding:'10px 11px', cursor:'pointer', textAlign:'left', transition:'border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease' },
   difficultyCardActive: { background:C.cardAlt, borderStyle:'solid', borderWidth:1.5, borderColor:`${C.blue500}50`, boxShadow:`0 0 0 2px ${C.blue500}20` },
@@ -1147,7 +1165,6 @@ const S = {
   difficultyDesc:       { display:'block', marginTop:2, color:C.muted, fontSize:11.5, lineHeight:1.35 },
   difficultyRadio:      { width:18, height:18, borderRadius:'50%', borderStyle:'solid', borderWidth:1.5, borderColor:C.borderMd, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:8, flexShrink:0, transition:'background 0.16s ease, border-color 0.16s ease' },
   builderSelect:        { width:'100%', height:48, border:`1.5px solid ${C.borderMd}`, borderRadius:11, background:C.cardAlt, padding:'0 36px 0 13px', color:C.text, fontFamily:F.body, fontSize:13.5, outline:'none', appearance:'none', WebkitAppearance:'none', backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237C8CAD' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`, backgroundRepeat:'no-repeat', backgroundPosition:'right 13px center', cursor:'pointer', transition:'border-color 0.18s ease, box-shadow 0.18s ease' },
-  // ── Launch area ─────────────────────────────────────────────────────────
   launchArea:    { display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, padding:'18px 22px', background:C.cardAlt, borderTop:`1px solid ${C.border}` },
   sessionSummary:{ display:'flex', alignItems:'center', gap:12, minWidth:0 },
   summaryIcon:   { width:42, height:42, borderRadius:12, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:17 },
@@ -1158,11 +1175,9 @@ const S = {
   spinner:       { width:13, height:13, borderRadius:'50%', borderStyle:'solid', borderWidth:2, borderColor:'rgba(255,255,255,0.35)', borderTopColor:'#fff', animation:'ivSpin 0.7s linear infinite', display:'inline-block', flexShrink:0 },
   footnote:      { padding:'12px 22px 18px', color:C.faint, fontFamily:F.body, fontSize:11.5, letterSpacing:'0.1px', lineHeight:1.7 },
   kbd:           { display:'inline-block', padding:'2px 7px', borderRadius:5, borderStyle:'solid', borderWidth:1, borderColor:C.borderMd, borderBottomWidth:2, background:C.cardAlt, color:C.sub, fontFamily:F.mono, fontSize:10, fontWeight:700, lineHeight:1.4, verticalAlign:'middle' },
-  // ── Room header ─────────────────────────────────────────────────────────
   roomTop:          { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:11 },
   roomActions:      { display:'flex', alignItems:'center', gap:10 },
   exitBtn:          { borderStyle:'solid', borderWidth:1, borderColor:C.border, background:C.card, borderRadius:9, padding:'7px 13px', color:C.sub, cursor:'pointer', fontSize:12, fontWeight:700, fontFamily:F.body, transition:'border-color 0.15s ease, color 0.15s ease' },
-  // ── Exit modal ──────────────────────────────────────────────────────────
   exitOverlay:      { position:'fixed', top:0, right:0, bottom:0, left:0, width:'100vw', height:'100dvh', minHeight:'100vh', background:'rgba(10,22,40,0.6)', backdropFilter:'blur(4px)', WebkitBackdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:'20px', overflowY:'auto', boxSizing:'border-box', overscrollBehavior:'contain' },
   exitModal:        { width:'min(380px, calc(100vw - 40px))', maxWidth:380, maxHeight:'calc(100dvh - 40px)', overflowY:'auto', background:C.card, borderRadius:20, borderStyle:'solid', borderWidth:1, borderColor:C.border, boxShadow:'0 24px 60px rgba(10,22,40,0.28)', padding:'24px 24px 20px', boxSizing:'border-box', flexShrink:0 },
   exitModalTitle:   { fontSize:17, fontWeight:800, color:C.text, fontFamily:F.display, marginBottom:7, letterSpacing:'-0.2px' },
@@ -1170,7 +1185,6 @@ const S = {
   exitModalRow:     { display:'flex', gap:10, justifyContent:'flex-end' },
   exitModalCancel:  { borderStyle:'solid', borderWidth:1, borderColor:C.border, background:C.card, borderRadius:10, padding:'10px 18px', color:C.sub, cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:F.body, transition:'border-color 0.15s ease' },
   exitModalConfirm: { border:'none', background:C.red, borderRadius:10, padding:'10px 18px', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:F.body, boxShadow:`0 4px 14px ${C.red}40`, transition:'box-shadow 0.15s ease' },
-  // ── Console card ────────────────────────────────────────────────────────
   consoleCard:      { padding:'12px 16px', borderStyle:'solid', borderWidth:1, borderColor:C.border, borderRadius:16, background:C.card, boxShadow:C.shadow, marginBottom:10, position:'sticky', top:8, zIndex:5 },
   consoleTop:       { display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 },
   consoleContext:   { display:'flex', alignItems:'center', gap:10, minWidth:0, flex:1 },
@@ -1182,14 +1196,10 @@ const S = {
   progressTrack:    { marginTop:10, height:5, borderRadius:999, background:C.border, overflow:'hidden' },
   trail:            { display:'flex', gap:4, marginTop:10, alignItems:'center' },
   trailDot:         { height:5, borderRadius:999, transition:'all 0.35s cubic-bezier(0.16,1,0.3,1)', flexShrink:0 },
-  // ── Timer ring ──────────────────────────────────────────────────────────
   ringWrap:  { position:'relative', width:58, height:58, flexShrink:0, borderRadius:'50%' },
   ringLabel: { position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:F.mono, fontWeight:700, pointerEvents:'none', letterSpacing:'-0.3px' },
-  // ── Room grid ───────────────────────────────────────────────────────────
   roomGrid:    { display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, alignItems:'start' },
-  // ── Answer panel wrapper (houses InterviewControls or FeedbackPanel) ────
   answerPanel: { padding:'18px 18px', borderStyle:'solid', borderWidth:1, borderColor:C.border, borderRadius:18, background:C.card, boxShadow:C.shadow, display:'flex', flexDirection:'column' },
-  // ── Room footer ─────────────────────────────────────────────────────────
   roomFoot:    { marginTop:10, textAlign:'center', color:C.muted, fontSize:12, lineHeight:1.6, letterSpacing:'0.1px', fontFamily:F.body, fontWeight:500 },
   errorBanner: { marginTop:10, display:'flex', justifyContent:'center', gap:8, flexWrap:'wrap', padding:'10px 14px', borderRadius:11, background:C.redTint, borderStyle:'solid', borderWidth:1, borderColor:'#FECACA', color:C.red, fontSize:12.5, fontFamily:F.body, fontWeight:600 },
 };

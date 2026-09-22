@@ -194,7 +194,7 @@ const buildSessionSummary = (questions) => {
   return { strengths, weaknesses };
 };
 
-// Shared tier-map builder used by getAnalytics and getAnalytics.
+// Shared tier-map builder used by getAnalytics and getPerformance.
 // currentTier is always the gated tier; isUnlocked respects minSessions.
 const buildTierMap = ({ irs, sessionCount, dimProfile, dimTimeSeries, currentTierGated }) =>
   TIERS.map((tier) => {
@@ -313,11 +313,22 @@ const getInterviewSession = async (req, res) => {
   }
 };
 
+// ─── answerQuestion — PATCHED (voice metrics support added) ──────────────────
 const answerQuestion = async (req, res) => {
   try {
     const userId = getUserId(req);
     const { sessionId } = req.params;
-    const { questionId, answer = '', answerIndex = null, timeTaken = 0, skipped = false } = req.body || {};
+
+    // CHANGED: added voiceMetrics to destructure
+    const {
+      questionId,
+      answer       = '',
+      answerIndex  = null,
+      timeTaken    = 0,
+      skipped      = false,
+      voiceMetrics = null,   // NEW — pre-computed client-side speech metrics
+    } = req.body || {};
+
     const session = await Session.findOne({ _id: sessionId, user: userId, status: 'active' });
     if (!session) {
       return res.status(404).json({ message: 'Active interview session not found.' });
@@ -326,13 +337,20 @@ const answerQuestion = async (req, res) => {
     if (!question) {
       return res.status(404).json({ message: 'Question not found.' });
     }
+
     question.timeTaken = Number(timeTaken) || 0;
-    question.skipped = Boolean(skipped);
+    question.skipped   = Boolean(skipped);
+
+    // NEW: persist voice metrics so they're available on result/replay pages
+    if (voiceMetrics && question.questionType === 'open') {
+      question.voiceMetrics = voiceMetrics;
+    }
+
     if (['mcq', 'aptitude'].includes(question.questionType)) {
       question.userAnswerIndex = answerIndex === null || answerIndex === undefined ? null : Number(answerIndex);
       question.userAnswer = answer || (question.userAnswerIndex !== null ? question.options?.[question.userAnswerIndex] || '' : '');
       const result = evalObjectiveAnswer({ question, answerIndex: question.userAnswerIndex });
-      question.score = result.score;
+      question.score    = result.score;
       question.feedback = result.feedback;
     } else {
       question.userAnswer = String(answer || '');
@@ -340,48 +358,62 @@ const answerQuestion = async (req, res) => {
         question.score = 0;
         const result = await getSkippedAnswer({ question, topic: question.topic });
         question.feedback = JSON.stringify({
-          good: '',
-          missing: 'Question skipped — no answer submitted.',
-          idealHint: result.idealHint || '',
-          tip: result.tip || '',
+          good:         '',
+          missing:      'Question skipped — no answer submitted.',
+          idealHint:    result.idealHint    || '',
+          tip:          result.tip          || '',
           sampleAnswer: result.sampleAnswer || '',
-          aiAvailable: result.aiAvailable !== false,
-          fallback: result.fallback === true,
+          aiAvailable:  result.aiAvailable !== false,
+          fallback:     result.fallback === true,
         });
       } else {
-        const result = await evaluateOpenAnswer({ question, answer: question.userAnswer, topic: question.topic });
+        // CHANGED: pass voiceMetrics so Gemini generates a deliveryTip
+        const result = await evaluateOpenAnswer({
+          question,
+          answer:       question.userAnswer,
+          topic:        question.topic,
+          voiceMetrics,  // NEW — null when user typed; Gemini prompt adapts
+        });
         question.score = Number(result.score || 0);
         question.feedback = JSON.stringify({
-          good: result.good || '',
-          missing: result.missing || '',
-          idealHint: result.idealHint || '',
-          tip: result.tip || '',
+          good:         result.good         || '',
+          missing:      result.missing      || '',
+          idealHint:    result.idealHint    || '',
+          tip:          result.tip          || '',
           sampleAnswer: result.sampleAnswer || '',
-          aiAvailable: result.aiAvailable !== false,
-          fallback: result.fallback === true,
+          deliveryTip:  result.deliveryTip  || '',  // NEW — AI tip based on metrics
+          aiAvailable:  result.aiAvailable !== false,
+          fallback:     result.fallback === true,
         });
       }
     }
+
     const currentIndex = session.questions.findIndex(q => q.id === questionId);
     session.currentQuestion = Math.min(currentIndex + 1, session.questions.length - 1);
     await session.save();
+
     const isObjective = ['mcq', 'aptitude'].includes(question.questionType);
+
     return res.json({
-      success: true,
+      success:            true,
       questionId,
-      score: question.score,
-      feedback: question.feedback,
-      skipped: Boolean(question.skipped),
-      correct: isObjective ? question.score === 100 : null,
+      score:              question.score,
+      feedback:           question.feedback,
+      skipped:            Boolean(question.skipped),
+      correct:            isObjective ? question.score === 100 : null,
       correctAnswerIndex: isObjective ? question.correctAnswerIndex : null,
-      explanation: isObjective ? (question.explanation || '') : '',
-      nextQuestion: session.currentQuestion < session.questions.length - 1,
+      explanation:        isObjective ? (question.explanation || '') : '',
+      nextQuestion:       session.currentQuestion < session.questions.length - 1,
+      // NEW: echo back voiceMetrics so the client can display them in FeedbackPanel
+      // without having to store them in React state across a round-trip.
+      voiceMetrics:       question.voiceMetrics || null,
     });
   } catch (error) {
     console.error('answerQuestion error:', error);
     return res.status(500).json({ message: 'Failed to submit answer.', error: error.message });
   }
 };
+// ─────────────────────────────────────────────────────────────────────────────
 
 const completeInterview = async (req, res) => {
   try {
@@ -467,13 +499,13 @@ const retryQuestion = async (req, res) => {
     const result = await evaluateOpenAnswer({ question, answer: question.userAnswer, topic: question.topic });
     question.score = Number(result.score || 0);
     question.feedback = JSON.stringify({
-      good: result.good || '',
-      missing: result.missing || '',
-      idealHint: result.idealHint || '',
-      tip: result.tip || '',
+      good:         result.good         || '',
+      missing:      result.missing      || '',
+      idealHint:    result.idealHint    || '',
+      tip:          result.tip          || '',
       sampleAnswer: result.sampleAnswer || '',
-      aiAvailable: result.aiAvailable !== false,
-      fallback: result.fallback === true,
+      aiAvailable:  result.aiAvailable !== false,
+      fallback:     result.fallback === true,
     });
     await session.save();
     return res.json({ success: true, questionId, score: question.score, feedback: question.feedback });
@@ -592,7 +624,6 @@ const computeUserIRS = async (userId) => {
   const { tier: gatedTier } = tierForScoreGated(irs, sessions.length);
   return { irs, averageScore, tierLabel: gatedTier.label };
 };
-
 
 const getAnalytics = async (req, res) => {
   try {
@@ -796,10 +827,10 @@ const getPerformance = async (req, res) => {
     const irs = breakdown.finalScore;
     const currentTierRaw = tierForScore(irs);
     const { tier: currentTierGated, isGated, sessionsNeededForRawTier } = tierForScoreGated(irs, sessions.length);
-    const dimTimeSeries = buildDimSeries(chronological); 
+    const dimTimeSeries = buildDimSeries(chronological);
 
     // NOTE: uses currentTierGated (not raw) so isCurrentTier and isUnlocked are consistent
-    // between getAnalytics and getAnalytics.
+    // between getAnalytics and getPerformance.
     const tiers = buildTierMap({ irs, sessionCount: sessions.length, dimProfile, dimTimeSeries, currentTierGated });
 
     const user = await User.findById(userId).lean();
@@ -868,7 +899,7 @@ const getAICoach = async (req, res) => {
       .map(item => ({ topic: item.topic, averageScore: Math.round(item.totalScore / item.count), attempts: item.count }))
       .sort((a, b) => b.averageScore - a.averageScore);
 
-    const weakest  = topicPerformance.slice().sort((a, b) => a.averageScore - b.averageScore).slice(0, 3).map(t => t.topic);
+    const weakest   = topicPerformance.slice().sort((a, b) => a.averageScore - b.averageScore).slice(0, 3).map(t => t.topic);
     const strongest = topicPerformance[0]?.topic || 'N/A';
     const chronological = [...sessions].reverse();
     const { profile: dimProfile } = buildDimensionProfile(topicPerformance);

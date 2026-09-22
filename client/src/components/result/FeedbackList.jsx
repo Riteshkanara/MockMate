@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
 import { retryQuestion } from '../../Services/interviewService';
 import { C, F } from "../../styles/token";
+import { FeedbackCard } from '../interview/FeedbackPanel';
 
 
 

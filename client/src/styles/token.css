@@ -3,16 +3,10 @@
    Tailwind v4 auto-generates utility classes from every
    color, font, shadow, radius, and motion token below. */
 
-/* Font loading — must precede @theme */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
 
 @theme {
-  /* ── Fonts ────────────────────────────────────────────────────────────
-     One display face, one body face, one mono face. Every page uses the
-     same three — that consistency is what reads as "premium"; a fourth
-     or fifth typeface sneaking into one page is what reads as "student
-     project." Swap the family names here if you land on a different
-     typographic direction — nowhere else. */
+  
   --font-display: Plus Jakarta Sans, Lexend, sans-serif;
   --font-body:    Inter, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono:    JetBrains Mono, Fira Code, SF Mono, monospace;

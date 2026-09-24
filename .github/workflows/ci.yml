@@ -17,15 +17,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.12.0
           cache: npm
           cache-dependency-path: server/package-lock.json
 
       - name: Install dependencies
-        run: cd server && npm install
+        working-directory: server
+        run: npm install
 
       - name: Run tests
-        run: cd server && npm test
+        working-directory: server
+        run: npm test
         env:
           NODE_ENV: test
           JWT_SECRET: test-secret-for-ci
@@ -42,15 +44,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.12.0
           cache: npm
           cache-dependency-path: client/package-lock.json
 
       - name: Install dependencies
-        run: cd client && npm ci
+        working-directory: client
+        run: npm ci
 
       - name: Run lint
-        run: cd client && npm run lint
+        working-directory: client
+        run: npm run lint
 
   build-client:
     name: Client Build
@@ -62,14 +66,16 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.12.0
           cache: npm
           cache-dependency-path: client/package-lock.json
 
       - name: Install dependencies
-        run: cd client && npm ci
+        working-directory: client
+        run: npm ci
 
       - name: Build
-        run: cd client && npm run build
+        working-directory: client
+        run: npm run build
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}

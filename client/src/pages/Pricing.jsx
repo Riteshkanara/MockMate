@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import useAuth from '../hooks/useAuth';
 import usePlan from '../hooks/usePlan';
 import Button from '../components/Button';
-import { openRazorpayCheckout } from '../services/paymentService';
+import { openRazorpayCheckout } from '../Services/paymentService';
 import { getDashboardAnalytics } from '../Services/interviewService';
 import { C, F } from '../styles/token';
 

@@ -34,7 +34,6 @@ const parseFeedback = feedback => {
   }
 };
 
-// Fills in safe defaults for every field a question object must have.
 const normalizeQuestion = question => ({
   id:         question?.id,
   text:       question?.text || 'Please answer the interview question.',
@@ -60,8 +59,6 @@ const normalizeQuestion = question => ({
       : '',
 });
 
-// Shapes raw API response + parsed feedback into the feedback state object.
-// CHANGED: added deliveryTip and voiceMetrics so FeedbackPanel can display them.
 const buildFeedback = (data, parsed) => ({
   score:        Number(data?.score) || 0,
   correct:      data?.correct ?? null,
@@ -73,19 +70,27 @@ const buildFeedback = (data, parsed) => ({
   idealHint:    parsed.idealHint    || '',
   tip:          parsed.tip          || '',
   sampleAnswer: parsed.sampleAnswer || '',
-  deliveryTip:  parsed.deliveryTip  || '',   // NEW — AI tip generated from voice metrics
+  deliveryTip:        parsed.deliveryTip        || null,
+  // ── Voice delivery ────────────────────────────────────────────────────────
+  toneAnalysis:       parsed.toneAnalysis       || null,
+  vocabularyRichness: parsed.vocabularyRichness || null,
+  hesitationPattern:  parsed.hesitationPattern  || null,
+  // ── Enriched analysis ─────────────────────────────────────────────────────
+  starBreakdown:      parsed.starBreakdown      || null,
+  followUpQuestions:  Array.isArray(parsed.followUpQuestions) ? parsed.followUpQuestions : [],
+  keywordCoverage:    parsed.keywordCoverage    || null,
+  confidenceScore:    parsed.confidenceScore    || null,
+  complexityRating:   parsed.complexityRating   || null,
+  // ── Raw ───────────────────────────────────────────────────────────────────
   raw:          data?.feedback      || '',
-  voiceMetrics: data?.voiceMetrics  || null, // NEW — echoed back from server for FeedbackPanel
+  voiceMetrics: data?.voiceMetrics  || null, // echoed back from server for FeedbackPanel
 });
 
-// Extracts the most useful error string from an Axios error or plain Error.
 const getErrorMessage = (err, fallback = 'Something went wrong.') =>
   err?.response?.data?.error ||
   err?.response?.data?.message ||
   err?.message ||
   fallback;
-
-// ─── Hook ─────────────────────────────────────────────────────────────────
 
 export const useInterview = ({ notify } = {}) => {
   const notifyFallback = {
@@ -100,7 +105,6 @@ export const useInterview = ({ notify } = {}) => {
   const navigate     = useNavigate();
   const { refreshUser } = useAuth();
 
-  // ── Session state ──────────────────────────────────────────────────────
   const [sessionId,           setSessionId]           = useState(null);
   const [questions,           setQuestions]           = useState([]);
   const [currentIndex,        setCurrentIndex]        = useState(0);
@@ -114,8 +118,6 @@ export const useInterview = ({ notify } = {}) => {
 
   const submitInFlightRef = useRef(false);
   const advanceLockRef    = useRef(false);
-
-  // ── START ──────────────────────────────────────────────────────────────
 
   const handleStart = useCallback(
     async (mode = 'quick', company = '', topic = '', difficulty = 'mixed') => {
@@ -147,11 +149,8 @@ export const useInterview = ({ notify } = {}) => {
         setIsLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
-
-  // ── DASHBOARD HYDRATION ────────────────────────────────────────────────
 
   const hydrateSession = useCallback(
     async (sessionId_, rawQuestions = []) => {
@@ -185,12 +184,8 @@ export const useInterview = ({ notify } = {}) => {
         notify_.error(message);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
-
-  // ── SUBMIT CURRENT QUESTION ────────────────────────────────────────────
-  // CHANGED: added voiceMetrics param (null when user typed instead of speaking)
 
   const handleSubmit = useCallback(
     async (answer = '', answerIndex = null, timeTaken = 0, skipped = false, voiceMetrics = null) => {
@@ -209,7 +204,7 @@ export const useInterview = ({ notify } = {}) => {
           answerIndex:  answerIndex ?? null,
           timeTaken:    Number(timeTaken) || 0,
           skipped:      Boolean(skipped),
-          voiceMetrics: voiceMetrics || null, // NEW — passed to server for storage + Gemini tip
+          voiceMetrics: voiceMetrics || null,
         });
         const parsed = parseFeedback(data?.feedback);
         setFeedback(buildFeedback(data, parsed));
@@ -240,11 +235,8 @@ export const useInterview = ({ notify } = {}) => {
         submitInFlightRef.current = false;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sessionId, questions, currentIndex]
   );
-
-  // ── SKIP ───────────────────────────────────────────────────────────────
 
   const handleSkip = useCallback(
     async timeTaken => {
@@ -254,11 +246,8 @@ export const useInterview = ({ notify } = {}) => {
     [handleSubmit]
   );
 
-  // ── TIME UP ────────────────────────────────────────────────────────────
-
   const handleTimeUp = useCallback(
     async timeTaken => {
-      // Re-check submitInFlightRef first (isSubmitted state lags one render behind).
       if (submitInFlightRef.current || isSubmitted || isLoading) return;
       await handleSubmit(
         '',
@@ -269,8 +258,6 @@ export const useInterview = ({ notify } = {}) => {
     },
     [isSubmitted, isLoading, handleSubmit, questions, currentIndex]
   );
-
-  // ── NEXT ───────────────────────────────────────────────────────────────
 
   const handleNext = useCallback(async () => {
     if (advanceLockRef.current) return null;
@@ -306,17 +293,12 @@ export const useInterview = ({ notify } = {}) => {
     setIsSubmitted(false);
     advanceLockRef.current = false;
     return null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, questions.length, sessionId, navigate, refreshUser]);
-
-  // ── SELECT MCQ OPTION ──────────────────────────────────────────────────
 
   const selectAnswer = useCallback(
     index => setSelectedAnswerIndex(index),
     []
   );
-
-  // ── RETRY QUESTION ─────────────────────────────────────────────────────
 
   const handleRetryQuestion = useCallback(
     async questionId => {
@@ -339,11 +321,8 @@ export const useInterview = ({ notify } = {}) => {
         setIsLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sessionId]
   );
-
-  // ── TAB-CLOSE ABANDON ──────────────────────────────────────────────────
 
   useEffect(() => {
     const handleUnload = () => {
@@ -353,8 +332,6 @@ export const useInterview = ({ notify } = {}) => {
     window.addEventListener('beforeunload', handleUnload);
     return () => window.removeEventListener('beforeunload', handleUnload);
   }, [sessionId, sessionStarted]);
-
-  // ── EXPLICIT ABANDON (Exit button) ────────────────────────────────────
 
   const handleAbandon = useCallback(
     async (destination = '/dashboard') => {
@@ -374,8 +351,6 @@ export const useInterview = ({ notify } = {}) => {
     },
     [sessionId, sessionStarted, navigate, notify_]
   );
-
-  // ── PUBLIC API ─────────────────────────────────────────────────────────
 
   return {
     sessionId,

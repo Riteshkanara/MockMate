@@ -839,18 +839,33 @@ const evaluateOpenAnswer = async ({ question, answer, topic, voiceMetrics = null
   // ── Voice-metrics block (injected only when available) ──────────────────
   const voiceBlock = voiceMetrics
     ? `
-Voice delivery metrics (collected from the student's microphone):
-- Words per minute  : ${voiceMetrics.wpm?.wpm ?? voiceMetrics.wpm ?? '—'}
-- WPM rating        : ${voiceMetrics.wpm?.label ?? '—'}
-- Filler word count : ${voiceMetrics.fillerWords?.total ?? voiceMetrics.fillerWords ?? '—'}
-- Filler breakdown  : ${JSON.stringify(voiceMetrics.fillerWords?.breakdown ?? [])}
-- Answer word count : ${voiceMetrics.answerLength?.wordCount ?? '—'}
-- Length rating     : ${voiceMetrics.answerLength?.rating ?? '—'}
- 
-Use these to populate the toneAnalysis, vocabularyRichness, hesitationPattern,
-and deliveryTip fields. If a metric is "—" (unavailable), omit that sub-field.
+Voice delivery metrics (collected from the student's microphone — these are
+measured values, not estimates; use them as ground truth):
+- Words per minute       : ${voiceMetrics.wpm?.wpm ?? '—'} wpm  (${voiceMetrics.wpm?.label ?? '—'})
+- Pace consistency       : ${voiceMetrics.wpm?.consistency
+    ? `${voiceMetrics.wpm.consistency.rating} (${voiceMetrics.wpm.consistency.firstHalfWpm} wpm first half → ${voiceMetrics.wpm.consistency.secondHalfWpm} wpm second half)`
+    : '—'}
+- Filler word count      : ${voiceMetrics.fillerWords?.total ?? '—'} total  |  rate: ${voiceMetrics.fillerWords?.rate ?? '—'} per 100 words
+- Filler breakdown       : ${JSON.stringify(voiceMetrics.fillerWords?.breakdown ?? [])}
+- Filler positional trend: ${voiceMetrics.fillerWords?.trend ?? '—'} (front-loaded = nerves settling, back-loaded = losing structure, even = spread out)
+- Pauses                 : ${voiceMetrics.pauses
+    ? `${voiceMetrics.pauses.rating} — ${voiceMetrics.pauses.deadAirCount} dead-air gap(s) 4s+ (longest ${voiceMetrics.pauses.longestPauseSeconds}s), ${voiceMetrics.pauses.thinkingPauseCount} shorter thinking pause(s)`
+    : '—'}
+- Answer length          : ${voiceMetrics.answerLength?.wordCount ?? '—'} words  (${voiceMetrics.answerLength?.rating ?? '—'}; target ${voiceMetrics.answerLength?.min ?? '—'}–${voiceMetrics.answerLength?.max ?? '—'})
+- Vocabulary TTR         : ${voiceMetrics.vocabularyDiversity?.ttr ?? '—'}  (${voiceMetrics.vocabularyDiversity?.label ?? '—'}) — ${voiceMetrics.vocabularyDiversity?.uniqueWords ?? '—'} unique / ${voiceMetrics.vocabularyDiversity?.totalWords ?? '—'} total words
+- Sentence clarity       : avg ${voiceMetrics.sentenceClarity?.avgWordsPerSentence ?? '—'} words/sentence  (${voiceMetrics.sentenceClarity?.label ?? '—'})
+- Computed delivery score: ${voiceMetrics.deliveryScore ?? '—'} / 100  (pre-computed from pace + fillers + pauses + length — do not recompute, use it as a calibration anchor)
+- Recording length       : ${voiceMetrics.durationSeconds != null ? voiceMetrics.durationSeconds.toFixed(1) + 's' : '—'}
+
+Instructions for using these metrics:
+- Use ALL of the above as ground truth to populate toneAnalysis, vocabularyRichness, hesitationPattern, and deliveryTip.
+- toneAnalysis.formalPct / casualPct should reflect the CONTENT language style, not the WPM.
+- vocabularyRichness.uniqueRatio must match the TTR above (${voiceMetrics.vocabularyDiversity?.ttr ?? '—'}) — do not guess a different number.
+- hesitationPattern.score must be INVERSELY related to filler rate: high fillers → low score.
+- hesitationPattern.where: use the filler positional trend and pause data above (not a fresh inference from the transcript alone).
+- deliveryTip: one specific, actionable coaching sentence (max 30 words) targeting the single weakest measured metric.
 `
-    : 'No voice metrics were recorded (student typed their answer).';
+    : 'No voice metrics were recorded (student typed their answer). Set deliveryTip, toneAnalysis, vocabularyRichness, and hesitationPattern all to null.';
  
   const prompt = `
 You are a strict but fair technical placement interviewer and speech coach.

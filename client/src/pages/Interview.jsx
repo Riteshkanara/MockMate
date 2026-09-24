@@ -237,13 +237,17 @@ const Interview = () => {
   }, [shortSubmitPending]);
 
   const {
-    isRecording,
-    isSupported:    isVoiceSupported,
-    voiceMetrics,
-    startRecording: handleMicStart,
-    stopRecording:  handleMicStop,
-    clearVoiceData,
-  } = useVoiceAnswer({
+  isRecording,
+  isSupported:    isVoiceSupported,
+  unsupportedReason: voiceUnsupportedReason,
+  voiceMetrics,
+  voiceError,
+  isSilent:       isVoiceSilent,
+  startRecording: handleMicStart,
+  stopRecording:  handleMicStop,
+  clearVoiceData,
+  dismissVoiceError,
+} = useVoiceAnswer({
     onTranscriptChange: handleVoiceTranscript,
     topic:        currentQuestion?.topic        || '',
     questionType: currentQuestion?.questionType || 'open',
@@ -904,12 +908,15 @@ const Interview = () => {
                 onSubmit={doSubmit}
                 textAreaRef={textAreaRef}
                 mode={mode}
-                // NEW: voice props — only wired for open questions
                 isRecording={isRecording}
                 isVoiceSupported={isVoiceSupported}
+                voiceUnsupportedReason={voiceUnsupportedReason}
                 voiceMetrics={voiceMetrics}
+                voiceError={voiceError}
+                isVoiceSilent={isVoiceSilent}
                 onMicStart={handleMicStart}
                 onMicStop={handleMicStop}
+                onDismissVoiceError={dismissVoiceError}
               />
             ) : (
               <FeedbackPanel

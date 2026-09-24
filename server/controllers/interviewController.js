@@ -381,9 +381,18 @@ const answerQuestion = async (req, res) => {
           idealHint:    result.idealHint    || '',
           tip:          result.tip          || '',
           sampleAnswer: result.sampleAnswer || '',
-          deliveryTip:  result.deliveryTip  || '',  // NEW — AI tip based on metrics
+          deliveryTip:  result.deliveryTip  || null,
           aiAvailable:  result.aiAvailable !== false,
           fallback:     result.fallback === true,
+          starBreakdown:      result.starBreakdown      || null,
+          followUpQuestions:  result.followUpQuestions  || [],
+          keywordCoverage:    result.keywordCoverage    || null,
+          confidenceScore:    result.confidenceScore    || null,
+          toneAnalysis:       result.toneAnalysis       || null,
+          vocabularyRichness: result.vocabularyRichness || null,
+          hesitationPattern:  result.hesitationPattern  || null,
+          complexityRating:   result.complexityRating   || null,
+          timeTaken:          timeTaken                 || 0,
         });
       }
     }
@@ -504,8 +513,16 @@ const retryQuestion = async (req, res) => {
       idealHint:    result.idealHint    || '',
       tip:          result.tip          || '',
       sampleAnswer: result.sampleAnswer || '',
-      aiAvailable:  result.aiAvailable !== false,
-      fallback:     result.fallback === true,
+      deliveryTip:  result.deliveryTip  || null,
+      aiAvailable:  result.aiAvailable  !== false,
+      fallback:     result.fallback     === true,
+      starBreakdown:      result.starBreakdown      || null,
+      followUpQuestions:  result.followUpQuestions  || [],
+      keywordCoverage:    result.keywordCoverage    || null,
+      confidenceScore:    result.confidenceScore    || null,
+      toneAnalysis:       result.toneAnalysis       || null,
+      vocabularyRichness: result.vocabularyRichness || null,
+      hesitationPattern:  result.hesitationPattern  || null,
     });
     await session.save();
     return res.json({ success: true, questionId, score: question.score, feedback: question.feedback });

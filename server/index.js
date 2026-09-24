@@ -15,6 +15,7 @@ const interviewRoutes = require('./routes/interview');
 const dashboardRoutes = require('./routes/dashboard');
 const leaderboardRoutes = require('./routes/leaderboard');
 const profileRoutes = require('./routes/profile');
+const paymentRoutes   = require('./routes/payment'); 
 
 const app = express();
 
@@ -27,13 +28,18 @@ app.use(cors({
   credentials: true,
 }));
 
-// ── Body + cookie parsing ──────────────────────────────────────────────────
-app.use(express.json());
+// ── Cookie parsing — MUST be before any route that checks req.cookies ──────
 app.use(cookieParser());
 
-// ── Rate limiting — global fallback (prevents brute-force on any route) ───
+// ── Webhook raw body — ONLY for /payment/webhook, before express.json() ────
+app.use('/payment/webhook', express.raw({ type: 'application/json', limit: '1mb' }));
+
+// ── Body parsing for everything else ──────────────────────────────────────
+app.use(express.json());
+
+// ── Rate limiting ──────────────────────────────────────────────────────────
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
@@ -56,9 +62,19 @@ const interviewLimiter = rateLimit({
   message: { error: 'Too many interview requests. Slow down a bit.' },
 });
 
-app.use('/interview', interviewLimiter);
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === '/webhook',
+  message: { error: 'Too many payment requests. Slow down a bit.' },
+});
 
-// ── Passport ──────────────────────────────────────────────────────────────
+app.use('/interview', interviewLimiter);
+app.use('/payment', paymentLimiter);
+
+// ── Passport ───────────────────────────────────────────────────────────────
 app.use(passport.initialize());
 
 // ── MongoDB connection ─────────────────────────────────────────────────────
@@ -91,6 +107,7 @@ app.use('/interview', interviewRoutes);
 app.use('/dashboard', dashboardRoutes);
 app.use('/leaderboard', leaderboardRoutes);
 app.use('/profile', profileRoutes);
+app.use('/payment', paymentRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────────────────
 app.use((req, res) => {

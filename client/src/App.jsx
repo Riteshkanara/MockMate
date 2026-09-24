@@ -19,6 +19,7 @@ import History       from './pages/History';
 import Analytics     from './pages/Analytics';
 import Coach         from './pages/Coach';
 import PublicProfile from './pages/publicProfile';
+import Pricing      from './pages/Pricing';
 
 const PAGE_TITLES = {
   '/':            'MockMate — AI Mock Interview for Placements',
@@ -292,6 +293,7 @@ const InnerApp = () => (
         <Route path="/analytics"     element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
         <Route path="/coach"         element={<ProtectedRoute><Coach /></ProtectedRoute>} />
         <Route path="/leaderboard"   element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
+        <Route path="/pricing"       element={<Pricing />} /> 
         <Route path="*"              element={<NotFound />} />
       </Routes>
     </PageTransition>

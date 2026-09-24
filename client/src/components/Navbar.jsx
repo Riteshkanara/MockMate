@@ -509,10 +509,7 @@ const NAVBAR_CSS = `
   }
   .mm-login-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
-  /* ══════════════════════════════════════════════════════════
-     MOBILE — top bar controls
-     Only the hamburger + "New" pill visible in the bar
-     ══════════════════════════════════════════════════════════ */
+  /* ── Mobile controls ────────────────────────────────────── */
   .mm-mobile-controls {
     display: none;
     align-items: center;
@@ -581,10 +578,7 @@ const NAVBAR_CSS = `
   .mm-ham.open .mm-bar:nth-child(2) { opacity: 0; transform: scaleX(0); }
   .mm-ham.open .mm-bar:nth-child(3) { transform: rotate(-45deg) translate(4.5px, -4.5px); }
 
-  /* ══════════════════════════════════════════════════════════
-     MOBILE DROPDOWN PANEL
-     Appears below the capsule, right-anchored
-     ══════════════════════════════════════════════════════════ */
+  /* ── Mobile dropdown panel ──────────────────────────────── */
   .mm-mob-panel {
     position: fixed;
     top: 80px;
@@ -606,7 +600,6 @@ const NAVBAR_CSS = `
     z-index: 1100;
     overflow: hidden;
   }
-  /* Top hairline */
   .mm-mob-panel::before {
     content: ''; position: absolute; left: 8%; right: 8%; top: 0; height: 1.5px;
     border-radius: 999px; pointer-events: none; z-index: 2;
@@ -742,11 +735,7 @@ const NAVBAR_CSS = `
   .mm-mob-signout:hover { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(185,28,28,.28), 0 8px 22px rgba(220,38,38,.22); }
   .mm-mob-signout:active { transform: scale(.98); filter: brightness(.93); }
 
-  /* ══════════════════════════════════════════════════════════
-     RESPONSIVE BREAKPOINTS
-     ══════════════════════════════════════════════════════════ */
-
-  /* Hide desktop nav/stats/cta on mobile, show mobile controls */
+  /* ── Responsive breakpoints ─────────────────────────────── */
   @media (max-width: 830px) {
     .mm-nav            { display: none !important; }
     .mm-statschip      { display: none !important; }
@@ -757,14 +746,12 @@ const NAVBAR_CSS = `
     .mm-mobile-controls { display: flex !important; }
   }
 
-  /* Show desktop nav/controls, hide mobile on ≥831px */
   @media (min-width: 831px) {
     .mm-mobile-controls { display: none !important; }
     .mm-mob-panel       { display: none !important; }
     .mm-backdrop        { display: none !important; }
   }
 
-  /* Narrow mobile: shrink brand */
   @media (max-width: 560px) {
     .mm-root { padding: max(6px, env(safe-area-inset-top)) 10px 6px; }
     .mm-brand { padding: 4px 8px 4px 4px; gap: 8px; }
@@ -786,7 +773,6 @@ const NAVBAR_CSS = `
     .mm-mob-grid .mm-mob-tile:last-child:nth-child(odd) { grid-column: auto; }
   }
 
-  /* Desktop nav density */
   @media (max-width: 1080px) {
     .mm-link { padding: 0 9px; font-size: 12px; gap: 4px; }
     .mm-link-emoji { display: none; }
@@ -824,6 +810,12 @@ const Navbar = () => {
   const streak   = user?.streak?.current ?? 0;
   const accent   = scoreColor(irs);
   const initials = user?.name?.[0]?.toUpperCase() || 'M';
+
+  const _now = new Date();
+  const _planExpired = (user?.plan === 'pro' || user?.plan === 'college')
+    && user?.planExpiry
+    && new Date(user.planExpiry) < _now;
+  const isProUser = !_planExpired && (user?.plan === 'pro' || user?.plan === 'college');
 
   const tierLabel =
     user?.tierLabel ??
@@ -898,7 +890,7 @@ const Navbar = () => {
     <>
       <style>{NAVBAR_CSS}</style>
 
-      {/* Mobile backdrop — only for logged-in users */}
+      {/* Mobile backdrop */}
       {mobileOpen && user && (
         <div
           className="mm-backdrop"
@@ -921,7 +913,7 @@ const Navbar = () => {
             </div>
           </Link>
 
-          {/* ── Desktop nav (hidden on mobile via CSS) ────── */}
+          {/* ── Desktop nav ────────────────────────────────── */}
           {user && (
             <div className="mm-nav">
               <div ref={shellRef} className="mm-nav-track" role="list">
@@ -947,12 +939,10 @@ const Navbar = () => {
             </div>
           )}
 
-          {/* ── Right cluster ─────────────────────────────── */}
+          {/* ── Right cluster ──────────────────────────────── */}
           <div className="mm-right">
             {user ? (
               <>
-                {/* ── DESKTOP ONLY controls ── */}
-
                 {/* Daily goal ring */}
                 {!goalDone && (
                   <div ref={goalRef} className="mm-util-wrap">
@@ -1091,16 +1081,29 @@ const Navbar = () => {
                           </button>
                         </div>
 
-                        <div className="mm-drop-tier">
-                          <span className="mm-drop-tier-icon">✨</span>
-                          Tracking toward <b>{tierLabel}</b>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+                          <div className="mm-drop-tier" style={{ marginTop: 0 }}>
+                            <span className="mm-drop-tier-icon">✦</span>
+                            Tracking toward <b>{tierLabel}</b>
+                          </div>
+                          {isProUser && (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '4px 9px', borderRadius: 999,
+                              background: 'linear-gradient(135deg, #1A6EFF 0%, #0044C4 100%)',
+                              color: '#fff', fontSize: 9.5, fontWeight: 800, letterSpacing: .3,
+                              boxShadow: '0 2px 8px rgba(26,110,255,.32)',
+                            }}>
+                              ⚡ PRO
+                            </span>
+                          )}
                         </div>
 
                         <div className="mm-drop-stats-row">
                           {[
-                            { val: `${streak}d`, color: C.orange,    emoji: '🔥', label: 'Streak' },
-                            { val: irs,           color: accent,      emoji: '⚡', label: 'IRS'    },
-                            { val: avgScore ?? '—', color: C.cyan500, emoji: '📊', label: 'Avg'    },
+                            { val: `${streak}d`, color: C.orange,       emoji: '🔥', label: 'Streak' },
+                            { val: irs,           color: accent,         emoji: '⚡', label: 'IRS'    },
+                            { val: avgScore ?? '—', color: C.cyan500,    emoji: '📊', label: 'Avg'    },
                           ].map(({ val, color, emoji, label }) => (
                             <div className="mm-drop-stat" key={label}>
                               <div className="mm-drop-stat-val" style={{ color }}>
@@ -1115,6 +1118,19 @@ const Navbar = () => {
                       <div className="mm-drop-footer">
                         <button
                           type="button"
+                          onClick={() => { setDropOpen(false); navigate('/pricing'); }}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            gap: 8, padding: '10px 16px', borderRadius: 10, border: '1px solid rgba(26,110,255,.22)',
+                            background: 'rgba(235,242,255,.85)', color: '#1A6EFF',
+                            font: `600 13px ${F.body}`, cursor: 'pointer', marginBottom: 8,
+                          }}
+                        >
+                          <span>⚡</span>
+                          <span>{isProUser ? 'Manage plan' : 'Upgrade to Pro'}</span>
+                        </button>
+                        <button
+                          type="button"
                           className="mm-drop-signout"
                           role="menuitem"
                           onClick={() => { setDropOpen(false); logout(); }}
@@ -1127,10 +1143,8 @@ const Navbar = () => {
                   )}
                 </div>
 
-                {/* ── MOBILE controls (hidden on desktop via CSS) ── */}
+                {/* ── Mobile controls (hidden on desktop via CSS) ── */}
                 <div className="mm-mobile-controls">
-
-                  {/* 🎙️ New — pill button */}
                   <button
                     type="button"
                     className="mm-mob-new-btn"
@@ -1141,7 +1155,6 @@ const Navbar = () => {
                     <span className="mm-mob-new-text">New</span>
                   </button>
 
-                  {/* ☰ Hamburger */}
                   <button
                     type="button"
                     className={`mm-ham${mobileOpen ? ' open' : ''}`}
@@ -1167,7 +1180,7 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* ══ MOBILE DROPDOWN PANEL ══════════════════════════════════ */}
+      {/* ── Mobile dropdown panel ──────────────────────────── */}
       {mobileOpen && user && (
         <div className="mm-mob-panel" role="dialog" aria-label="Navigation menu" aria-modal="true">
 

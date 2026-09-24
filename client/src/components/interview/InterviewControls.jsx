@@ -1,16 +1,6 @@
 import PropTypes from 'prop-types';
 import { C as CT, F } from '../../styles/token';
-import MicButton, { DeliveryCard } from './MicButton';
-
-// ── CHANGES vs original ───────────────────────────────────────────────────────
-// 1. Imported MicButton and DeliveryCard from ./MicButton
-// 2. Added 4 new props: isRecording, isVoiceSupported, voiceMetrics,
-//    onMicStart, onMicStop  (all optional; gracefully no-ops when undefined)
-// 3. In the open-question branch: MicButton appears after the textarea,
-//    DeliveryCard appears below MicButton when voiceMetrics is present
-// 4. The short-answer warning now references voice answers too
-// Everything else is pixel-for-pixel identical to the original.
-// ─────────────────────────────────────────────────────────────────────────────
+import MicButton, { DeliveryCard, VoiceStatusStrip } from './MicButton';
 
 const C = {
   ...CT,
@@ -56,17 +46,16 @@ const interviewControlsPropTypes = {
   onSubmit:           PropTypes.func.isRequired,
   textAreaRef:        PropTypes.shape({ current: PropTypes.any }),
   mode:               PropTypes.shape({ accent: PropTypes.string.isRequired, soft: PropTypes.string.isRequired }).isRequired,
-  // ── NEW voice props (all optional — feature degrades gracefully) ──────────
-  /** True while the mic is actively recording */
+  // ── Voice props (all optional — feature degrades gracefully) ──────────────
   isRecording:        PropTypes.bool,
-  /** False when the browser doesn't support SpeechRecognition */
   isVoiceSupported:   PropTypes.bool,
-  /** Computed metrics object returned by useVoiceAnswer after recording */
+  voiceUnsupportedReason: PropTypes.oneOf(['ios', 'browser', null]),
   voiceMetrics:       PropTypes.object,
-  /** Called when user clicks the mic button to start recording */
+  voiceError:         PropTypes.string,
+  isVoiceSilent:      PropTypes.bool,
   onMicStart:         PropTypes.func,
-  /** Called when user clicks the mic button to stop recording */
   onMicStop:          PropTypes.func,
+  onDismissVoiceError: PropTypes.func,
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────────
@@ -89,12 +78,14 @@ function InterviewControls({
   // voice props
   isRecording,
   isVoiceSupported,
+  voiceUnsupportedReason,
   voiceMetrics,
+  voiceError,
+  isVoiceSilent,
   onMicStart,
   onMicStop,
+  onDismissVoiceError,
 }) {
-  // Voice feature is active only for open (non-objective) questions
-  // and only when the parent wired up the voice props.
   const showVoice = !isObjective && onMicStart != null;
 
   return (
@@ -108,12 +99,13 @@ function InterviewControls({
           </strong>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* ── MicButton — only for open questions ── */}
           {showVoice && (
             <MicButton
               isRecording={Boolean(isRecording)}
               isSupported={isVoiceSupported !== false}
+              unsupportedReason={voiceUnsupportedReason}
               isSubmitted={isLoading}
+              isSilent={Boolean(isVoiceSilent)}
               onStart={onMicStart}
               onStop={onMicStop}
             />
@@ -180,16 +172,27 @@ function InterviewControls({
             aria-label="Your answer"
           />
 
+          {/* ── Live status: silence nudge or a recording error ── */}
+          {showVoice && (isRecording || voiceError) && (
+            <VoiceStatusStrip
+              isRecording={Boolean(isRecording)}
+              isSilent={Boolean(isVoiceSilent)}
+              voiceError={voiceError}
+              onDismissError={onDismissVoiceError}
+            />
+          )}
+
           {/* ── Delivery snapshot card (appears after recording stops) ── */}
           {showVoice && voiceMetrics && (
             <DeliveryCard voiceMetrics={voiceMetrics} />
           )}
 
-          {/* ── Unsupported browser fallback (when voice was requested but unavailable) ── */}
+          {/* ── Unsupported browser fallback ── */}
           {showVoice && isVoiceSupported === false && (
             <MicButton
               isRecording={false}
               isSupported={false}
+              unsupportedReason={voiceUnsupportedReason}
               isSubmitted={false}
               onStart={() => {}}
               onStop={() => {}}
@@ -274,12 +277,15 @@ InterviewControls.propTypes = interviewControlsPropTypes;
 InterviewControls.defaultProps = {
   selectedAnswerIndex: null,
   textAreaRef:         null,
-  // voice defaults — feature is disabled when these are absent
   isRecording:        false,
   isVoiceSupported:   true,
+  voiceUnsupportedReason: null,
   voiceMetrics:       null,
+  voiceError:         null,
+  isVoiceSilent:      false,
   onMicStart:         null,
   onMicStop:          null,
+  onDismissVoiceError: null,
 };
 
 export default InterviewControls;

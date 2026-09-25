@@ -34,6 +34,9 @@ const C = {
   redTint: '#FEF2F2',
   green: '#059669',
   amber: '#D97706',
+  gold400: '#FBBF24',
+  gold500: '#F59E0B',
+  gold600: '#D97706',
 };
 
 const F = {
@@ -51,6 +54,8 @@ const NAV_LINKS = [
 ];
 
 const HIDDEN_ROUTES = ['/auth/callback', '/onboarding'];
+
+const PRICING_PATH = '/pricing';
 
 const scoreColor = (s) => {
   const score = Number(s) || 0;
@@ -111,6 +116,41 @@ const CloseIcon = ({ size = 13 }) => (
   </svg>
 );
 
+const CROWN_FLIP = 'none';
+
+const CrownGlyph = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style={{ transform: CROWN_FLIP }}>
+    <path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8z"/>
+    <rect x="5" y="20" width="14" height="1.8" rx=".9"/>
+  </svg>
+);
+
+const CrownEmoji = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+    <defs>
+      <linearGradient id="mm-crown-gold" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#FFE58A"/>
+        <stop offset="55%" stopColor="#FBBF24"/>
+        <stop offset="100%" stopColor="#E08A0B"/>
+      </linearGradient>
+      <linearGradient id="mm-crown-band" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#F59E0B"/>
+        <stop offset="100%" stopColor="#B45309"/>
+      </linearGradient>
+    </defs>
+    <path d="M3.5 24 2.6 10.2 10.2 16 16 6.2 21.8 16 29.4 10.2 28.5 24Z"
+      fill="url(#mm-crown-gold)" stroke="#B45309" strokeWidth="1.3" strokeLinejoin="round"/>
+    <rect x="3" y="23.5" width="26" height="4.6" rx="1.8" fill="url(#mm-crown-band)" stroke="#92400E" strokeWidth="1.1"/>
+    <circle cx="2.6"  cy="9.4" r="2"   fill="#FFF3B0" stroke="#B45309" strokeWidth="1"/>
+    <circle cx="16"   cy="5.2" r="2.3" fill="#FFF3B0" stroke="#B45309" strokeWidth="1"/>
+    <circle cx="29.4" cy="9.4" r="2"   fill="#FFF3B0" stroke="#B45309" strokeWidth="1"/>
+    <circle cx="16"   cy="25.8" r="1.7" fill="#EF4444" stroke="#7F1D1D" strokeWidth=".6"/>
+    <circle cx="9.5"  cy="25.8" r="1.1" fill="#38BDF8" stroke="#075985" strokeWidth=".5"/>
+    <circle cx="22.5" cy="25.8" r="1.1" fill="#38BDF8" stroke="#075985" strokeWidth=".5"/>
+    <path d="M6.6 13.2 7.6 20.5M14.2 10.6 12.6 15" stroke="rgba(255,255,255,.6)" strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+  </svg>
+);
+
 // ─── Score ring ───────────────────────────────────────────────────────────────
 const ScoreRing = ({ value = 0, size = 20, strokeW = 2, id = 'sr' }) => {
   const radius = (size - strokeW * 2) / 2;
@@ -148,6 +188,7 @@ const NAVBAR_CSS = `
   @keyframes mmSheen     { 0% { transform:translateX(-120%) skewX(-14deg); } 100% { transform:translateX(260%) skewX(-14deg); } }
   @keyframes mmOverlayIn { from { opacity:0; } to { opacity:1; } }
   @keyframes mmItemRise  { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes mmProGlow   { 0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,0), 0 2px 8px rgba(245,158,11,.20); } 50% { box-shadow: 0 0 0 4px rgba(245,158,11,.14), 0 4px 14px rgba(245,158,11,.30); } }
 
   /* ── Root shell ─────────────────────────────────────────── */
   .mm-root {
@@ -237,7 +278,7 @@ const NAVBAR_CSS = `
   /* ── Desktop nav pill track ─────────────────────────────── */
   .mm-nav {
     flex: 1; display: flex; align-items: center; justify-content: center;
-    min-width: 0; padding: 0 14px; gap: 8px;
+    min-width: 0; padding: 0 10px; gap: 8px;
   }
   .mm-nav-track {
     position: relative; display: flex; align-items: center;
@@ -245,9 +286,8 @@ const NAVBAR_CSS = `
     background: rgba(244,248,255,.85);
     border: 1px solid rgba(210,222,248,.65);
     box-shadow: inset 0 1px 2px rgba(0,31,107,.05);
-    overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+    overflow: visible;
   }
-  .mm-nav-track::-webkit-scrollbar { display: none; }
   .mm-pill {
     position: absolute; top: 50%; height: 34px;
     border-radius: 10px; transform: translateY(-50%);
@@ -266,8 +306,8 @@ const NAVBAR_CSS = `
   .mm-link {
     position: relative; z-index: 2;
     display: inline-flex; align-items: center; justify-content: center;
-    gap: 5px; height: 34px; flex: 1 1 auto;
-    min-width: 0; padding: 0 11px;
+    gap: 5px; height: 34px; flex: 0 0 auto;
+    padding: 0 11px;
     border: none; border-radius: 10px;
     background: transparent; color: ${C.muted};
     text-decoration: none; font: 500 12.5px ${F.body}; letter-spacing: -.010em;
@@ -289,24 +329,24 @@ const NAVBAR_CSS = `
 
   /* ── Right cluster ──────────────────────────────────────── */
   .mm-right {
-    display: flex; align-items: center; gap: 8px;
-    flex-shrink: 0; margin-left: auto; padding-left: 10px; justify-content: flex-end;
+    display: flex; align-items: center; gap: 7px;
+    flex-shrink: 0; margin-left: auto; padding-left: 8px; justify-content: flex-end;
   }
-  .mm-sep { width: 1px; height: 22px; background: rgba(210,222,248,.9); border-radius: 999px; flex-shrink: 0; margin: 0 2px; }
+  .mm-sep { width: 1px; height: 22px; background: rgba(210,222,248,.9); border-radius: 999px; flex-shrink: 0; margin: 0 1px; }
 
   /* ── Stats chip (desktop) ───────────────────────────────── */
   .mm-statschip {
     display: flex; align-items: center; gap: 0;
-    height: 40px; padding: 0 3px;
-    border: 1px solid rgba(200,218,248,.9); border-radius: 13px;
+    height: 36px; padding: 0 2px;
+    border: 1px solid rgba(200,218,248,.9); border-radius: 12px;
     background: linear-gradient(180deg, rgba(255,255,255,.97), rgba(247,251,255,.92));
     box-shadow: 0 1px 3px rgba(0,31,107,.05);
     cursor: default;
   }
-  .mm-schip-seg   { display: flex; align-items: center; gap: 5px; padding: 0 10px; height: 100%; }
-  .mm-schip-emoji { font-size: 14px; line-height: 1; }
-  .mm-schip-label { font: 600 9.5px ${F.mono}; letter-spacing: .4px; text-transform: uppercase; color: ${C.muted}; line-height: 1; }
-  .mm-schip-val   { font: 800 14px ${F.display}; letter-spacing: -.04em; line-height: 1; }
+  .mm-schip-seg   { display: flex; align-items: center; gap: 4px; padding: 0 8px; height: 100%; }
+  .mm-schip-emoji { font-size: 12px; line-height: 1; }
+  .mm-schip-label { font: 600 8.5px ${F.mono}; letter-spacing: .4px; text-transform: uppercase; color: ${C.muted}; line-height: 1; }
+  .mm-schip-val   { font: 700 12.5px ${F.display}; letter-spacing: -.04em; line-height: 1; }
   .mm-schip-sep   { width: 1px; height: 16px; background: ${C.border}; flex-shrink: 0; }
 
   /* ── Desktop CTA ────────────────────────────────────────── */
@@ -382,13 +422,41 @@ const NAVBAR_CSS = `
   }
   .mm-goal-cta:hover { transform: translateY(-1.5px); box-shadow: 0 8px 22px rgba(0,87,232,.38); filter: brightness(1.04); }
 
+  /* ── Goal + Pro merged button ──────────────────────────── */
+  .mm-goal-emoji { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  .mm-goal-emoji svg {
+    display: block; filter: drop-shadow(0 1px 1.5px rgba(180,83,9,.40));
+    transition: transform .2s cubic-bezier(.22,1,.36,1);
+  }
+  .mm-util-btn:hover .mm-goal-emoji svg { transform: scale(1.12) rotate(-4deg); }
+  .mm-goal-emoji-pulse svg { animation: mmCrownPulse 3.2s ease-in-out infinite; }
+  .mm-util-btn:hover .mm-goal-emoji-pulse svg { animation: none; }
+  @keyframes mmCrownPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+  .mm-goal-upsell {
+    padding: 12px 14px 14px;
+    border-top: 1px solid ${C.border};
+    background: linear-gradient(180deg, #FFFDF5, #FFFBEB);
+  }
+
+  /* ── Pro tag (badge) ────────────────────────────────────── */
+  .mm-pro-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 3px 7px 3px 5px; border-radius: 999px;
+    background: linear-gradient(135deg, #FBBF24 0%, #F59E0B 100%);
+    color: #78350F; font: 800 9px ${F.mono}; letter-spacing: .4px;
+    border: 1px solid rgba(180,83,9,.30);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 2px 6px rgba(245,158,11,.30);
+    flex-shrink: 0;
+  }
+  .mm-av-pro { position: absolute; top: -7px; right: -9px; padding: 2px 5px; z-index: 3; }
+
   /* ── Desktop avatar button ──────────────────────────────── */
   .mm-profile-wrap { position: relative; flex-shrink: 0; }
   .mm-av-btn {
     position: relative; width: 42px; height: 42px;
     display: inline-flex; align-items: center; justify-content: center;
     padding: 5px; border: 1.5px solid rgba(0,66,184,0.45); border-radius: 14px;
-    background: rgba(0,87,232,0.08); cursor: pointer; overflow: hidden;
+    background: rgba(0,87,232,0.08); cursor: pointer;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.90), 0 2px 6px rgba(0,87,232,.12);
     transition: transform .2s cubic-bezier(.22,1,.36,1), border-color .18s, box-shadow .18s, background .18s;
   }
@@ -488,6 +556,25 @@ const NAVBAR_CSS = `
   }
   .mm-drop-signout:hover { filter: brightness(1.06); transform: translateY(-1.5px); box-shadow: 0 4px 14px rgba(185,28,28,.30), 0 10px 26px rgba(220,38,38,.28); }
   .mm-drop-signout:active { transform: scale(.98); filter: brightness(.94); }
+
+  /* Dropdown upgrade / manage-plan card */
+  .mm-drop-upgrade {
+    width: 100%; display: flex; align-items: center; gap: 11px;
+    padding: 11px 12px; margin-bottom: 8px; border-radius: 14px; cursor: pointer;
+    border: 1px solid rgba(217,119,6,.30); text-align: left;
+    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+    box-shadow: 0 2px 8px rgba(245,158,11,.12);
+    transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s;
+  }
+  .mm-drop-upgrade:hover { transform: translateY(-1.5px); box-shadow: 0 6px 18px rgba(245,158,11,.24); }
+  .mm-drop-upgrade-ico {
+    width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+    display: grid; place-items: center; color: #78350F;
+    background: linear-gradient(135deg, #FBBF24, #F59E0B);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 2px 8px rgba(245,158,11,.35);
+  }
+  .mm-drop-upgrade-title { font: 700 13px ${F.display}; color: #78350F; letter-spacing: -.01em; }
+  .mm-drop-upgrade-sub   { font: 500 10.5px ${F.body}; color: #A16207; margin-top: 1px; }
 
   /* ── Login button (guest) ───────────────────────────────── */
   .mm-login {
@@ -721,6 +808,33 @@ const NAVBAR_CSS = `
   /* Last tile spans full width when odd count */
   .mm-mob-grid .mm-mob-tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
 
+  /* Mobile Pro card */
+  .mm-mob-pro {
+    position: relative; overflow: hidden; width: 100%;
+    display: flex; align-items: center; gap: 11px;
+    padding: 12px; border-radius: 15px; cursor: pointer; text-align: left;
+    border: 1px solid rgba(217,119,6,.32);
+    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+    box-shadow: 0 3px 12px rgba(245,158,11,.16);
+    -webkit-tap-highlight-color: transparent;
+    transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s;
+  }
+  .mm-mob-pro:active { transform: scale(.98); }
+  .mm-mob-pro::before {
+    content: ''; position: absolute; left: 8%; right: 8%; top: 0; height: 1.5px;
+    background: linear-gradient(90deg, transparent, #FBBF24, #F59E0B, #FBBF24, transparent);
+  }
+  .mm-mob-pro-ico {
+    width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+    display: grid; place-items: center; color: #78350F;
+    background: linear-gradient(135deg, #FBBF24, #F59E0B);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 3px 10px rgba(245,158,11,.38);
+  }
+  .mm-mob-pro-copy  { flex: 1; min-width: 0; }
+  .mm-mob-pro-title { font: 700 13.5px ${F.display}; color: #78350F; letter-spacing: -.015em; }
+  .mm-mob-pro-sub   { font: 500 10.5px ${F.body}; color: #A16207; margin-top: 2px; line-height: 1.3; }
+  .mm-mob-pro-arrow { color: #B45309; font: 700 16px ${F.body}; flex-shrink: 0; }
+
   /* ── Footer ─────────────────────────────────────────────── */
   .mm-mob-footer { flex-shrink: 0; padding: 0 10px 12px; }
   .mm-mob-signout {
@@ -773,12 +887,29 @@ const NAVBAR_CSS = `
     .mm-mob-grid .mm-mob-tile:last-child:nth-child(odd) { grid-column: auto; }
   }
 
-  @media (max-width: 1080px) {
+  /* ── Desktop nav link sizing by viewport ───────────────── */
+  @media (max-width: 1200px) {
     .mm-link { padding: 0 9px; font-size: 12px; gap: 4px; }
     .mm-link-emoji { display: none; }
   }
-  @media (max-width: 960px) {
-    .mm-link { padding: 0 8px; font-size: 11.5px; }
+  @media (max-width: 1000px) {
+    .mm-link { padding: 0 7px; font-size: 11px; }
+  }
+  @media (max-width: 900px) {
+    .mm-link { padding: 0 6px; font-size: 10.5px; }
+  }
+
+  /* ── Compact desktop: collapse low-priority items ───────── */
+  @media (max-width: 1280px) {
+    .mm-brand-tag { display: none; }
+    .mm-avg       { display: none !important; }
+    .mm-sep       { display: none; }
+    .mm-cta-full  { display: none; }
+  }
+
+  /* Hide stats chip at tight desktop widths to free space for nav */
+  @media (max-width: 1050px) {
+    .mm-statschip { display: none !important; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -825,6 +956,8 @@ const Navbar = () => {
   const goalCompleted = user?.dailyGoal?.completed ?? 0;
   const goalDone      = goalCompleted >= goalTarget;
   const goalPct       = Math.min(100, Math.round((goalCompleted / Math.max(1, goalTarget)) * 100));
+  const RING_C        = 2 * Math.PI * 14.5;
+  const showGoalBtn   = !goalDone || !isProUser;
 
   // Prevent body scroll when mobile panel is open
   useEffect(() => {
@@ -943,59 +1076,106 @@ const Navbar = () => {
           <div className="mm-right">
             {user ? (
               <>
-                {/* Daily goal ring */}
-                {!goalDone && (
+                {/* Goal + Pro (one merged control) */}
+                {showGoalBtn && (
                   <div ref={goalRef} className="mm-util-wrap">
                     <button
                       type="button"
                       className="mm-util-btn"
                       onClick={() => setGoalOpen(v => !v)}
                       aria-expanded={goalOpen}
-                      aria-label={`Daily goal: ${goalCompleted} of ${goalTarget}`}
+                      aria-haspopup="dialog"
+                      title={
+                        (goalDone ? 'Goal complete' : `${goalCompleted}/${goalTarget} today`)
+                        + (isProUser ? '' : ' · Upgrade to Pro')
+                      }
+                      aria-label={
+                        (goalDone ? 'Daily goal complete' : `Daily goal: ${goalCompleted} of ${goalTarget}`)
+                        + (isProUser ? '' : '. Pro upgrade available')
+                      }
                     >
-                      <svg width={24} height={24} viewBox="0 0 24 24" style={{ transform: 'rotate(-90deg)' }}>
-                        <circle cx="12" cy="12" r="9.5" fill="none" stroke={C.border} strokeWidth="2.4"/>
-                        <circle cx="12" cy="12" r="9.5" fill="none" stroke="#3B82F6" strokeWidth="2.4"
-                          strokeDasharray={2 * Math.PI * 9.5}
-                          strokeDashoffset={2 * Math.PI * 9.5 * (1 - goalPct / 100)}
+                      <svg width={34} height={34} viewBox="0 0 34 34" style={{ transform: 'rotate(-90deg)' }}>
+                        <circle cx="17" cy="17" r="14.5" fill="none" stroke={C.border} strokeWidth="3"/>
+                        <circle cx="17" cy="17" r="14.5" fill="none"
+                          stroke={goalDone ? C.green : '#3B82F6'} strokeWidth="3"
+                          strokeDasharray={RING_C}
+                          strokeDashoffset={RING_C * (1 - goalPct / 100)}
                           strokeLinecap="round"
                           style={{ transition: 'stroke-dashoffset .5s cubic-bezier(.22,1,.36,1)' }}
                         />
                       </svg>
+                      <span className={`mm-goal-emoji${isProUser ? '' : ' mm-goal-emoji-pulse'}`}>
+                        <CrownEmoji size={20}/>
+                      </span>
                     </button>
 
                     {goalOpen && (
-                      <div className="mm-popover">
+                      <div className="mm-popover" role="dialog" aria-label="Daily goal">
                         <div className="mm-popover-inner">
-                          <div className="mm-popover-head">
-                            <div>
-                              <div className="mm-popover-title">🎯 Today's goal</div>
-                              <div className="mm-popover-sub">{goalCompleted} of {goalTarget} interviews</div>
+                          {!goalDone ? (
+                            <>
+                              <div className="mm-popover-head">
+                                <div>
+                                  <div className="mm-popover-title">🎯 Today's goal</div>
+                                  <div className="mm-popover-sub">{goalCompleted} of {goalTarget} interviews</div>
+                                </div>
+                              </div>
+                              <div className="mm-goal-body">
+                                <svg width={54} height={54} viewBox="0 0 54 54"
+                                  style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
+                                  <circle cx="27" cy="27" r="23" fill="none" stroke={C.border} strokeWidth="5"/>
+                                  <circle cx="27" cy="27" r="23" fill="none" stroke="#3B82F6" strokeWidth="5"
+                                    strokeDasharray={2 * Math.PI * 23}
+                                    strokeDashoffset={2 * Math.PI * 23 * (1 - goalPct / 100)}
+                                    strokeLinecap="round"
+                                    style={{ transition: 'stroke-dashoffset .6s cubic-bezier(.22,1,.36,1)' }}
+                                  />
+                                </svg>
+                                <div>
+                                  <div className="mm-goal-copy-title">{goalTarget - goalCompleted} more to go</div>
+                                  <div className="mm-goal-copy-sub">Daily practice keeps your IRS climbing steadily.</div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="mm-goal-cta"
+                                onClick={() => { setGoalOpen(false); navigate('/interview'); }}
+                              >
+                                🎙️ Start now
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="mm-popover-head">
+                                <div>
+                                  <div className="mm-popover-title">🎉 Goal complete</div>
+                                  <div className="mm-popover-sub">{goalCompleted} of {goalTarget} interviews today</div>
+                                </div>
+                              </div>
+                              <div className="mm-goal-body">
+                                <div className="mm-goal-copy-sub" style={{ marginTop: 0 }}>
+                                  Nice work. Keep the streak going tomorrow.
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          {!isProUser && (
+                            <div className="mm-goal-upsell">
+                              <button
+                                type="button"
+                                className="mm-drop-upgrade"
+                                style={{ marginBottom: 0 }}
+                                onClick={() => { setGoalOpen(false); navigate(PRICING_PATH); }}
+                              >
+                                <span className="mm-drop-upgrade-ico"><CrownGlyph size={16}/></span>
+                                <span style={{ flex: 1, minWidth: 0 }}>
+                                  <div className="mm-drop-upgrade-title">Upgrade to Pro</div>
+                                  <div className="mm-drop-upgrade-sub">Unlimited interviews + full AI feedback</div>
+                                </span>
+                              </button>
                             </div>
-                          </div>
-                          <div className="mm-goal-body">
-                            <svg width={54} height={54} viewBox="0 0 54 54"
-                              style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
-                              <circle cx="27" cy="27" r="23" fill="none" stroke={C.border} strokeWidth="5"/>
-                              <circle cx="27" cy="27" r="23" fill="none" stroke="#3B82F6" strokeWidth="5"
-                                strokeDasharray={2 * Math.PI * 23}
-                                strokeDashoffset={2 * Math.PI * 23 * (1 - goalPct / 100)}
-                                strokeLinecap="round"
-                                style={{ transition: 'stroke-dashoffset .6s cubic-bezier(.22,1,.36,1)' }}
-                              />
-                            </svg>
-                            <div>
-                              <div className="mm-goal-copy-title">{goalTarget - goalCompleted} more to go</div>
-                              <div className="mm-goal-copy-sub">Daily practice keeps your IRS climbing steadily.</div>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="mm-goal-cta"
-                            onClick={() => { setGoalOpen(false); navigate('/interview'); }}
-                          >
-                            🎙️ Start now
-                          </button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1021,8 +1201,8 @@ const Navbar = () => {
                   </div>
                   {avgScore !== null && (
                     <>
-                      <div className="mm-schip-sep"/>
-                      <div className="mm-schip-seg">
+                      <div className="mm-schip-sep mm-avg"/>
+                      <div className="mm-schip-seg mm-avg">
                         <span className="mm-schip-emoji">📈</span>
                         <div>
                           <div className="mm-schip-label">Avg</div>
@@ -1046,7 +1226,7 @@ const Navbar = () => {
                   aria-label="Start a new interview"
                 >
                   <span className="mm-cta-glyph" style={{ fontSize: 16, lineHeight: 1 }}>🎙️</span>
-                  <span className="mm-cta-text">New Interview</span>
+                  <span className="mm-cta-text">New<span className="mm-cta-full"> Interview</span></span>
                 </button>
 
                 {/* Avatar + desktop dropdown */}
@@ -1060,6 +1240,11 @@ const Navbar = () => {
                     aria-label={dropOpen ? 'Close profile menu' : 'Open profile menu'}
                   >
                     <div className="mm-av-initial">{initials}</div>
+                    {isProUser && (
+                      <span className="mm-pro-tag mm-av-pro" aria-label="Pro plan">
+                        <CrownGlyph size={9}/> PRO
+                      </span>
+                    )}
                   </button>
 
                   {dropOpen && (
@@ -1087,15 +1272,7 @@ const Navbar = () => {
                             Tracking toward <b>{tierLabel}</b>
                           </div>
                           {isProUser && (
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 4,
-                              padding: '4px 9px', borderRadius: 999,
-                              background: 'linear-gradient(135deg, #1A6EFF 0%, #0044C4 100%)',
-                              color: '#fff', fontSize: 9.5, fontWeight: 800, letterSpacing: .3,
-                              boxShadow: '0 2px 8px rgba(26,110,255,.32)',
-                            }}>
-                              ⚡ PRO
-                            </span>
+                            <span className="mm-pro-tag"><CrownGlyph size={10}/> PRO</span>
                           )}
                         </div>
 
@@ -1118,16 +1295,18 @@ const Navbar = () => {
                       <div className="mm-drop-footer">
                         <button
                           type="button"
-                          onClick={() => { setDropOpen(false); navigate('/pricing'); }}
-                          style={{
-                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            gap: 8, padding: '10px 16px', borderRadius: 10, border: '1px solid rgba(26,110,255,.22)',
-                            background: 'rgba(235,242,255,.85)', color: '#1A6EFF',
-                            font: `600 13px ${F.body}`, cursor: 'pointer', marginBottom: 8,
-                          }}
+                          className="mm-drop-upgrade"
+                          onClick={() => { setDropOpen(false); navigate(PRICING_PATH); }}
                         >
-                          <span>⚡</span>
-                          <span>{isProUser ? 'Manage plan' : 'Upgrade to Pro'}</span>
+                          <span className="mm-drop-upgrade-ico"><CrownGlyph size={16}/></span>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <div className="mm-drop-upgrade-title">
+                              {isProUser ? 'Manage plan' : 'Upgrade to Pro'}
+                            </div>
+                            <div className="mm-drop-upgrade-sub">
+                              {isProUser ? 'Billing & renewal' : 'Unlimited interviews + full AI feedback'}
+                            </div>
+                          </span>
                         </button>
                         <button
                           type="button"
@@ -1192,7 +1371,9 @@ const Navbar = () => {
                 <div className="mm-mob-name">{user.name ?? 'MockMate User'}</div>
                 <div className="mm-mob-email">{user.college ?? 'Ready to practice'}</div>
               </div>
-              <span className="mm-mob-tier-pill">{tierLabel}</span>
+              {isProUser
+                ? <span className="mm-pro-tag"><CrownGlyph size={10}/> PRO</span>
+                : <span className="mm-mob-tier-pill">{tierLabel}</span>}
             </div>
 
             <div className="mm-mob-stats">
@@ -1211,7 +1392,7 @@ const Navbar = () => {
             </div>
           </div>
 
-          {/* Nav grid */}
+          {/* Nav grid + Pro card */}
           <div className="mm-mob-body">
             <div className="mm-mob-section-label">Navigate</div>
             <div className="mm-mob-grid">
@@ -1231,6 +1412,22 @@ const Navbar = () => {
                 </Link>
               ))}
             </div>
+
+            <div className="mm-mob-section-label">{isProUser ? 'Your plan' : 'Unlock more'}</div>
+            <button
+              type="button"
+              className="mm-mob-pro"
+              onClick={() => { setMobileOpen(false); navigate(PRICING_PATH); }}
+            >
+              <span className="mm-mob-pro-ico"><CrownGlyph size={18}/></span>
+              <span className="mm-mob-pro-copy">
+                <div className="mm-mob-pro-title">{isProUser ? 'Manage plan' : 'Upgrade to Pro'}</div>
+                <div className="mm-mob-pro-sub">
+                  {isProUser ? 'Billing & renewal details' : 'Unlimited interviews + full AI feedback'}
+                </div>
+              </span>
+              <span className="mm-mob-pro-arrow" aria-hidden="true">→</span>
+            </button>
           </div>
 
           {/* Sign out */}

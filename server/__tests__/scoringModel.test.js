@@ -3,7 +3,6 @@ const {
   maturityMultiplier,
   buildDimensionProfile,
   computeIRSBreakdown,
-  clamp,
 } = require('../utils/scoringModel');
 
 // ─────────────────────────────────────────────────────────────────────────

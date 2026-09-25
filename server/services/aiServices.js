@@ -1,4 +1,6 @@
 const { GoogleGenAI } = require('@google/genai');
+const { resolveCompanyProfile } = require('../data/companyProfiles');
+const { ROLES, EXPERIENCE_LEVELS, resolveRole, resolveExperience } = require('../data/roleProfiles');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -648,6 +650,9 @@ const generateQuestions = async ({
   mode = 'quick',
   company = '',
   topic = '',
+  topics = [],
+  role = '',
+  experienceLevel = '',
   weakAreas = [],
   difficulty = 'mixed',
   count = 10,
@@ -660,37 +665,78 @@ const generateQuestions = async ({
     ? `\nPREVIOUSLY SEEN QUESTIONS (do NOT repeat or closely paraphrase any of these):\n${previousQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n`
     : '';
 
+  // ── Company: resolve to real interview-format knowledge, not just a name ──
+  // Works for both curated companies AND anything the user typed in freely —
+  // resolveCompanyProfile always returns usable rounds/focus signal, and
+  // marks isKnown:false for unrecognized names so the prompt is honest with
+  // the model about what's verified vs. inferred.
+  const companyProfile = normalizedMode === 'company' ? resolveCompanyProfile(company) : null;
+  const companyBlock = companyProfile
+    ? `
+COMPANY INTERVIEW PROFILE — ${companyProfile.displayName}
+${companyProfile.isKnown
+    ? `Known round structure: ${companyProfile.rounds.join(' → ')}.
+Technical focus at this company: ${companyProfile.focus}
+${companyProfile.tips ? `Practical note: ${companyProfile.tips}` : ''}`
+    : `This company isn't in our curated list — infer a realistic interview style from general knowledge of how similar companies in this space hire (typical rounds: ${companyProfile.rounds.join(', ')}). Do not invent specific, unverifiable claims about this exact company (e.g. specific interviewer names or internal processes) — keep it to realistic, general placement-style questions.`}
+Shape the questions to genuinely reflect this company's interview style, not just generic questions with the company name inserted.
+`
+    : '';
+
+  // ── Role + experience: changes both topic weighting and expected depth ──
+  const roleKey = resolveRole(role);
+  const roleProfile = ROLES[roleKey];
+  const experienceKey = resolveExperience(experienceLevel);
+  const experienceProfile = EXPERIENCE_LEVELS[experienceKey];
+  const roleBlock = `
+CANDIDATE PROFILE
+
+Target role: ${roleProfile.label}
+Role focus areas to weight questions toward: ${roleProfile.focusAreas}
+Experience level: ${experienceProfile.label}
+Calibration: ${experienceProfile.calibration}
+`;
+
+  // ── Topics: support one legacy single topic OR a multi-topic array ──────
+  const topicList = Array.isArray(topics) && topics.length ? topics : (topic ? [topic] : []);
+  const topicBlock = topicList.length
+    ? topicList.length === 1
+      ? `Topic: ${topicList[0]}`
+      : `Topics (blend across all of these, don't silo into separate blocks): ${topicList.join(', ')}`
+    : 'Topic: Mixed';
+
   const prompt = `
 You are an expert interviewer and assessment designer.
 
 Generate exactly ${safeCount} questions for an Indian engineering student preparing for placements.
 ${exclusionBlock}
-
+${roleBlock}
 INTERVIEW CONFIGURATION
 
 Mode: ${normalizedMode}
 Company: ${company || 'General'}
-Topic: ${topic || 'Mixed'}
+${topicBlock}
 Difficulty: ${difficulty || 'mixed'}
 Weak areas: ${weakAreas?.length ? weakAreas.join(', ') : 'None'}
-
+${companyBlock}
 MODE RULES
 
 1. QUICK MODE
 - Primarily realistic interview questions.
 - Use open-ended questions.
-- Include technical, behavioral, or role-related questions.
+- Include technical, behavioral, or role-related questions, weighted toward the candidate's target role above.
 - questionType must be "open".
 2. FULL MODE
 - Same as quick but broader topic coverage. 10 questions.
 - questionType must be "open".
 
 3. COMPANY MODE
-- Questions tailored to the specified company's known interview patterns.
-- Mix technical and behavioral. questionType must be "open".
+- Questions tailored to the specified company's known interview patterns (see COMPANY INTERVIEW PROFILE above).
+- Mix technical and behavioral, matching the company's actual round mix where known.
+- questionType must be "open".
 
 4. TOPIC MODE
-- Deep dive into the specified topic only. All questions on that topic.
+- Deep dive into the specified topic(s) only. If multiple topics are given, blend across them rather than treating them as separate sections.
 - questionType must be "open".
 
 5. MCQ MODE
@@ -719,8 +765,9 @@ QUALITY RULES
 
 - CRITICAL: Do not repeat or closely paraphrase any question from the PREVIOUSLY SEEN list above.
 - Each question must test a clearly different concept, angle, or sub-topic from the others.
-- Match requested difficulty.
+- Match requested difficulty AND the candidate's experience-level calibration above — these two must agree (e.g. "hard" difficulty for a fresher still means hard-but-fresher-appropriate, not senior-engineer-scope).
 - Prioritize weak areas.
+- Weight question selection toward the candidate's target role focus areas above — don't ask backend-heavy questions to a frontend candidate and vice versa, unless mode is "full" or "mixed" where broader coverage is expected.
 - Use company context where appropriate.
 - Avoid ambiguous wording.
 - Make objective questions have exactly one correct answer.
@@ -806,12 +853,12 @@ Return ONLY JSON.
             .slice(0, safeCount)
             .map((q, i) => normalizeQuestion(q, i, normalizedMode));
         }
-      } catch (_) {
+           } catch (_err) {
         // fall through to static fallback
       }
     }
 
-    return getFallbackQuestions(normalizedMode, topic, safeCount);
+    return getFallbackQuestions(normalizedMode, topicList[0] || topic, safeCount);
   }
 };
 

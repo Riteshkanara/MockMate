@@ -55,6 +55,16 @@ router.get(
   interviewController.getSessionWarmup
 );
 
+// Static config metadata for the interview-setup UI (companies, roles,
+// experience levels, topic groups) — kept server-side so the frontend
+// picker and the AI prompt logic never drift out of sync with each other.
+// Public (no authMiddleware): this is static reference data, not
+// user-specific, and the setup page may want it before login completes.
+router.get(
+  '/meta',
+  interviewController.getInterviewMeta
+);
+
 router.post(
   '/ai-coach',
   authMiddleware,

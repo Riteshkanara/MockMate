@@ -14,19 +14,23 @@ export default defineConfig([
       reactRefresh.configs.vite,
     ],
     languageOptions: {
+      ecmaVersion: 2021,
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
     rules: {
+      // ✅ Keep these — genuinely useful
       'react-hooks/rules-of-hooks': 'warn',
       'react-hooks/exhaustive-deps': 'warn',
-      'react-hooks/set-state-in-effect': 'warn',
-      'react-hooks/purity': 'warn',
-      'react-hooks/preserve-manual-memoization': 'warn',
-      'react-hooks/refs': 'warn',
-      'react-refresh/only-export-components': 'warn',
-      'no-unsafe-finally': 'warn',
       'no-unused-vars': 'warn',
+      'no-unsafe-finally': 'warn',
+
+      // 🔇 Turned off — experimental rules, too strict for student projects
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/purity': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/refs': 'off',
+      'react-refresh/only-export-components': 'off',
     },
   },
 ])

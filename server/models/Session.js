@@ -84,6 +84,8 @@ const sessionSchema = new mongoose.Schema(
 
     company:         { type: String, default: '' },
     topic:           { type: String, default: '' },
+    role:            { type: String, default: '' },
+    experienceLevel: { type: String, default: '' },
     questions:       [questionSchema],
     currentQuestion: { type: Number, default: 0 },
     totalScore:      { type: Number, default: 0 },

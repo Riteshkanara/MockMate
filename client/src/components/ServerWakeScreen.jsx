@@ -78,12 +78,11 @@ const IconDB = () => (
   </svg>
 );
 const IconSparkle = () => (
-  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-    <path d="M11 2L12.5 8.8L19 10.5L12.5 12.2L11 19L9.5 12.2L3 10.5L9.5 8.8Z"
-          fill="white" stroke="white" strokeWidth=".4" strokeLinejoin="round"/>
-    <circle cx="17"  cy="4"  r="1.1"  fill="white" opacity=".55"/>
-    <circle cx="4.5" cy="17" r=".95"  fill="white" opacity=".45"/>
-    <circle cx="18"  cy="17" r=".75"  fill="white" opacity=".38"/>
+  <svg width="22" height="22" viewBox="0 0 52 52" fill="none" aria-hidden="true">
+    <path d="M13 36V19l13 10 13-10v17" fill="none" stroke="white" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="13" cy="19" r="2.2" fill="white" opacity="0.65"/>
+    <circle cx="39" cy="19" r="2.2" fill="white" opacity="0.65"/>
+    <path d="M18 39h16" stroke="rgba(255,255,255,0.40)" strokeWidth="2" strokeLinecap="round"/>
   </svg>
 );
 const STEP_ICONS = [IconWifi, IconChip, IconDB, IconSparkle];

@@ -6,9 +6,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const userController = require('../controllers/userController');
 const User = require('../models/User');
 const Session = require('../models/Session');
-const { buildDimensionProfile, computeIRS, tierForScore } = require('../utils/scoringModel');
 const { computeUserIRS  } = require('../controllers/interviewController');
-const { SIMPLE_BADGE_RULES } = require('../utils/badgeEngine');
 
 // Step 1: Redirect user to Google
 router.get('/google', passport.authenticate('google', {
@@ -85,7 +83,7 @@ router.get('/me', authMiddleware, async (req, res) => {
     const dailyGoal = { target: 3, completed: completedToday };
 
     res.json({ user: { ...user.toObject(), irs, averageScore, tierLabel, dailyGoal } });
-  } catch (error) {
+    } catch (err) {
     res.status(500).json({ error: 'Failed to fetch user' });
   }
 });
@@ -145,16 +143,15 @@ router.post('/refresh', async (req, res) => {
             maxAge: 15 * 60 * 1000,
         });
 
-        res.json({ ok: true });
+                res.json({ ok: true });
     } catch (err) {
         return res.status(401).json({ error: 'Refresh token expired or invalid' });
     }
 });
 
 router.post('/logout', authMiddleware, async (req, res) => {
-    try {
         await User.findByIdAndUpdate(req.user._id, { refreshToken: null });
-    } catch (_) {}
+    
 
     res.clearCookie('accessToken');
     res.clearCookie('refreshToken');
@@ -162,8 +159,3 @@ router.post('/logout', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
-
-
-
-
-

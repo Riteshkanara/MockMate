@@ -54,6 +54,10 @@ const {
   getSkippedAnswer,
   evalObjectiveAnswer,
 } = require('../services/aiServices');
+const {
+  ROLES, EXPERIENCE_LEVELS, 
+  mapCodingExperienceToLevel,
+} = require('../data/roleProfiles');
 
 const BADGES = [
   { id: 'first',     label: 'First Rep',          check: u => u.totalInterviews >= 1 },
@@ -222,10 +226,36 @@ const buildTierMap = ({ irs, sessionCount, dimProfile, dimTimeSeries, currentTie
     };
   });
 
+const getInterviewMeta = (req, res) => {
+  try {
+    const { QUICK_PICK_COMPANIES } = require('../data/companyProfiles');
+    const { TOPIC_GROUPS } = require('../data/topicGroups');
+    const roles = Object.entries(ROLES).map(([value, r]) => ({ value, label: r.label }));
+    const experienceLevels = Object.entries(EXPERIENCE_LEVELS).map(([value, e]) => ({ value, label: e.label }));
+    return res.json({
+      companies: QUICK_PICK_COMPANIES,
+      topicGroups: TOPIC_GROUPS,
+      roles,
+      experienceLevels,
+    });
+  } catch (error) {
+    console.error('getInterviewMeta error:', error);
+    return res.status(500).json({ error: 'Failed to load interview setup options.' });
+  }
+};
+
 const startInterview = async (req, res) => {
   try {
     const userId = getUserId(req);
-    const { mode = 'quick', company = '', topic = '', difficulty = 'mixed' } = req.body || {};
+    const {
+      mode = 'quick',
+      company = '',
+      topic = '',
+      topics = [],
+      role = '',
+      experienceLevel = '',
+      difficulty = 'mixed',
+    } = req.body || {};
     const count = getQuestionCount(mode);
 
     // Fetch last 10 completed sessions once — used for BOTH the
@@ -244,15 +274,27 @@ const startInterview = async (req, res) => {
 
     const weakAreas = buildWeakAreas(recentSessions);
 
+    // Fall back to the user's saved target role/experience when the session
+    // didn't specify one explicitly — reuses their onboarding profile so
+    // returning users get role-calibrated questions without re-selecting
+    // every time. codingExperience (onboarding) maps onto our experience
+    // levels since it's the closest existing signal on the user profile.
+    const user = await User.findById(userId).select('targetRole codingExperience').lean();
+    const effectiveRole       = role || user?.targetRole || '';
+    const effectiveExperience = experienceLevel || mapCodingExperienceToLevel(user?.codingExperience) || '';
+
     const questions = await generateQuestions({
-      mode, company, topic, weakAreas, difficulty, count, previousQuestions,
+      mode, company, topic, topics, role: effectiveRole, experienceLevel: effectiveExperience,
+      weakAreas, difficulty, count, previousQuestions,
     });
 
     const session = await Session.create({
       user: userId,
       mode,
       company,
-      topic,
+      topic: Array.isArray(topics) && topics.length ? topics.join(', ') : topic,
+      role: effectiveRole,
+      experienceLevel: effectiveExperience,
       questions: questions.map(q => ({
         ...q,
         userAnswer: '',
@@ -1127,6 +1169,7 @@ const getSessionWarmup = async (req, res) => {
 
 module.exports = {
   startInterview,
+  getInterviewMeta,
   getInterviewSession,
   answerQuestion,
   completeInterview,

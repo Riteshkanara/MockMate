@@ -120,12 +120,15 @@ export const useInterview = ({ notify } = {}) => {
   const advanceLockRef    = useRef(false);
 
   const handleStart = useCallback(
-    async (mode = 'quick', company = '', topic = '', difficulty = 'mixed') => {
+    async (mode = 'quick', company = '', topic = '', difficulty = 'mixed', extra = {}) => {
       setIsLoading(true);
       setError('');
       notify_.loading('Generating your interview…');
       try {
-        const data = await startInterview({ mode, company, topic, difficulty });
+        // extra carries the newer fields (topics array, role, experienceLevel)
+        // as an options bag so existing 4-arg call sites keep working
+        // unchanged, and startInterview forwards everything to the backend.
+        const data = await startInterview({ mode, company, topic, difficulty, ...extra });
         const normalized = Array.isArray(data?.questions)
           ? data.questions.map(normalizeQuestion)
           : [];
@@ -241,7 +244,9 @@ export const useInterview = ({ notify } = {}) => {
   const handleSkip = useCallback(
     async timeTaken => {
       await handleSubmit('', null, Number(timeTaken) || 0, true);
-      window.scrollTo({ top: 183, behavior: 'smooth' });
+      // Scroll is handled by the caller (Interview.jsx), which measures the
+      // room header's live position — this hook has no layout/DOM context
+      // of its own, so it shouldn't own a scroll target.
     },
     [handleSubmit]
   );

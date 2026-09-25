@@ -34,6 +34,16 @@ export const startInterview = async (data) => {
   }
 };
 
+export const getInterviewMeta = async () => {
+  try {
+    const response = await API.get('/meta');
+    return response.data;
+  } catch (error) {
+    console.error('Get interview meta failed:', error);
+    throw error;
+  }
+};
+
 export const getInterviewSession = async (sessionId) => {
   try {
     const response = await API.get(`/${sessionId}`);

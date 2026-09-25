@@ -55,6 +55,22 @@ const SILENCE_NUDGE_MS = 6000;
 const RESTART_LOOP_WINDOW_MS = 2000;
 const RESTART_LOOP_MAX_COUNT = 4;
 
+// Android Chrome (Chromium bug 40324711, still open) — with continuous:true,
+// the recognizer's own onend event stops firing after the first spoken
+// utterance: recognition looks "live" but silently stops transcribing
+// anything further. Firefox/desktop Chrome/Safari don't have this bug and
+// continuous mode works fine there. So on Android we run in *non*-continuous
+// mode and drive our own restart loop from onresult/onspeechend instead of
+// relying on the browser's onend — see restartForAndroid() below.
+const isAndroid =
+  typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+
+// Android's cloud speech service can take a couple of seconds to warm up
+// before the first partial result comes back, even on a good connection —
+// longer than the generic silence nudge should wait before assuming nothing
+// is being picked up.
+const SILENCE_NUDGE_MS_ANDROID = 9000;
+
 // ─── useVoiceAnswer ───────────────────────────────────────────────────────────
 /**
  * Manages voice recording via the Web Speech API, with mobile-hardened
@@ -114,11 +130,12 @@ export const useVoiceAnswer = ({
 
   const armSilenceTimer = useCallback(() => {
     clearSilenceTimer();
+    const delay = isAndroid ? SILENCE_NUDGE_MS_ANDROID : SILENCE_NUDGE_MS;
     silenceTimerRef.current = setTimeout(() => {
       if (isRecordingRef.current && !hasHeardSpeechRef.current) {
         setIsSilent(true);
       }
-    }, SILENCE_NUDGE_MS);
+    }, delay);
   }, [clearSilenceTimer]);
 
   const hardStop = useCallback((reason) => {
@@ -175,17 +192,14 @@ export const useVoiceAnswer = ({
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [hardStop]);
 
-  const startRecording = useCallback(() => {
-    if (!isSpeechRecognitionSupported || isRecordingRef.current) return;
-
-    setVoiceError(null);
-    setIsSilent(false);
-    hasHeardSpeechRef.current = false;
-    restartTimestampsRef.current = [];
-    chunksRef.current = [];
-
+  // Creates and starts one SpeechRecognition instance. On Android this is
+  // called repeatedly (each utterance is its own single-shot session,
+  // stitched together in fullTranscriptRef) because continuous mode's onend
+  // never fires there — see the isAndroid comment above. On every other
+  // platform continuous:true works normally and this only runs once.
+  const beginSession = useCallback(() => {
     const recognition = new SpeechRecognition();
-    recognition.continuous      = true;
+    recognition.continuous      = !isAndroid;
     recognition.interimResults  = true;
     recognition.lang            = 'en-US';
     recognition.maxAlternatives = 1;
@@ -240,7 +254,11 @@ export const useVoiceAnswer = ({
         return;
       }
 
-      if (message) {
+      // 'no-speech' on Android fires constantly between utterances in
+      // single-shot mode — that's expected, not an error, and onend below
+      // restarts the session automatically. Don't warn-spam the console
+      // for it.
+      if (message && event.error !== 'no-speech') {
         console.warn('[useVoiceAnswer] SpeechRecognition error:', event.error);
       }
     };
@@ -252,34 +270,78 @@ export const useVoiceAnswer = ({
       restartTimestampsRef.current = restartTimestampsRef.current.filter((t) => now - t < RESTART_LOOP_WINDOW_MS);
       restartTimestampsRef.current.push(now);
 
-      if (restartTimestampsRef.current.length > RESTART_LOOP_MAX_COUNT) {
+      // On Android every utterance legitimately ends the session — that's
+      // not a failure loop, it's how single-shot mode is meant to work — so
+      // don't count those restarts toward the loop-detection limit. Only
+      // count restarts that happen with no speech heard at all in between,
+      // which is the real "something's wrong" signal there.
+      const restartIsExpected = isAndroid && hasHeardSpeechRef.current;
+      if (!restartIsExpected && restartTimestampsRef.current.length > RESTART_LOOP_MAX_COUNT) {
         hardStop('Voice recognition kept dropping. This can happen on a weak connection — try again, or switch to typing.');
         return;
+      }
+      if (isAndroid && hasHeardSpeechRef.current) {
+        // Reset the loop window on a successful utterance so a long, healthy
+        // recording session never trips the loop guard.
+        restartTimestampsRef.current = [];
       }
 
       try {
         recognition.start();
       } catch {
-        hardStop('Voice recognition stopped unexpectedly. Try again, or switch to typing.');
+        // Rapid stop/start on Android can throw "already started" for a few
+        // ms right after onend fires — retry once shortly instead of
+        // killing the whole recording over a timing race.
+        setTimeout(() => {
+          if (!isRecordingRef.current) return;
+          try {
+            recognition.start();
+          } catch {
+            hardStop('Voice recognition stopped unexpectedly. Try again, or switch to typing.');
+          }
+        }, 250);
       }
     };
 
     recognitionRef.current = recognition;
-    startTimeRef.current   = Date.now();
 
     try {
       recognition.start();
-      setIsRecording(true);
-      isRecordingRef.current = true;
-      armSilenceTimer();
+      return true;
     } catch (err) {
       console.warn('[useVoiceAnswer] Could not start recognition:', err);
-      setVoiceError('Could not start the microphone. Try again in a moment.');
+      return false;
     }
   }, [onTranscriptChange, armSilenceTimer, hardStop]);
 
+  const startRecording = useCallback(() => {
+    if (!isSpeechRecognitionSupported || isRecordingRef.current) return;
+
+    setVoiceError(null);
+    setIsSilent(false);
+    hasHeardSpeechRef.current = false;
+    restartTimestampsRef.current = [];
+    chunksRef.current = [];
+    startTimeRef.current = Date.now();
+
+    const started = beginSession();
+    if (started) {
+      setIsRecording(true);
+      isRecordingRef.current = true;
+      armSilenceTimer();
+    } else {
+      setVoiceError('Could not start the microphone. Try again in a moment.');
+    }
+  }, [beginSession, armSilenceTimer]);
+
+  // Returns the freshly-computed metrics synchronously (in addition to
+  // updating voiceMetrics state as before), so a caller that needs the
+  // result in the same tick — e.g. a timer-expiry auto-submit that can't
+  // wait for a React state update to land before it reads the value —
+  // doesn't have to poll state. Existing callers that ignore the return
+  // value (the mic button) are unaffected.
   const stopRecording = useCallback(() => {
-    if (!recognitionRef.current || !isRecordingRef.current) return;
+    if (!recognitionRef.current || !isRecordingRef.current) return null;
 
     isRecordingRef.current = false;
     setIsRecording(false);
@@ -294,11 +356,13 @@ export const useVoiceAnswer = ({
     if (finalTranscript) {
       const metrics = computeSpeechMetrics(finalTranscript, durationSeconds, topic, questionType, chunksRef.current);
       setVoiceMetrics(metrics);
+      return metrics;
     } else if (hasHeardSpeechRef.current === false && durationSeconds > 2) {
       // Recorded for a meaningful stretch but nothing was ever transcribed —
       // more useful than silently handing back an empty box.
       setVoiceError("Didn't catch any speech. Check your mic isn't muted and try again.");
     }
+    return null;
   }, [topic, questionType, clearSilenceTimer]);
 
   const clearVoiceData = useCallback(() => {

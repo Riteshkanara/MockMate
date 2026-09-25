@@ -10,6 +10,7 @@ import { C as CT, F } from '../styles/token';
 import QuestionDisplay   from '../components/interview/QuestionDisplay';
 import InterviewControls from '../components/interview/InterviewControls';
 import { FeedbackPanel } from '../components/interview/FeedbackPanel';
+import { getInterviewMeta } from '../Services/interviewService';
 
 
 const C = {
@@ -19,33 +20,59 @@ const C = {
 };
 
 // ─── Countdown beep (10s → 1s) ───────────────────────────────────────────
+// Single shared AudioContext, created lazily on first beep and reused for
+// the rest of the session, instead of one new context per tick (up to ~100
+// per interview). Two mobile-specific problems this fixes:
+//   1. iOS Safari can create an AudioContext in a 'suspended' state when
+//      it's not opened directly inside a user-gesture handler (this one is
+//      opened from a setInterval tick, not a tap) — without an explicit
+//      resume() call the beep silently never plays, no error thrown.
+//   2. Repeatedly creating + closing contexts is wasteful and can cause
+//      audible glitches on some Android WebViews under rapid churn.
+let sharedAudioCtx = null;
+const getSharedAudioContext = () => {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+    sharedAudioCtx = new AudioCtx();
+  }
+  return sharedAudioCtx;
+};
+
 const playTimeWarningBeep = (secondsLeft = 10) => {
   try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
 
-    const urgencyRatio = Math.max(0, Math.min(1, (10 - secondsLeft) / 9));
-    const freq   = 600 + urgencyRatio * 600;
-    const volume = 0.08 + urgencyRatio * 0.12;
-    const ticks  = secondsLeft <= 5 ? [0, 0.12] : [0];
+    const fire = () => {
+      const now = ctx.currentTime;
+      const urgencyRatio = Math.max(0, Math.min(1, (10 - secondsLeft) / 9));
+      const freq   = 600 + urgencyRatio * 600;
+      const volume = 0.08 + urgencyRatio * 0.12;
+      const ticks  = secondsLeft <= 5 ? [0, 0.12] : [0];
 
-    ticks.forEach((offset) => {
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = secondsLeft <= 3 ? 'square' : 'sine';
-      osc.frequency.setValueAtTime(freq, now + offset);
-      gain.gain.setValueAtTime(0.0001, now + offset);
-      gain.gain.exponentialRampToValueAtTime(volume, now + offset + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.1);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + offset);
-      osc.stop(now + offset + 0.12);
-    });
+      ticks.forEach((offset) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = secondsLeft <= 3 ? 'square' : 'sine';
+        osc.frequency.setValueAtTime(freq, now + offset);
+        gain.gain.setValueAtTime(0.0001, now + offset);
+        gain.gain.exponentialRampToValueAtTime(volume, now + offset + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.1);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.12);
+      });
+    };
 
-    setTimeout(() => ctx.close?.(), 600);
+    // Context can come back 'suspended' (iOS) or need a nudge after the
+    // tab was backgrounded — resume() is a no-op if already running.
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(fire).catch(() => { /* still silent-fail safe */ });
+    } else {
+      fire();
+    }
   } catch {
     // Silently ignore — never surface audio errors to the user.
   }
@@ -69,9 +96,39 @@ const DIFFICULTIES = [
   { value: 'mixed',  label: 'Mixed',  description: 'Balanced difficulty', accent: C.violet,  soft: C.violetTint, glyph: '🎲' },
 ];
 
-const COMPANIES = ['TCS', 'Infosys', 'Wipro', 'Zoho', 'Razorpay', 'FAANG'];
+// Quick-pick companies shown as chips — the AI prompt has real interview-
+// format knowledge for these (rounds, technical focus). Any company can
+// still be typed in freely; the backend infers a reasonable profile for
+// names outside this list. Kept as a fallback default in case /interview/meta
+// hasn't loaded yet — the live list from the server is preferred when available.
+const FALLBACK_COMPANIES = ['TCS', 'Infosys', 'Wipro', 'Accenture', 'Cognizant', 'Capgemini', 'Zoho', 'Razorpay', 'Flipkart', 'Amazon', 'Google', 'Microsoft'];
 
-const TOPICS = ['DSA', 'System Design', 'OOP', 'DBMS', 'OS', 'JavaScript', 'HR', 'Networking'];
+// Grouped topics with multi-select support — mirrors server/data/topicGroups.js.
+// Used as a fallback default; the live grouping from /interview/meta is
+// preferred so adding a topic server-side doesn't require a client redeploy.
+const FALLBACK_TOPIC_GROUPS = [
+  { id: 'cs-fundamentals', label: 'CS Fundamentals', topics: ['DSA', 'OOP', 'DBMS', 'Operating Systems', 'Computer Networks'] },
+  { id: 'web-dev',         label: 'Web Development',  topics: ['JavaScript', 'React', 'Node.js', 'REST APIs', 'System Design'] },
+  { id: 'behavioral',      label: 'Behavioral & HR',  topics: ['HR', 'Behavioral (STAR format)', 'Resume Deep-Dive'] },
+  { id: 'data-ml',         label: 'Data & ML',        topics: ['SQL', 'Statistics & Probability', 'Machine Learning Basics'] },
+];
+
+const FALLBACK_ROLES = [
+  { value: 'sde',       label: 'SDE / Generalist' },
+  { value: 'frontend',  label: 'Frontend Developer' },
+  { value: 'backend',   label: 'Backend Developer' },
+  { value: 'fullstack', label: 'Full-Stack Developer' },
+  { value: 'data',      label: 'Data / ML' },
+  { value: 'devops',    label: 'DevOps / SRE' },
+  { value: 'qa',        label: 'QA / SDET' },
+];
+
+const FALLBACK_EXPERIENCE_LEVELS = [
+  { value: 'fresher', label: 'Fresher (0 YOE)' },
+  { value: 'intern',  label: 'Internship-level' },
+  { value: 'junior',  label: '0-2 years experience' },
+  { value: 'mid',     label: '2-5 years experience' },
+];
 
 const TIME_LIMITS = { mcq: 45, aptitude: 60, open: 90 };
 
@@ -80,6 +137,15 @@ const getQuestionCount     = (mode) => MODE_QUESTION_COUNT[mode] ?? 5;
 
 const FALLBACK_TIME_LIMIT  = 120;
 const MIN_ANSWER_WORDS     = 8;
+
+// Coarse pointer + touch points is a more reliable "is this a phone/tablet"
+// signal than user-agent sniffing, and matches what actually determines
+// whether a hardware Enter key exists to press. Computed once at module
+// load — device input type doesn't change mid-session.
+const isTouchDevice =
+  typeof window !== 'undefined' &&
+  (window.matchMedia?.('(pointer: coarse)').matches ||
+    (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0));
 
 const difficultyMeta = (difficulty) => {
   if (difficulty === 'easy')  return { label: 'Easy',   color: C.green,  background: C.greenTint,  border: '#B7E7D7' };
@@ -205,7 +271,20 @@ const Interview = () => {
     'quick'
   );
   const [selectedCompany, setSelectedCompany] = useState(location.state?.company || '');
-  const [selectedTopic,   setSelectedTopic]   = useState(location.state?.topic   || '');
+  const [selectedTopics,  setSelectedTopics]  = useState(
+    location.state?.topic ? [location.state.topic] : []
+  );
+  const [selectedRole, setSelectedRole] = useState(
+    location.state?.role || user?.targetRole || 'sde'
+  );
+  const [selectedExperience, setSelectedExperience] = useState(
+    location.state?.experienceLevel ||
+    { '<1': 'fresher', '1-2': 'intern', '2-3': 'junior', '3+': 'mid' }[user?.codingExperience] ||
+    'fresher'
+  );
+  const [companyMode,     setCompanyMode]     = useState('pick'); // 'pick' | 'type'
+  const [customCompany,   setCustomCompany]   = useState('');
+  const [interviewMeta,   setInterviewMeta]   = useState(null); // fetched /interview/meta, falls back to local constants below
   const [textAnswer,      setTextAnswer]       = useState('');
   const [secondsLeft,     setSecondsLeft]      = useState(90);
   const [timerActive,     setTimerActive]      = useState(false);
@@ -224,6 +303,28 @@ const Interview = () => {
   const beepedTicksRef  = useRef(new Set());
   const submitTimeRef   = useRef(0);
   const secondsLeftRef  = useRef(90);
+  // Anchor for the question-change scroll — measured live instead of a
+  // hardcoded pixel offset, since the console card's position/height
+  // differs between the desktop sticky layout and the mobile stacked one
+  // (it drops position:sticky below 480px — see GlobalStyles).
+  const roomTopRef      = useRef(null);
+
+  // Shared scroll-to-room-header helper — used both on question change and
+  // after skip (skip reveals feedback for the *same* question, so it isn't
+  // covered by the question-change effect below). Previously this same
+  // scroll lived twice: once here with a hardcoded 183px, and again as a
+  // second hardcoded 183px inside useInterview.js's handleSkip. Centralizing
+  // it here means there's one measurement, correct on both call sites and
+  // on any screen size.
+  const scrollToRoomTop = useCallback(() => {
+    const node = roomTopRef.current;
+    if (node) {
+      const targetTop = window.scrollY + node.getBoundingClientRect().top - 12;
+      window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, []);
 
   const currentQuestion   = questions?.[currentIndex];
   const isObjective       = currentQuestion && ['mcq', 'aptitude'].includes(currentQuestion.questionType);
@@ -257,11 +358,40 @@ const Interview = () => {
   // Keep a stable ref to voiceMetrics so the timer closure can read it
   const voiceMetricsRef = useRef(null);
   useEffect(() => { voiceMetricsRef.current = voiceMetrics; }, [voiceMetrics]);
+
+  // Same pattern for handleMicStop — the timer's setInterval closure below
+  // is only rebuilt on [sessionStarted, currentQuestion?.id], so it needs a
+  // stable way to reach the *current* stop function rather than capturing
+  // whichever one existed when the interval was created.
+  const handleMicStopRef = useRef(handleMicStop);
+  useEffect(() => { handleMicStopRef.current = handleMicStop; }, [handleMicStop]);
   // ──────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      // Tear down the shared beep AudioContext when leaving the interview
+      // page entirely — it's reused across questions within one session
+      // (see playTimeWarningBeep above) but shouldn't outlive the page.
+      if (sharedAudioCtx && sharedAudioCtx.state !== 'closed') {
+        sharedAudioCtx.close?.().catch(() => {});
+        sharedAudioCtx = null;
+      }
+    };
+  }, []);
+
+  // Load company/topic/role config from the server so this picker never
+  // drifts out of sync with what the AI prompt actually knows how to use —
+  // falls back to the local FALLBACK_* constants above if the request fails
+  // (e.g. offline, or a fresh env where the server isn't reachable yet), so
+  // the setup page always works even without this succeeding.
+  useEffect(() => {
+    let cancelled = false;
+    getInterviewMeta()
+      .then((data) => { if (!cancelled) setInterviewMeta(data); })
+      .catch(() => { /* keep using fallback constants — non-fatal */ });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -310,7 +440,9 @@ const Interview = () => {
       hydrateSession(incoming.sessionId, incoming.questions);
       setSelectedMode(incoming.mode || selectedMode);
       setSelectedCompany(incoming.company || '');
-      setSelectedTopic(incoming.topic || '');
+      setSelectedTopics(incoming.topic ? [incoming.topic] : (incoming.topics || []));
+      if (incoming.role) setSelectedRole(incoming.role);
+      if (incoming.experienceLevel) setSelectedExperience(incoming.experienceLevel);
       navigate(location.pathname, { replace: true, state: {} });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -321,9 +453,7 @@ const Interview = () => {
   }, [isSubmitted]);
 
   useEffect(() => {
-    if (sessionStarted) {
-      window.scrollTo({ top: 183, behavior: 'smooth' });
-    }
+    if (sessionStarted) scrollToRoomTop();
     setTextAnswer('');
     textAnswerRef.current  = '';
     answerIndexRef.current = null;
@@ -395,8 +525,16 @@ const Interview = () => {
                   .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
               }
             } else if (textAnswerRef.current.trim()) {
-              // NEW: pass voiceMetrics from ref so timer closure has latest value
-              handleSubmit(textAnswerRef.current, null, timeLimit, false, voiceMetricsRef.current)
+              // Stop any in-progress voice recording before reading
+              // metrics — without this, a user still talking when the
+              // clock hits zero would submit with voiceMetrics stuck at
+              // null (it's only ever populated inside stopRecording), and
+              // the mic would keep listening into the next question's
+              // transition. stopRecording() now returns the freshly
+              // computed metrics synchronously, so we don't have to wait
+              // for the voiceMetrics state update to land.
+              const freshVoiceMetrics = handleMicStopRef.current?.() ?? voiceMetricsRef.current;
+              handleSubmit(textAnswerRef.current, null, timeLimit, false, freshVoiceMetrics)
                 .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
             } else {
               setWasSkipped(true);
@@ -449,15 +587,34 @@ const Interview = () => {
       return;
     }
     setShortSubmitPending(false);
-    // NEW: pass voiceMetrics as 5th argument
+    // Same fix as the timer-expiry path: the Submit button isn't disabled
+    // while recording (the live transcript already satisfies canSubmit), so
+    // a user can tap Submit mid-recording. Stop first and use the freshly
+    // computed metrics rather than the (possibly still-null) voiceMetrics
+    // state, which only updates after stopRecording runs.
+    const freshVoiceMetrics = isObjective ? null : (handleMicStop() ?? voiceMetrics);
     handleSubmit(
       textAnswer,
       isObjective ? selectedAnswerIndex : null,
       currentQuestion.timeLimit - secondsLeftRef.current,
       false,
-      isObjective ? null : voiceMetrics,
+      freshVoiceMetrics,
     );
-  }, [canSubmit, isSubmitted, handleSubmit, textAnswer, isObjective, selectedAnswerIndex, currentQuestion, isShortAnswer, shortSubmitPending, voiceMetrics]);
+  }, [canSubmit, isSubmitted, handleSubmit, textAnswer, isObjective, selectedAnswerIndex, currentQuestion, isShortAnswer, shortSubmitPending, voiceMetrics, handleMicStop]);
+
+  useEffect(() => {
+  if (!sessionStarted) return undefined;
+
+  const onPopState = () => {
+    window.history.pushState(null, '', window.location.href); // push state back
+    setShowExitConfirm(true);
+  };
+
+  window.history.pushState(null, '', window.location.href); // lock history
+  window.addEventListener('popstate', onPopState);
+
+  return () => window.removeEventListener('popstate', onPopState);
+}, [sessionStarted]);
 
   const doAdvance = useCallback(() => {
     if (isAdvancing || isLoading) return;
@@ -484,6 +641,13 @@ const Interview = () => {
     if (!sessionStarted) return undefined;
 
     const onKeyDown = (e) => {
+      // Mobile virtual keyboards mostly don't dispatch a real
+      // key:'Enter' keydown for their "Go"/"Done"/"Return" key — Android's
+      // IME reports key:'Unidentified' with keyCode 229 while composing, so
+      // this shortcut is desktop-only in practice. That's fine (mobile users
+      // tap Submit instead), but skip isComposing/229 explicitly so a stray
+      // IME event can never be misread as a real Enter press mid-typing.
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Enter' && !e.shiftKey) {
         if (isSubmitted) {
           if (Date.now() - submitTimeRef.current < 600) return;
@@ -503,6 +667,28 @@ const Interview = () => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [sessionStarted, isSubmitted, isObjective, canSubmit, currentQuestion, selectAnswer]);
+
+  useEffect(() => {
+  if (!sessionStarted) return undefined;
+
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'hidden' && !showExitConfirm) {
+      setShowExitConfirm(true);
+    }
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
+  const onBeforeUnload = (e) => {
+    e.preventDefault();
+    e.returnValue = '';
+  };
+  window.addEventListener('beforeunload', onBeforeUnload);
+
+  return () => {
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('beforeunload', onBeforeUnload);
+  };
+}, [sessionStarted, showExitConfirm]);
 
   const exitModalRef = useRef(null);
   useEffect(() => {
@@ -533,9 +719,28 @@ const Interview = () => {
     return Math.round((perQ * count) / 60);
   }, [selectedMode]);
 
-  const questionCount   = getQuestionCount(selectedMode);
-  const canLaunch       = !isLoading && !(selectedMode === 'company' && !selectedCompany) && !(selectedMode === 'topic' && !selectedTopic);
+  const questionCount = getQuestionCount(selectedMode);
+
+  // The effective company name for launch/preview — either a quick-pick
+  // chip or the free-typed value, whichever mode is active.
+  const effectiveCompany = companyMode === 'type' ? customCompany.trim() : selectedCompany;
+
+  const canLaunch =
+    !isLoading &&
+    !(selectedMode === 'company' && !effectiveCompany) &&
+    !(selectedMode === 'topic' && selectedTopics.length === 0) &&
+    !!selectedRole && !!selectedExperience; // role + experience are required for every mode now
+
   const difficultyLabel = selectedDifficulty === 'mixed' ? 'Balanced difficulty' : `${selectedDifficulty} difficulty`;
+
+  const companyChips    = interviewMeta?.companies    || FALLBACK_COMPANIES;
+  const topicGroups     = interviewMeta?.topicGroups  || FALLBACK_TOPIC_GROUPS;
+  const roleOptions     = interviewMeta?.roles            || FALLBACK_ROLES;
+  const experienceOptions = interviewMeta?.experienceLevels || FALLBACK_EXPERIENCE_LEVELS;
+
+  const toggleTopic = useCallback((t) => {
+    setSelectedTopics((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+  }, []);
 
   const handleTextChange = useCallback((e) => {
     const val = e.target.value;
@@ -595,8 +800,10 @@ const Interview = () => {
                 </div>
                 <div style={S.previewMetaRow}>
                   <span style={S.previewMetaChip}>{difficultyLabel}</span>
-                  {selectedCompany && <span style={S.previewMetaChip}>{selectedCompany}</span>}
-                  {selectedTopic   && <span style={S.previewMetaChip}>{selectedTopic}</span>}
+                  {effectiveCompany && <span style={S.previewMetaChip}>{effectiveCompany}</span>}
+                  {selectedTopics.map((t) => <span key={t} style={S.previewMetaChip}>{t}</span>)}
+                  <span style={S.previewMetaChip}>{(roleOptions.find((r) => r.value === selectedRole) || {}).label || selectedRole}</span>
+                  <span style={S.previewMetaChip}>{(experienceOptions.find((x) => x.value === selectedExperience) || {}).label || selectedExperience}</span>
                 </div>
               </div>
 
@@ -690,21 +897,123 @@ const Interview = () => {
                     <strong style={S.groupTitle}><span style={S.groupTitleAccent} />Target</strong>
                     <span style={S.groupTag}>REQUIRED FOR THIS MODE</span>
                   </div>
+
                   {selectedMode === 'company' && (
-                    <select style={S.builderSelect} className="iv-builder-select" value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)}>
-                      <option value="">Choose a company</option>
-                      {COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    <>
+                      <div style={S.chipToggleRow}>
+                        <button
+                          type="button"
+                          style={{ ...S.chipToggleBtn, ...(companyMode === 'pick' ? S.chipToggleBtnActive : {}) }}
+                          onClick={() => setCompanyMode('pick')}
+                        >
+                          Pick from list
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...S.chipToggleBtn, ...(companyMode === 'type' ? S.chipToggleBtnActive : {}) }}
+                          onClick={() => setCompanyMode('type')}
+                        >
+                          Type any company
+                        </button>
+                      </div>
+
+                      {companyMode === 'pick' ? (
+                        <div style={S.chipGrid} className="iv-chip-grid">
+                          {companyChips.map((c) => {
+                            const selected = selectedCompany === c;
+                            return (
+                              <button
+                                key={c}
+                                type="button"
+                                style={{ ...S.chip, ...(selected ? S.chipActive : {}) }}
+                                onClick={() => setSelectedCompany(c)}
+                                aria-pressed={selected}
+                              >
+                                {c}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <>
+                          <input
+                            type="text"
+                            style={S.builderInput}
+                            className="iv-builder-select"
+                            placeholder="e.g. Razorpay, a startup name, anything"
+                            value={customCompany}
+                            onChange={(e) => setCustomCompany(e.target.value)}
+                            maxLength={80}
+                          />
+                          <p style={S.helperText}>
+                            Not in our curated list? We&apos;ll still shape questions around this company&apos;s
+                            general hiring style — just typed freely, no need to match exact spelling.
+                          </p>
+                        </>
+                      )}
+                    </>
                   )}
+
                   {selectedMode === 'topic' && (
-                    <select style={S.builderSelect} className="iv-builder-select" value={selectedTopic} onChange={(e) => setSelectedTopic(e.target.value)}>
-                      <option value="">Choose a topic</option>
-                      {TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    <>
+                      <p style={S.helperText}>Pick one or more — questions blend across everything you select.</p>
+                      {topicGroups.map((group) => (
+                        <div key={group.id} style={S.topicGroupBlock}>
+                          <div style={S.topicGroupLabel}>{group.label}</div>
+                          <div style={S.chipGrid} className="iv-chip-grid">
+                            {group.topics.map((t) => {
+                              const selected = selectedTopics.includes(t);
+                              return (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  style={{ ...S.chip, ...(selected ? S.chipActive : {}) }}
+                                  onClick={() => toggleTopic(t)}
+                                  aria-pressed={selected}
+                                >
+                                  {selected ? '✓ ' : ''}{t}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </>
                   )}
                 </div>
               </div>
             )}
+
+            <div style={S.divider} />
+
+            <div style={S.groupBlock} className="iv-group-block">
+              <div style={S.groupHead}>
+                <strong style={S.groupTitle}><span style={S.groupTitleAccent} />Role &amp; experience</strong>
+                <span style={S.groupTag}>REQUIRED — SHAPES QUESTION DEPTH</span>
+              </div>
+              <p style={S.helperText}>
+                This is what lets MockMate ask a fresher-appropriate question instead of a senior-engineer one
+                (or vice versa) — it changes the actual depth expected in your answer, not just the topic.
+              </p>
+              <div style={S.roleExpRow} className="iv-role-exp-row">
+                <select
+                  style={S.builderSelect}
+                  className="iv-builder-select"
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value)}
+                >
+                  {roleOptions.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+                <select
+                  style={S.builderSelect}
+                  className="iv-builder-select"
+                  value={selectedExperience}
+                  onChange={(e) => setSelectedExperience(e.target.value)}
+                >
+                  {experienceOptions.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                </select>
+              </div>
+            </div>
 
             <div style={S.divider} />
 
@@ -724,7 +1033,11 @@ const Interview = () => {
                 style={{ ...S.btnLaunch, ...(canLaunch ? {} : S.btnDisabled) }}
                 className="iv-btn-launch"
                 disabled={!canLaunch}
-                onClick={() => handleStart(selectedMode, selectedCompany, selectedTopic, selectedDifficulty)}
+                onClick={() => handleStart(selectedMode, effectiveCompany, selectedTopics[0] || '', selectedDifficulty, {
+                  topics: selectedTopics,
+                  role: selectedRole,
+                  experienceLevel: selectedExperience,
+                })}
               >
                 {isLoading ? <><span style={S.spinner} />Generating questions…</> : <>Start interview →</>}
               </button>
@@ -733,7 +1046,9 @@ const Interview = () => {
             <div style={S.footnote} className="iv-footnote">
               Difficulty: <strong style={{ color: C.sub }}>{selectedDifficulty}</strong>
               {' · '}MCQ: 45s · Aptitude: 60s · Open: 90s
-              {' · '}Press <kbd style={S.kbd}>Enter</kbd> to submit answers once you're in
+              {isTouchDevice ? null : (
+                <>{' · '}Press <kbd style={S.kbd}>Enter</kbd> to submit answers once you're in</>
+              )}
             </div>
           </section>
         </div>
@@ -764,7 +1079,7 @@ const Interview = () => {
 
       <div style={{ ...S.container, maxWidth: 1140 }}>
         {/* ── Room header ── */}
-        <header style={S.roomTop} className="iv-room-top">
+        <header ref={roomTopRef} style={S.roomTop} className="iv-room-top">
           <div style={S.stripL}>
             <span style={S.liveDot} />
             <span style={S.mono}>LIVE INTERVIEW ROOM</span>
@@ -904,10 +1219,15 @@ const Interview = () => {
                 isLastQuestion={isLastQuestion}
                 shortSubmitPending={shortSubmitPending}
                 wordCount={wordCount}
-                onSkip={() => { setWasSkipped(true); handleSkip(currentQuestion.timeLimit - secondsLeftRef.current); }}
+                onSkip={() => {
+                  setWasSkipped(true);
+                  handleSkip(currentQuestion.timeLimit - secondsLeftRef.current)
+                    .then(() => { if (mountedRef.current) scrollToRoomTop(); });
+                }}
                 onSubmit={doSubmit}
                 textAreaRef={textAreaRef}
                 mode={mode}
+                isTouchDevice={isTouchDevice}
                 isRecording={isRecording}
                 isVoiceSupported={isVoiceSupported}
                 voiceUnsupportedReason={voiceUnsupportedReason}
@@ -1084,7 +1404,7 @@ const GlobalStyles = () => (
       .iv-feedback-grid      { grid-template-columns:1fr !important; }
       .iv-fb-sample-toggle   { font-size:12px !important; }
     }
-    @media (max-width: 620px) { .iv-room-top { flex-wrap:wrap; gap:8px; } .iv-trail { flex-wrap:wrap; } }
+    @media (max-width: 620px) { .iv-room-top { flex-wrap:wrap; gap:8px; } .iv-trail { flex-wrap:wrap; } .iv-role-exp-row { grid-template-columns:1fr !important; } }
     @media (max-width: 480px) {
       .iv-page              { padding:12px 10px 72px !important; }
       .iv-hero              { padding:20px 16px !important; border-radius:16px !important; }
@@ -1172,6 +1492,17 @@ const S = {
   difficultyDesc:       { display:'block', marginTop:2, color:C.muted, fontSize:11.5, lineHeight:1.35 },
   difficultyRadio:      { width:18, height:18, borderRadius:'50%', borderStyle:'solid', borderWidth:1.5, borderColor:C.borderMd, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:8, flexShrink:0, transition:'background 0.16s ease, border-color 0.16s ease' },
   builderSelect:        { width:'100%', height:48, border:`1.5px solid ${C.borderMd}`, borderRadius:11, background:C.cardAlt, padding:'0 36px 0 13px', color:C.text, fontFamily:F.body, fontSize:13.5, outline:'none', appearance:'none', WebkitAppearance:'none', backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237C8CAD' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`, backgroundRepeat:'no-repeat', backgroundPosition:'right 13px center', cursor:'pointer', transition:'border-color 0.18s ease, box-shadow 0.18s ease' },
+  builderInput:         { width:'100%', height:48, border:`1.5px solid ${C.borderMd}`, borderRadius:11, background:C.cardAlt, padding:'0 13px', color:C.text, fontFamily:F.body, fontSize:13.5, outline:'none', boxSizing:'border-box', transition:'border-color 0.18s ease, box-shadow 0.18s ease' },
+  helperText:           { margin:'2px 0 11px', color:C.muted, fontSize:12, lineHeight:1.55 },
+  chipToggleRow:        { display:'flex', gap:7, marginBottom:12 },
+  chipToggleBtn:         { flex:1, height:36, borderStyle:'solid', borderWidth:1.5, borderColor:C.border, background:C.card, borderRadius:9, color:C.muted, cursor:'pointer', fontFamily:F.body, fontSize:12, fontWeight:700, transition:'border-color 0.15s ease, color 0.15s ease, background 0.15s ease' },
+  chipToggleBtnActive:  { borderColor:`${C.blue500}60`, background:C.cardAlt, color:C.blue700 },
+  chipGrid:             { display:'flex', flexWrap:'wrap', gap:7 },
+  chip:                 { borderStyle:'solid', borderWidth:1.5, borderColor:C.border, background:C.card, borderRadius:999, padding:'8px 14px', color:C.sub, cursor:'pointer', fontFamily:F.body, fontSize:12.5, fontWeight:700, transition:'border-color 0.15s ease, color 0.15s ease, background 0.15s ease' },
+  chipActive:           { borderColor:`${C.blue500}70`, background:C.cardAlt, color:C.blue700, boxShadow:`0 0 0 2px ${C.blue500}18` },
+  topicGroupBlock:       { marginBottom:14 },
+  topicGroupLabel:      { fontFamily:F.mono, fontSize:10, fontWeight:700, letterSpacing:'0.4px', color:C.faint, marginBottom:8, textTransform:'uppercase' },
+  roleExpRow:           { display:'grid', gridTemplateColumns:'1fr 1fr', gap:9 },
   launchArea:    { display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, padding:'18px 22px', background:C.cardAlt, borderTop:`1px solid ${C.border}` },
   sessionSummary:{ display:'flex', alignItems:'center', gap:12, minWidth:0 },
   summaryIcon:   { width:42, height:42, borderRadius:12, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:17 },

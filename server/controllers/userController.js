@@ -100,7 +100,7 @@ exports.saveOnboarding = async (req, res) => {
         codingExperience:  safeEnum(codingExperience, VALID_EXPERIENCE, '1-2'),
         ...(cleanUrl && { projectUrl: cleanUrl }),
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!user) {

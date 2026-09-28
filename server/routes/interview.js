@@ -104,6 +104,7 @@ router.get(
 
 router.post(
   '/:sessionId/abandon',
+  authMiddleware,
   interviewController.abandonInterview
 );
 

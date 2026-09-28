@@ -60,7 +60,16 @@ const userSchema = new mongoose.Schema({
   },
 
   badges: [{ type: String }],
-}, { timestamps: true });
+}, {
+  timestamps: true,
+  // Never serialize the refresh token into API responses. It is meant to live
+  // only in the httpOnly cookie; /auth/me and /auth/onboarding both return the
+  // full user document, which previously leaked it into JSON readable by page
+  // JS. Direct reads such as `user.refreshToken` (used by /auth/refresh) are
+  // unaffected because this only changes serialization.
+  toJSON:   { transform: (_doc, ret) => { delete ret.refreshToken; return ret; } },
+  toObject: { transform: (_doc, ret) => { delete ret.refreshToken; return ret; } },
+});
 
 module.exports = mongoose.model('User', userSchema);
 

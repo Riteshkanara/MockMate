@@ -397,16 +397,22 @@ const answerQuestion = async (req, res) => {
     } else {
       question.userAnswer = String(answer || '');
       if (skipped) {
+        // Skip must respond instantly — never block the user's "next
+        // question" moment on a Gemini call. We save a lightweight static
+        // placeholder synchronously, return right away, and kick off the
+        // real model-answer generation in the background so the eventual
+        // Result/History view still gets a rich sample answer once it's
+        // ready (see the fire-and-forget block below the response).
         question.score = 0;
-        const result = await getSkippedAnswer({ question, topic: question.topic });
         question.feedback = JSON.stringify({
           good:         '',
           missing:      'Question skipped — no answer submitted.',
-          idealHint:    result.idealHint    || '',
-          tip:          result.tip          || '',
-          sampleAnswer: result.sampleAnswer || '',
-          aiAvailable:  result.aiAvailable !== false,
-          fallback:     result.fallback === true,
+          idealHint:    'Loading a model answer…',
+          tip:          '',
+          sampleAnswer: '',
+          aiAvailable:  true,
+          fallback:     false,
+          skippedPending: true, // client can show a lightweight "generating" state instead of blocking
         });
       } else {
         // CHANGED: pass voiceMetrics so Gemini generates a deliveryTip
@@ -444,8 +450,9 @@ const answerQuestion = async (req, res) => {
     await session.save();
 
     const isObjective = ['mcq', 'aptitude'].includes(question.questionType);
+    const wasSkippedOpenQuestion = skipped && !isObjective;
 
-    return res.json({
+    res.json({
       success:            true,
       questionId,
       score:              question.score,
@@ -459,6 +466,41 @@ const answerQuestion = async (req, res) => {
       // without having to store them in React state across a round-trip.
       voiceMetrics:       question.voiceMetrics || null,
     });
+
+    // ── Fire-and-forget: fill in a real model answer for skipped open
+    // questions AFTER the response has already gone out. The user has
+    // already moved to the next question by the time this resolves — it
+    // just means the Result/History page shows a proper sample answer
+    // instead of the lightweight placeholder, without costing any wait
+    // time in the interview flow itself.
+    if (wasSkippedOpenQuestion) {
+      getSkippedAnswer({ question, topic: question.topic })
+        .then(async (result) => {
+          try {
+            const freshSession = await Session.findOne({ _id: sessionId, user: userId });
+            if (!freshSession) return;
+            const freshQuestion = freshSession.questions.find(q => q.id === questionId);
+            if (!freshQuestion || !freshQuestion.skipped) return;
+            freshQuestion.feedback = JSON.stringify({
+              good:         '',
+              missing:      'Question skipped — no answer submitted.',
+              idealHint:    result.idealHint    || '',
+              tip:          result.tip          || '',
+              sampleAnswer: result.sampleAnswer || '',
+              aiAvailable:  result.aiAvailable !== false,
+              fallback:     result.fallback === true,
+            });
+            await freshSession.save();
+          } catch (bgErr) {
+            console.error('Background skip-answer save failed:', bgErr);
+          }
+        })
+        .catch((bgErr) => {
+          console.error('Background getSkippedAnswer failed:', bgErr);
+        });
+    }
+
+    return undefined;
   } catch (error) {
     console.error('answerQuestion error:', error);
     return res.status(500).json({ message: 'Failed to submit answer.', error: error.message });
@@ -547,7 +589,12 @@ const retryQuestion = async (req, res) => {
     if (!question.userAnswer) {
       return res.status(400).json({ message: 'This question has no submitted answer to re-evaluate.' });
     }
-    const result = await evaluateOpenAnswer({ question, answer: question.userAnswer, topic: question.topic });
+    const result = await evaluateOpenAnswer({
+      question,
+      answer: question.userAnswer,
+      topic: question.topic,
+      voiceMetrics: question.voiceMetrics || null,
+    });
     question.score = Number(result.score || 0);
     question.feedback = JSON.stringify({
       good:         result.good         || '',
@@ -620,7 +667,7 @@ const abandonInterview = async (req, res) => {
     const session = await Session.findOneAndUpdate(
       { _id: sessionId, $or: [{ user: userId }, { userId }], status: 'active' },
       { $set: { status: 'abandoned' } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!session) return res.status(404).json({ message: 'Active session not found.' });
     return res.json({ success: true });

@@ -16,8 +16,10 @@ const dashboardRoutes = require('./routes/dashboard');
 const leaderboardRoutes = require('./routes/leaderboard');
 const profileRoutes = require('./routes/profile');
 const paymentRoutes   = require('./routes/payment'); 
+const transcribeRoutes = require('./routes/transcribe');
 
 const app = express();
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
 // ── Security headers ───────────────────────────────────────────────────────
 app.use(helmet());
@@ -108,6 +110,7 @@ app.use('/dashboard', dashboardRoutes);
 app.use('/leaderboard', leaderboardRoutes);
 app.use('/profile', profileRoutes);
 app.use('/payment', paymentRoutes);
+app.use('/transcribe', transcribeRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────────────────
 app.use((req, res) => {

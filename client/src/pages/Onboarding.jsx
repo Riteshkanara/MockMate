@@ -205,7 +205,6 @@ export default function Onboarding() {
     setLoading(true);
     const tid = toast.loading('Building your prep profile…');
     try {
-      const token = localStorage.getItem('token');
       const payload = {
         college:           profile.college.trim(),
         branch:            profile.branch,
@@ -232,7 +231,6 @@ export default function Onboarding() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         credentials: 'include',
         body: JSON.stringify(payload),

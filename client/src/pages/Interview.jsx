@@ -256,8 +256,8 @@ const Interview = () => {
 
   const {
     questions, currentIndex, feedback, isSubmitted,
-    isLoading, error, sessionStarted, selectedAnswerIndex, isAbandoning,
-    handleStart, hydrateSession, handleSubmit, handleSkip,
+    isLoading, isEvaluating, error, sessionStarted, selectedAnswerIndex, isAbandoning,
+    handleStart, hydrateSession, handleSubmit, handleStopSubmit, handleSkip,
     handleTimeUp, handleNext, selectAnswer, handleAbandon,
   } = useInterview({ notify });
 
@@ -339,11 +339,13 @@ const Interview = () => {
 
   const {
   isRecording,
-  isSupported:    isVoiceSupported,
-  unsupportedReason: voiceUnsupportedReason,
+  isTranscribing,
+  isSupported:  isVoiceSupported,
+  unsupportedReason:  voiceUnsupportedReason,
   voiceMetrics,
   voiceError,
-  isSilent:       isVoiceSilent,
+  isSilent: isVoiceSilent,
+  hasLivePreview,           
   startRecording: handleMicStart,
   stopRecording:  handleMicStop,
   clearVoiceData,
@@ -486,6 +488,13 @@ const Interview = () => {
   }, [currentQuestion?.id, currentQuestion?.timeLimit]);
 
   useEffect(() => {
+    // Desktop-only: auto-focusing the textarea is a nice convenience when
+    // there's a hardware keyboard, since it doesn't cover anything. On
+    // touch devices, focusing the textarea immediately pops the on-screen
+    // keyboard up over the question the user hasn't read yet — so on mobile
+    // we leave the answer box unfocused until the user deliberately taps
+    // it, letting them read the question first.
+    if (isTouchDevice) return undefined;
     if (!sessionStarted || !currentQuestion || isSubmitted || isObjective) return undefined;
     const id = setTimeout(() => textAreaRef.current?.focus(), 80);
     return () => clearTimeout(id);
@@ -530,12 +539,17 @@ const Interview = () => {
               // clock hits zero would submit with voiceMetrics stuck at
               // null (it's only ever populated inside stopRecording), and
               // the mic would keep listening into the next question's
-              // transition. stopRecording() now returns the freshly
-              // computed metrics synchronously, so we don't have to wait
-              // for the voiceMetrics state update to land.
-              const freshVoiceMetrics = handleMicStopRef.current?.() ?? voiceMetricsRef.current;
-              handleSubmit(textAnswerRef.current, null, timeLimit, false, freshVoiceMetrics)
-                .finally(() => { if (mountedRef.current) submitLockRef.current = false; });
+              // transition. FIX: stopRecording() (handleMicStop) returns a
+              // Promise, not the metrics synchronously — it must be awaited
+              // before falling back to voiceMetricsRef.current. Since this
+              // whole block runs inside the setSecondsLeft state updater
+              // (which must stay synchronous), the await is done in a
+              // separate async helper invoked here without blocking the
+              // updater itself.
+              (async () => {
+                const freshVoiceMetrics = (await handleMicStopRef.current?.()) ?? voiceMetricsRef.current;
+                return handleSubmit(textAnswerRef.current, null, timeLimit, false, freshVoiceMetrics);
+              })().finally(() => { if (mountedRef.current) submitLockRef.current = false; });
             } else {
               setWasSkipped(true);
               handleTimeUp(timeLimit)
@@ -580,7 +594,7 @@ const Interview = () => {
   );
   const isShortAnswer = !isObjective && wordCount > 0 && wordCount < MIN_ANSWER_WORDS;
 
-  const doSubmit = useCallback(() => {
+  const doSubmit = useCallback(async () => {
     if (!canSubmit || isSubmitted || !currentQuestion) return;
     if (isShortAnswer && !shortSubmitPending) {
       setShortSubmitPending(true);
@@ -592,14 +606,29 @@ const Interview = () => {
     // a user can tap Submit mid-recording. Stop first and use the freshly
     // computed metrics rather than the (possibly still-null) voiceMetrics
     // state, which only updates after stopRecording runs.
-    const freshVoiceMetrics = isObjective ? null : (handleMicStop() ?? voiceMetrics);
-    handleSubmit(
-      textAnswer,
-      isObjective ? selectedAnswerIndex : null,
-      currentQuestion.timeLimit - secondsLeftRef.current,
-      false,
-      freshVoiceMetrics,
-    );
+    // FIX: handleMicStop (stopRecording) returns a Promise, not the metrics
+    // synchronously — it must be awaited before falling back to voiceMetrics,
+    // otherwise the truthy-but-unresolved Promise object itself was being
+    // sent to the server as voiceMetrics.
+    // Awaiting transcription opens a window in which a second tap (or the
+    // timer expiring) could start another submit. Take the same lock the timer
+    // path uses; otherwise the second call resolves handleMicStop() to null
+    // immediately and can win handleSubmit's in-flight guard WITHOUT the voice
+    // metrics, silently dropping them.
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    try {
+      const freshVoiceMetrics = isObjective ? null : ((await handleMicStop()) ?? voiceMetrics);
+      await handleSubmit(
+        textAnswer,
+        isObjective ? selectedAnswerIndex : null,
+        currentQuestion.timeLimit - secondsLeftRef.current,
+        false,
+        freshVoiceMetrics,
+      );
+    } finally {
+      if (mountedRef.current) submitLockRef.current = false;
+    }
   }, [canSubmit, isSubmitted, handleSubmit, textAnswer, isObjective, selectedAnswerIndex, currentQuestion, isShortAnswer, shortSubmitPending, voiceMetrics, handleMicStop]);
 
   useEffect(() => {
@@ -1039,7 +1068,7 @@ const Interview = () => {
                   experienceLevel: selectedExperience,
                 })}
               >
-                {isLoading ? <><span style={S.spinner} />Generating questions…</> : <>Start interview →</>}
+                {isLoading ? <><span style={S.spinner} />Generating questions…</> : <><span>Start interview</span><i className="ti ti-arrow-right" style={{ fontSize: 15, marginLeft: 6 }} /></>}
               </button>
             </div>
 
@@ -1210,24 +1239,31 @@ const Interview = () => {
               <InterviewControls
                 currentQuestion={currentQuestion}
                 isObjective={isObjective}
+                isTranscribing={isTranscribing}    
+                hasLivePreview={hasLivePreview}
                 selectedAnswerIndex={selectedAnswerIndex}
                 textAnswer={textAnswer}
                 onTextChange={handleTextChange}
                 onSelectAnswer={handleSelectAnswer}
                 canSubmit={canSubmit}
                 isLoading={isLoading}
+                isEvaluating={isEvaluating}
+                onStopSubmit={handleStopSubmit}
                 isLastQuestion={isLastQuestion}
                 shortSubmitPending={shortSubmitPending}
                 wordCount={wordCount}
                 onSkip={() => {
                   setWasSkipped(true);
+                  // Skip now resolves instantly server-side (no AI call
+                  // blocks the response), so this scroll fires right after
+                  // the local state update rather than after a multi-second
+                  // wait.
                   handleSkip(currentQuestion.timeLimit - secondsLeftRef.current)
                     .then(() => { if (mountedRef.current) scrollToRoomTop(); });
                 }}
                 onSubmit={doSubmit}
                 textAreaRef={textAreaRef}
                 mode={mode}
-                isTouchDevice={isTouchDevice}
                 isRecording={isRecording}
                 isVoiceSupported={isVoiceSupported}
                 voiceUnsupportedReason={voiceUnsupportedReason}
@@ -1376,6 +1412,7 @@ const GlobalStyles = () => (
     .iv-option:hover:not(:disabled)          { border-color:${C.borderMd}  !important; transform:translateX(2px); box-shadow:0 3px 12px rgba(26,110,255,0.07); }
     .iv-exit-btn:hover                       { background:${C.cardAlt} !important; border-color:${C.borderStr} !important; color:${C.red} !important; }
     .iv-skip-btn:hover:not(:disabled)        { background:${C.cardAlt} !important; border-color:${C.borderMd}  !important; color:${C.sub} !important; }
+    .iv-stop-btn:hover:not(:disabled)        { background:#FECACA !important; }
     .iv-btn-launch:hover:not(:disabled)      { box-shadow:0 14px 36px rgba(26,110,255,0.38) !important; transform:translateY(-2px); }
     .iv-submit-btn:hover:not(:disabled)      { box-shadow:0 12px 28px rgba(26,110,255,0.38) !important; transform:translateY(-2px); filter:brightness(1.05); }
     .iv-next-btn:hover:not(:disabled)        { filter:brightness(1.07); transform:translateY(-2px); box-shadow:0 12px 28px rgba(26,110,255,0.32) !important; }
@@ -1424,6 +1461,7 @@ const GlobalStyles = () => (
       .iv-answer-actions    { flex-direction:column !important; }
       .iv-skip-btn          { width:100% !important; order:2 !important; text-align:center !important; }
       .iv-submit-btn        { width:100% !important; order:1 !important; text-align:center !important; }
+      .iv-stop-btn          { width:100% !important; order:3 !important; text-align:center !important; }
       .iv-console-card      { padding:11px 13px !important; position:relative !important; top:unset !important; }
       .iv-console-mode-icon { width:30px !important; height:30px !important; font-size:14px !important; }
       .iv-next-btn-wrap     { position:sticky !important; bottom:16px !important; background:${C.card} !important; padding:12px !important; margin:16px -14px -14px !important; border-radius:0 0 14px 14px !important; box-shadow:0 -4px 16px rgba(10,22,40,0.08) !important; border-top:1px solid ${C.border} !important; }

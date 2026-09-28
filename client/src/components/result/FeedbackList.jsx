@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
 import { retryQuestion } from '../../Services/interviewService';
+import { usePendingAnswers } from '../../hooks/usePendingAnswers';
 import { C, F } from "../../styles/token";
-import { FeedbackCard } from '../interview/FeedbackPanel';
 
 
 
@@ -65,11 +65,16 @@ const normalizeFeedback = (question) => {
       sampleAnswer: parsed.sampleAnswer|| "",
       aiAvailable:  parsed.aiAvailable !== false,
       fallback:     parsed.fallback    === true,
+      skippedPending: parsed.skippedPending === true,
     };
   } catch { return null; }
 };
 
 const getTakeaway = (question) => {
+  if (question.skipped && question._pending)
+    return { text: "Skipped — model answer is being generated…", tone: "neutral" };
+  if (question.skipped && question.aiFeedback?.fallback)
+    return { text: "Skipped — generic guidance only (AI was unavailable).", tone: "neutral" };
   if (question.skipped) return { text: "Skipped — no answer submitted.", tone: "neutral" };
   const objective = ["mcq", "aptitude"].includes(question.questionType);
   const fb = question.aiFeedback;
@@ -296,11 +301,63 @@ Pill.propTypes = {
   background: PropTypes.string,
 };
 
+// ─── usePulse ─────────────────────────────────────────────────────────────────
+// FeedbackList has no <style> tag for @keyframes, so we toggle a boolean on an
+// interval instead. The interval only exists while `active` is true and is
+// always cleared, so idle cards cost nothing.
+
+const usePulse = (active) => {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    if (!active) return undefined;
+    const id = setInterval(() => setOn((v) => !v), 700);
+    return () => clearInterval(id);
+  }, [active]);
+  return active ? on : true;
+};
+
+// ─── PendingBanner ────────────────────────────────────────────────────────────
+
+const PendingBanner = ({ count, onDismiss }) => (
+  <div
+    role="status"
+    aria-live="polite"
+    style={{
+      display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+      marginBottom: 12, borderRadius: 10,
+      background: C.blue50, border: `1px solid ${C.blue500}30`,
+    }}
+  >
+    <span style={{ fontSize: 13 }} aria-hidden="true">⏳</span>
+    <span style={{ flex: 1, fontSize: 11.5, lineHeight: 1.5, color: C.text }}>
+      Model answers generating for {count} skipped question{count === 1 ? "" : "s"} — cards update automatically.
+    </span>
+    <button
+      type="button"
+      onClick={onDismiss}
+      aria-label="Dismiss notice"
+      style={{
+        flexShrink: 0, border: "none", background: "transparent", cursor: "pointer",
+        color: C.muted, fontSize: 14, lineHeight: 1, padding: "2px 6px",
+      }}
+    >
+      ✕
+    </button>
+  </div>
+);
+PendingBanner.propTypes = {
+  count:     PropTypes.number.isRequired,
+  onDismiss: PropTypes.func.isRequired,
+};
+
 // ─── QuestionCard ─────────────────────────────────────────────────────────────
 
 const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
   const idx       = question._index;
   const feedback  = question.aiFeedback;
+  const pending   = Boolean(question._pending);
+  const timedOut  = Boolean(question._timedOut);
+  const pulse     = usePulse(pending);
   const objective = ["mcq", "aptitude"].includes(question.questionType);
   const isEval    = Boolean(
     feedback && feedback.aiAvailable !== false &&
@@ -326,9 +383,10 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
   return (
     <div
       style={{
-        border: `1px solid ${open ? C.borderMd : C.border}`,
+        border: `1px solid ${pending ? C.amber : open ? C.borderMd : C.border}`,
         borderRadius: 12, background: open ? cardAlt : C.card,
-        overflow: "hidden", transition: "border-color 0.2s ease",
+        overflow: "hidden", transition: "border-color 0.2s ease, opacity 0.3s ease",
+        opacity: pending ? (pulse ? 1 : 0.72) : 1,
       }}
     >
       <div style={{ display: "flex", alignItems: "stretch" }}>
@@ -378,6 +436,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
                 </>
               )}
               {question.skipped && <Pill color={C.amber} background={C.amberTint}>skipped</Pill>}
+              {pending && <Pill color={C.amber} background={C.amberTint}>⏳ generating</Pill>}
             </div>
             <div
               style={{
@@ -475,6 +534,65 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
             </div>
           )}
 
+          {question.skipped && pending && (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                padding: "12px 14px", borderRadius: 10,
+                background: C.amberTint, border: `1px dashed ${C.amber}`,
+                color: C.amber, fontSize: 11.5, fontWeight: 600, lineHeight: 1.5,
+                opacity: pulse ? 1 : 0.6, transition: "opacity 0.5s ease",
+              }}
+            >
+              ⏳ Model answer generating… this card updates automatically.
+            </div>
+          )}
+
+          {question.skipped && !pending && timedOut && (
+            <div
+              style={{
+                padding: "10px 12px", borderRadius: 10,
+                background: cardAlt, border: `1px dashed ${C.borderMd}`,
+                color: C.sub, fontSize: 11, lineHeight: 1.5,
+              }}
+            >
+              The model answer took too long to generate. Reload this page in a
+              minute to check again.
+            </div>
+          )}
+
+          {question.skipped && !pending && !timedOut && feedback && feedback.aiAvailable === false && (
+            <div
+              style={{
+                padding: "8px 12px", borderRadius: 10, marginBottom: 10,
+                background: cardAlt, border: `1px solid ${C.border}`,
+                color: C.muted, fontSize: 10.5, lineHeight: 1.5,
+              }}
+            >
+              AI was unavailable, so this is generic guidance rather than a model answer written for this question.
+            </div>
+          )}
+
+          {question.skipped && !pending && !timedOut && feedback && (feedback.idealHint || feedback.tip || feedback.sampleAnswer) && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {feedback.idealHint && (
+                <FeedbackBlock label="key idea"        value={feedback.idealHint} color={C.blue500} background={C.blue50} />
+              )}
+              {feedback.tip && (
+                <FeedbackBlock label="common mistake"  value={feedback.tip}       color={C.amber}   background={C.amberTint} />
+              )}
+              {feedback.sampleAnswer && (
+                <div style={{ gridColumn: "1 / -1", padding: 11, borderRadius: 10, background: cardAlt, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 600, color: C.muted, marginBottom: 5 }}>
+                    model answer
+                  </div>
+                  <div style={{ fontSize: 12, lineHeight: 1.65, color: C.text, whiteSpace: "pre-wrap" }}>{feedback.sampleAnswer}</div>
+                </div>
+              )}
+            </div>
+          )}
+
           {objective && isEval && (
             <div
               style={{
@@ -488,7 +606,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
             </div>
           )}
 
-          {!objective && isEval && feedback && (
+          {!objective && !question.skipped && isEval && feedback && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <FeedbackBlock label="what worked"      value={feedback.good}        color={C.green}   background={C.greenTint} />
               <FeedbackBlock label="what was missing" value={feedback.missing}     color={C.red}     background={C.redTint}   />
@@ -551,14 +669,41 @@ const FeedbackList = ({ questions, sessionId }) => {
   const [search,       setSearch]       = useState("");
   const [retryingId,   setRetryingId]   = useState(null);
   const [overrides,    setOverrides]    = useState([]);
+  const [bannerHidden, setBannerHidden] = useState(false);
 
-  const normalizedQuestions = useMemo(
-    () => questions.map(q => {
-      const override = overrides.find(o => o.id === q.id);
-      return override ? { ...q, score: override.score, aiFeedback: override.aiFeedback } : q;
-    }),
-    [questions, overrides]
-  );
+  // Skipped open-ended questions are answered in the background on the server.
+  // The Result page hands us a snapshot taken before that finished, so we poll
+  // for the real answers and layer them on top.
+  const { pendingIds, resolvedOverrides, timedOut } = usePendingAnswers(sessionId, questions);
+
+  // Precedence, lowest to highest:
+  //   1. base `questions` prop
+  //   2. resolvedOverrides  (background skip-answer landed)
+  //   3. overrides          (user pressed "Retry AI evaluation")
+  // A manual retry is the user's most recent explicit action, so it wins.
+  const normalizedQuestions = useMemo(() => {
+    // Older sessions can lack an `id`. `undefined` would match `undefined` as a
+    // Map key and bleed one question's override onto every other id-less one,
+    // so a missing id must never match anything.
+    const retryById = new Map(overrides.filter(o => o.id).map(o => [o.id, o]));
+    return questions.map(q => {
+      const hasId    = Boolean(q.id);
+      const retried  = hasId ? retryById.get(q.id)         : undefined;
+      const resolved = hasId ? resolvedOverrides.get(q.id) : undefined;
+      const isPending = hasId && pendingIds.has(q.id);
+      const base = resolved
+        ? { ...q, score: resolved.score, aiFeedback: resolved.aiFeedback }
+        : q;
+      const withRetry = retried
+        ? { ...base, score: retried.score, aiFeedback: retried.aiFeedback }
+        : base;
+      return {
+        ...withRetry,
+        _pending:  isPending,
+        _timedOut: timedOut && !resolved && !isPending && q.aiFeedback?.skippedPending === true,
+      };
+    });
+  }, [questions, overrides, resolvedOverrides, pendingIds, timedOut]);
 
   const strongCount  = normalizedQuestions.filter(q => !q.skipped && q.score >= 80).length;
   const weakCount    = normalizedQuestions.filter(q => !q.skipped && q.score < 60).length;
@@ -621,7 +766,11 @@ const FeedbackList = ({ questions, sessionId }) => {
         Open any card for feedback, sample answer, and retry.
       </p>
 
-      <CrossSignalInsight questions={questions} />
+      {pendingIds.size > 0 && !bannerHidden && (
+        <PendingBanner count={pendingIds.size} onDismiss={() => setBannerHidden(true)} />
+      )}
+
+      <CrossSignalInsight questions={normalizedQuestions} />
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

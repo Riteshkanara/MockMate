@@ -137,24 +137,23 @@ router.post('/refresh', async (req, res) => {
         );
 
         res.cookie('accessToken', newAccessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 15 * 60 * 1000,
+          httpOnly: true,
+          secure: true,
+          sameSite: 'none',
+          maxAge: 15 * 60 * 1000,
         });
 
-                res.json({ ok: true });
+        res.json({ ok: true });
     } catch (err) {
         return res.status(401).json({ error: 'Refresh token expired or invalid' });
     }
 });
 
 router.post('/logout', authMiddleware, async (req, res) => {
-        await User.findByIdAndUpdate(req.user._id, { refreshToken: null });
-    
-
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
+    await User.findByIdAndUpdate(req.user._id, { refreshToken: null });
+    const cookieOpts = { httpOnly: true, secure: true, sameSite: 'none' };
+    res.clearCookie('accessToken',  cookieOpts);
+    res.clearCookie('refreshToken', cookieOpts);
     res.json({ ok: true });
 });
 

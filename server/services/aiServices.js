@@ -4,7 +4,7 @@ const { ROLES, EXPERIENCE_LEVELS, resolveRole, resolveExperience } = require('..
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
 
 const LIMITS = {
   MAX_RETRIES: 2,

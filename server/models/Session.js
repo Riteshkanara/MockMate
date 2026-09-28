@@ -10,13 +10,24 @@ const mongoose = require('mongoose');
 const fillerWordsSchema = new mongoose.Schema({
   total:     { type: Number, default: 0 },
   breakdown: [{ word: String, count: Number }],
+  // detectFillerWords() also returns rate + trend; without these declared,
+  // Mongoose silently drops them on save. trend is null without chunk timing.
+  rate:      { type: Number, default: 0 },
+  trend:     { type: String, enum: ['front-loaded', 'back-loaded', 'even', null], default: null },
+}, { _id: false });
+
+const wpmConsistencySchema = new mongoose.Schema({
+  rating:        { type: String, default: '' },
+  firstHalfWpm:  { type: Number, default: 0 },
+  secondHalfWpm: { type: Number, default: 0 },
 }, { _id: false });
 
 const wpmSchema = new mongoose.Schema({
-  wpm:   { type: Number, default: 0 },
-  band:  { type: String, enum: ['tooSlow', 'ideal', 'tooFast'], default: 'ideal' },
-  label: { type: String, default: '' },
-  hint:  { type: String, default: '' },
+  wpm:         { type: Number, default: 0 },
+  band:        { type: String, enum: ['tooSlow', 'ideal', 'tooFast'], default: 'ideal' },
+  label:       { type: String, default: '' },
+  hint:        { type: String, default: '' },
+  consistency: { type: wpmConsistencySchema, default: null },
 }, { _id: false });
 
 const answerLengthSchema = new mongoose.Schema({
@@ -28,12 +39,45 @@ const answerLengthSchema = new mongoose.Schema({
   hint:      { type: String, default: '' },
 }, { _id: false });
 
+// ── Additional voiceMetrics sub-schemas (previously missing — see fix notes) ──
+const pausesSchema = new mongoose.Schema({
+  totalPauses:         { type: Number, default: 0 },
+  longestPauseSeconds: { type: Number, default: 0 },
+  deadAirCount:        { type: Number, default: 0 },
+  thinkingPauseCount:  { type: Number, default: 0 },
+  totalSilenceSeconds: { type: Number, default: 0 },
+  rating:              { type: String, enum: ['smooth', 'some-hesitation', 'frequent-gaps'], default: 'smooth' },
+}, { _id: false });
+
+const vocabularyDiversitySchema = new mongoose.Schema({
+  uniqueWords: { type: Number, default: 0 },
+  totalWords:  { type: Number, default: 0 },
+  ttr:         { type: Number, default: 0 },
+  score:       { type: Number, default: 0 },
+  label:       { type: String, default: '' },
+}, { _id: false });
+
+const sentenceClaritySchema = new mongoose.Schema({
+  sentenceCount:        { type: Number, default: 0 },
+  avgWordsPerSentence:  { type: Number, default: 0 },
+  score:                { type: Number, default: 0 },
+  label:                { type: String, default: '' },
+  hint:                 { type: String, default: '' },
+}, { _id: false });
+
 const voiceMetricsSchema = new mongoose.Schema({
-  fillerWords:     { type: fillerWordsSchema,   default: null },
-  wpm:             { type: wpmSchema,            default: null },
-  answerLength:    { type: answerLengthSchema,   default: null },
-  durationSeconds: { type: Number,               default: 0   },
-  recordedAt:      { type: Number,               default: null },
+  fillerWords:         { type: fillerWordsSchema,          default: null },
+  wpm:                 { type: wpmSchema,                   default: null },
+  answerLength:        { type: answerLengthSchema,          default: null },
+  pauses:              { type: pausesSchema,                default: null },
+  deliveryScore:       { type: Number,                      default: null },
+  // deliveryBreakdown's shape varies with computeDeliveryScore's internals,
+  // so it's stored loosely rather than re-modeled field-for-field here.
+  deliveryBreakdown:   { type: mongoose.Schema.Types.Mixed,  default: null },
+  vocabularyDiversity: { type: vocabularyDiversitySchema,    default: null },
+  sentenceClarity:     { type: sentenceClaritySchema,        default: null },
+  durationSeconds:     { type: Number,                       default: 0   },
+  recordedAt:          { type: Number,                       default: null },
 }, { _id: false });
 
 // ── Question sub-schema ───────────────────────────────────────────────────────

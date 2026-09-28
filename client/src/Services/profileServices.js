@@ -10,12 +10,6 @@ const AuthAPI = axios.create({
   withCredentials: true,
 });
 
-AuthAPI.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
 export const getShareLink = async () => {
   const response = await AuthAPI.get("/share-link");
   return response.data;

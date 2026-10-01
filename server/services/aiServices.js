@@ -4,7 +4,7 @@ const { ROLES, EXPERIENCE_LEVELS, resolveRole, resolveExperience } = require('..
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'
 
 const LIMITS = {
   MAX_RETRIES: 2,
@@ -17,6 +17,21 @@ const LIMITS = {
   TIME_MCQ: 45,
   TIME_APTITUDE: 60,
   TIME_FALLBACK_OPEN: 90,
+  // Per-request hard ceiling on a single Gemini call. Without this, a
+  // stalled request has no ceiling at all and can hang well past what a
+  // user will wait for before the retry/fallback logic ever kicks in.
+  REQUEST_TIMEOUT_MS: 12000,
+};
+
+// Answer evaluation sits directly in the user's "submit → see feedback"
+// path, so it gets a tighter timeout and a single retry (fail fast, fall
+// back to the static evaluator) instead of the more patient defaults used
+// for one-time, session-start question generation.
+const EVAL_LIMITS = {
+  REQUEST_TIMEOUT_MS: 9000,
+  MAX_RETRIES: 1,
+  RETRY_DELAY: 800,
+  MAX_DELAY: 3000,
 };
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -47,7 +62,10 @@ const isQuotaError = error => {
 const isTemporaryError = error =>
   [429, 500, 502, 503, 504].includes(Number(getStatus(error)));
 
-const getRetryDelay = (error, attempt) => {
+const getRetryDelay = (error, attempt, options = {}) => {
+  const baseDelay = options.retryDelay ?? LIMITS.RETRY_DELAY;
+  const maxDelay  = options.maxDelay   ?? LIMITS.MAX_DELAY;
+
   const retryInfo = error?.details?.find?.(
     detail =>
       detail?.['@type']?.includes('RetryInfo') ||
@@ -56,11 +74,16 @@ const getRetryDelay = (error, attempt) => {
 
   if (retryInfo?.retryDelay) {
     const seconds = parseFloat(retryInfo.retryDelay);
-    if (!Number.isNaN(seconds)) return Math.min(seconds * 1000, LIMITS.MAX_DELAY);
+    if (!Number.isNaN(seconds)) return Math.min(seconds * 1000, maxDelay);
   }
 
-  return Math.min(LIMITS.RETRY_DELAY * Math.pow(2, attempt), LIMITS.MAX_DELAY);
+  return Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
 };
+
+const isTimeoutError = error =>
+  error?.name === 'AbortError' ||
+  getErrorMessage(error).toLowerCase().includes('aborted') ||
+  getErrorMessage(error).toLowerCase().includes('timeout');
 
 const withRetry = async (request, options = {}) => {
   if (!process.env.GEMINI_API_KEY) {
@@ -70,6 +93,9 @@ const withRetry = async (request, options = {}) => {
   const maxRetries = Number.isInteger(options.maxRetries)
     ? options.maxRetries
     : LIMITS.MAX_RETRIES;
+  const timeoutMs = Number.isFinite(options.timeoutMs)
+    ? options.timeoutMs
+    : LIMITS.REQUEST_TIMEOUT_MS;
 
   let lastError = null;
 
@@ -86,6 +112,12 @@ const withRetry = async (request, options = {}) => {
       if (request.config?.maxOutputTokens) {
         generationConfig.maxOutputTokens = request.config.maxOutputTokens;
       }
+      // Hard per-attempt ceiling — without this a stalled call can hang
+      // indefinitely and the retry/fallback path never gets a chance to
+      // kick in, which is exactly the kind of wait we want to eliminate.
+      if (timeoutMs) {
+        generationConfig.abortSignal = AbortSignal.timeout(timeoutMs);
+      }
 
       const response = await ai.models.generateContent({
         model: MODEL,
@@ -100,8 +132,9 @@ const withRetry = async (request, options = {}) => {
     } catch (error) {
       lastError = error;
 
+      const timedOut = isTimeoutError(error);
       console.error(
-        `Gemini request failed. Attempt ${attempt + 1}/${maxRetries + 1}:`,
+        `Gemini request failed. Attempt ${attempt + 1}/${maxRetries + 1}${timedOut ? ' (timed out)' : ''}:`,
         getErrorMessage(error)
       );
 
@@ -109,10 +142,13 @@ const withRetry = async (request, options = {}) => {
         console.error('Gemini quota error — aborting retries:', getErrorMessage(error));
         throw error;
       }
-      if (!isTemporaryError(error)) throw error;
+      if (!timedOut && !isTemporaryError(error)) throw error;
       if (attempt === maxRetries) break;
 
-      const delay = getRetryDelay(error, attempt);
+      const delay = getRetryDelay(error, attempt, {
+        retryDelay: options.retryDelayMs,
+        maxDelay:   options.maxDelayMs,
+      });
       await sleep(delay);
     }
   }
@@ -800,7 +836,7 @@ Return ONLY JSON.
           responseJsonSchema: QUESTION_SCHEMA,
         },
       },
-      { maxRetries: 1 }
+      { maxRetries: 1, timeoutMs: LIMITS.REQUEST_TIMEOUT_MS }
     );
 
     const parsed = parseJson(result.text);
@@ -845,7 +881,7 @@ Return ONLY JSON.
               responseJsonSchema: QUESTION_SCHEMA,
             },
           },
-          { maxRetries: 1 }
+          { maxRetries: 1, timeoutMs: LIMITS.REQUEST_TIMEOUT_MS }
         );
         const retryParsed = parseJson(retryResult.text);
         if (retryParsed.questions?.length >= safeCount) {
@@ -1109,6 +1145,14 @@ Return ONLY valid JSON matching the schema below. No markdown, no extra keys.
         responseMimeType: 'application/json',
         responseJsonSchema: EVAL_SCHEMA,
       },
+    }, {
+      // Fail fast on the eval path — a user is actively waiting to see
+      // their feedback, so we'd rather drop to the static fallback quickly
+      // than keep them staring at a spinner through a long retry chain.
+      maxRetries:  EVAL_LIMITS.MAX_RETRIES,
+      timeoutMs:   EVAL_LIMITS.REQUEST_TIMEOUT_MS,
+      retryDelayMs: EVAL_LIMITS.RETRY_DELAY,
+      maxDelayMs:   EVAL_LIMITS.MAX_DELAY,
     });
  
     const parsed = parseJson(result.text);
@@ -1204,6 +1248,13 @@ Return ONLY JSON.
           required: ['keyIdea', 'commonMistake', 'modelAnswer'],
         },
       },
+    }, {
+      // This now runs in the background after skip has already responded
+      // to the client (see interviewController), so it no longer costs the
+      // user any wait time — but it's still bounded so a stuck request
+      // doesn't linger indefinitely on the server.
+      maxRetries: 1,
+      timeoutMs:  EVAL_LIMITS.REQUEST_TIMEOUT_MS,
     });
 
     const parsed = parseJson(result.text);

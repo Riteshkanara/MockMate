@@ -19,6 +19,11 @@ const paymentRoutes   = require('./routes/payment');
 const transcribeRoutes = require('./routes/transcribe');
 
 const app = express();
+
+// ── Reverse proxy ── must be set BEFORE any rate limiter. Behind Render/Vercel/etc.
+// every request arrives from the proxy's IP unless Express is told to read
+// X-Forwarded-For; without this all users share one rate-limit bucket.
+// 1 = one proxy hop (typical PaaS); set TRUST_PROXY_HOPS=0 for local dev.
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
 // ── Security headers ───────────────────────────────────────────────────────
@@ -127,3 +132,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+ 

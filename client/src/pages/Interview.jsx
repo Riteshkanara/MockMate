@@ -256,7 +256,8 @@ const Interview = () => {
 
   const {
     questions, currentIndex, feedback, isSubmitted,
-    isLoading, isEvaluating, error, sessionStarted, selectedAnswerIndex, isAbandoning,
+    isLoading, isEvaluating, isWaitingForQuestions, totalQuestions,
+    error, sessionStarted, selectedAnswerIndex, isAbandoning,
     handleStart, hydrateSession, handleSubmit, handleStopSubmit, handleSkip,
     handleTimeUp, handleNext, selectAnswer, handleAbandon,
   } = useInterview({ notify });
@@ -409,7 +410,6 @@ const Interview = () => {
   }, []);
 
   const mode              = MODE_META[selectedMode] || MODE_META.quick;
-  const totalQuestions    = questions?.length ?? 0;
   const progress          = totalQuestions ? ((currentIndex + 1) / totalQuestions) * 100 : 0;
   const currentDifficulty = difficultyMeta(currentQuestion?.difficulty);
   const isLastQuestion    = currentIndex === totalQuestions - 1;
@@ -1279,7 +1279,7 @@ const Interview = () => {
                 question={currentQuestion}
                 feedback={feedback}
                 onNext={doAdvance}
-                isLoading={isLoading || isAdvancing}
+                isLoading={isLoading || isAdvancing || isWaitingForQuestions}
                 isLast={isLastQuestion}
                 accent={mode.accent}
                 userAnswerIndex={selectedAnswerIndex}

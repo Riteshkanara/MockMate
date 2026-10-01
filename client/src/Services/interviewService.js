@@ -54,14 +54,25 @@ export const getInterviewSession = async (sessionId) => {
   }
 };
 
-export const submitAnswer = async (sessionId, data) => {
+// `options.signal` (an AbortSignal) lets the caller cancel a slow evaluation —
+// used by the "Stop" button. A cancelled request is an intentional action, not
+// a failure, so it is re-thrown without the error log.
+export const submitAnswer = async (sessionId, data, options = {}) => {
   try {
-    const response = await API.post(`/${sessionId}/answer`, data);
+    const response = await API.post(`/${sessionId}/answer`, data, { signal: options.signal });
     return response.data;
   } catch (error) {
+    if (axios.isCancel(error)) throw error;
     console.error('Submit answer failed:', error);
     throw error;
   }
+};
+
+// Poll target for the background analysis of an answer (model answer, STAR,
+// keywords, follow-ups…). Quiet on purpose: it is polled repeatedly.
+export const getQuestionFeedback = async (sessionId, questionId) => {
+  const response = await API.get(`/${sessionId}/question/${questionId}/feedback`);
+  return response.data;
 };
 
 export const completeInterview = async (sessionId) => {

@@ -131,6 +131,11 @@ const sessionSchema = new mongoose.Schema(
     role:            { type: String, default: '' },
     experienceLevel: { type: String, default: '' },
     questions:       [questionSchema],
+    // Progressive question generation: long interviews start with the first few
+    // questions and the rest are generated in the background. `expectedQuestionCount`
+    // is the intended total; `questionsPending` is true until the rest have landed.
+    expectedQuestionCount: { type: Number, default: 0 },
+    questionsPending:      { type: Boolean, default: false },
     currentQuestion: { type: Number, default: 0 },
     totalScore:      { type: Number, default: 0 },
     averageScore:    { type: Number, default: 0 },

@@ -53,7 +53,18 @@ const {
   evaluateOpenAnswer,
   getSkippedAnswer,
   evalObjectiveAnswer,
+  evaluateOpenAnswerFast,
 } = require('../services/aiServices');
+const {
+  planBatches,
+  toStoredQuestion,
+  fillRemainingQuestions,
+  runEnrichment,
+  resolveEnrichState,
+  waitForPendingEnrichment,
+  QUESTIONS_PENDING_TIMEOUT_MS,
+} = require('../services/interviewFlow');
+const crypto = require('crypto');
 const {
   ROLES, EXPERIENCE_LEVELS, 
   mapCodingExperienceToLevel,
@@ -257,14 +268,21 @@ const startInterview = async (req, res) => {
       difficulty = 'mixed',
     } = req.body || {};
     const count = getQuestionCount(mode);
+    // Long interviews start with a small first batch; the rest is generated
+    // in the background while the student answers (see services/interviewFlow).
+    const { first: firstBatchSize, rest: remainingCount } = planBatches(count);
 
     // Fetch last 10 completed sessions once — used for BOTH the
     // previous-questions exclusion list AND the weak-areas signal below.
-    const recentSessions = await Session.find(
-      { $or: [{ user: userId }, { userId }], status: 'completed' },
-      { 'questions.text': 1, 'questions.topic': 1, 'questions.score': 1, 'questions.skipped': 1 },
-      { sort: { createdAt: -1 }, limit: 10 }
-    ).lean();
+    // Both lookups are independent — run them together instead of back-to-back.
+    const [recentSessions, user] = await Promise.all([
+      Session.find(
+        { $or: [{ user: userId }, { userId }], status: 'completed' },
+        { 'questions.text': 1, 'questions.topic': 1, 'questions.score': 1, 'questions.skipped': 1 },
+        { sort: { createdAt: -1 }, limit: 10 }
+      ).lean(),
+      User.findById(userId).select('targetRole codingExperience').lean(),
+    ]);
 
     const previousQuestions = recentSessions
       .flatMap(s => s.questions || [])
@@ -279,14 +297,15 @@ const startInterview = async (req, res) => {
     // returning users get role-calibrated questions without re-selecting
     // every time. codingExperience (onboarding) maps onto our experience
     // levels since it's the closest existing signal on the user profile.
-    const user = await User.findById(userId).select('targetRole codingExperience').lean();
     const effectiveRole       = role || user?.targetRole || '';
     const effectiveExperience = experienceLevel || mapCodingExperienceToLevel(user?.codingExperience) || '';
 
-    const questions = await generateQuestions({
+    const generationParams = {
       mode, company, topic, topics, role: effectiveRole, experienceLevel: effectiveExperience,
-      weakAreas, difficulty, count, previousQuestions,
-    });
+      weakAreas, difficulty, previousQuestions,
+    };
+    const questions = await generateQuestions({ ...generationParams, count: firstBatchSize });
+    const splitPending = remainingCount > 0 && questions.length > 0;
 
     const session = await Session.create({
       user: userId,
@@ -295,15 +314,9 @@ const startInterview = async (req, res) => {
       topic: Array.isArray(topics) && topics.length ? topics.join(', ') : topic,
       role: effectiveRole,
       experienceLevel: effectiveExperience,
-      questions: questions.map(q => ({
-        ...q,
-        userAnswer: '',
-        userAnswerIndex: null,
-        score: 0,
-        feedback: '',
-        skipped: false,
-        timeTaken: 0,
-      })),
+      questions: questions.map(toStoredQuestion),
+      expectedQuestionCount: splitPending ? count : questions.length,
+      questionsPending: splitPending,
       currentQuestion: 0,
       status: 'active',
       startedAt: new Date(),
@@ -319,7 +332,26 @@ const startInterview = async (req, res) => {
       options: q.questionType === 'open' ? [] : q.options || [],
     }));
 
-    return res.status(201).json({ sessionId: session._id, mode, questions: publicQuestions });
+    res.status(201).json({
+      sessionId: session._id,
+      mode,
+      questions: publicQuestions,
+      totalQuestions: session.expectedQuestionCount,
+      questionsPending: splitPending,
+    });
+
+    // Fire-and-forget AFTER the response: generate the remaining questions.
+    // (fillRemainingQuestions never throws and always clears the pending flag.)
+    if (splitPending) {
+      fillRemainingQuestions({
+        sessionId: session._id,
+        params: generationParams,
+        remaining: remainingCount,
+        existingQuestions: session.questions.map(q => ({ id: q.id, text: q.text })),
+        expectedTotal: count,
+      }).catch(err => console.error('Background question generation failed:', err));
+    }
+    return undefined;
   } catch (error) {
     console.error('startInterview error:', error);
     return res.status(500).json({ message: 'Failed to start interview.', error: error.message });
@@ -334,10 +366,22 @@ const getInterviewSession = async (req, res) => {
     if (!session) {
       return res.status(404).json({ message: 'Interview session not found.' });
     }
+    // A background job that never reported back (e.g. server restart) must not
+    // leave the client waiting: after the timeout, treat it as finished.
+    let questionsPending = Boolean(session.questionsPending) && session.status === 'active';
+    if (questionsPending && Date.now() - new Date(session.startedAt).getTime() > QUESTIONS_PENDING_TIMEOUT_MS) {
+      questionsPending = false;
+      Session.updateOne({ _id: session._id, questionsPending: true }, { $set: { questionsPending: false } })
+        .catch(err => console.error('Failed to clear stale questionsPending:', err));
+    }
     return res.json({
       sessionId: session._id,
       mode: session.mode,
       status: session.status,
+      questionsPending,
+      totalQuestions: questionsPending
+        ? (session.expectedQuestionCount || session.questions.length)
+        : session.questions.length,
       questions: session.questions.map(q => ({
         id: q.id,
         text: q.text,
@@ -380,6 +424,17 @@ const answerQuestion = async (req, res) => {
       return res.status(404).json({ message: 'Question not found.' });
     }
 
+    // If the student presses "Stop" (or their connection drops) while the model
+    // is still working, the response socket closes before we finish. `close`
+    // on the RESPONSE with writableFinished === false means "the client left".
+    let clientGone = false;
+    res.on('close', () => { if (!res.writableFinished) clientGone = true; });
+
+    // Set only on the fast open-answer path below.
+    let willEnrich  = false;
+    let enrichToken = null;
+    let fastResult  = null;
+
     question.timeTaken = Number(timeTaken) || 0;
     question.skipped   = Boolean(skipped);
 
@@ -415,32 +470,48 @@ const answerQuestion = async (req, res) => {
           skippedPending: true, // client can show a lightweight "generating" state instead of blocking
         });
       } else {
-        // CHANGED: pass voiceMetrics so Gemini generates a deliveryTip
-        const result = await evaluateOpenAnswer({
+        // FAST PATH: score + core feedback come back in a couple of seconds.
+        // The heavier analysis (model answer, STAR, keywords, confidence,
+        // follow-ups, voice) is generated AFTER the response and merged in —
+        // see runEnrichment() below and services/interviewFlow.js.
+        const result = await evaluateOpenAnswerFast({
           question,
-          answer:       question.userAnswer,
-          topic:        question.topic,
-          voiceMetrics,  // NEW — null when user typed; Gemini prompt adapts
+          answer: question.userAnswer,
+          topic:  question.topic,
         });
+
+        // The student stopped the evaluation while it was running — discard
+        // this result instead of saving it over their (still editable) answer.
+        if (clientGone) return undefined;
+
+        fastResult     = result;
         question.score = Number(result.score || 0);
+        willEnrich     = result.aiAvailable !== false
+                      && result.fallback !== true
+                      && Boolean(question.userAnswer.trim());
+        enrichToken    = willEnrich ? crypto.randomBytes(8).toString('hex') : null;
+
         question.feedback = JSON.stringify({
           good:         result.good         || '',
           missing:      result.missing      || '',
           idealHint:    result.idealHint    || '',
           tip:          result.tip          || '',
           sampleAnswer: result.sampleAnswer || '',
-          deliveryTip:  result.deliveryTip  || null,
+          deliveryTip:  null,
           aiAvailable:  result.aiAvailable !== false,
           fallback:     result.fallback === true,
-          starBreakdown:      result.starBreakdown      || null,
-          followUpQuestions:  result.followUpQuestions  || [],
-          keywordCoverage:    result.keywordCoverage    || null,
-          confidenceScore:    result.confidenceScore    || null,
-          toneAnalysis:       result.toneAnalysis       || null,
-          vocabularyRichness: result.vocabularyRichness || null,
-          hesitationPattern:  result.hesitationPattern  || null,
-          complexityRating:   result.complexityRating   || null,
-          timeTaken:          timeTaken                 || 0,
+          starBreakdown:      null,
+          followUpQuestions:  [],
+          keywordCoverage:    null,
+          confidenceScore:    null,
+          toneAnalysis:       null,
+          vocabularyRichness: null,
+          hesitationPattern:  null,
+          complexityRating:   null,
+          timeTaken:          timeTaken || 0,
+          ...(willEnrich
+            ? { enrichPending: true, enrichToken, enrichStartedAt: Date.now() }
+            : {}),
         });
       }
     }
@@ -465,7 +536,23 @@ const answerQuestion = async (req, res) => {
       // NEW: echo back voiceMetrics so the client can display them in FeedbackPanel
       // without having to store them in React state across a round-trip.
       voiceMetrics:       question.voiceMetrics || null,
+      enrichPending:      willEnrich,
     });
+
+    // ── Fire-and-forget: generate the heavy analysis for a freshly scored
+    // open answer and merge it into the stored feedback. Never throws.
+    if (willEnrich) {
+      runEnrichment({
+        sessionId,
+        questionId,
+        token:        enrichToken,
+        question:     { text: question.text, topic: question.topic },
+        answer:       question.userAnswer,
+        topic:        question.topic,
+        voiceMetrics: question.voiceMetrics || voiceMetrics || null,
+        fast: { score: question.score, good: fastResult?.good, missing: fastResult?.missing },
+      }).catch(err => console.error('Background enrichment failed:', err));
+    }
 
     // ── Fire-and-forget: fill in a real model answer for skipped open
     // questions AFTER the response has already gone out. The user has
@@ -512,6 +599,15 @@ const completeInterview = async (req, res) => {
   try {
     const userId = getUserId(req);
     const { sessionId } = req.params;
+    // Stop any in-flight background question generation FIRST, so nothing can
+    // be appended between reading the questions and saving the result.
+    await Session.updateOne(
+      { _id: sessionId, user: userId, status: 'active' },
+      { $set: { questionsPending: false } }
+    );
+    // If the last answer's detailed analysis is still being generated, give it
+    // a moment (max 6 s) so the final report includes the model answer etc.
+    await waitForPendingEnrichment(sessionId);
     const session = await Session.findOne({ _id: sessionId, user: userId, status: 'active' });
     if (!session) {
       return res.status(404).json({ message: 'Active interview session not found.' });
@@ -572,6 +668,36 @@ const completeInterview = async (req, res) => {
   } catch (error) {
     console.error('completeInterview error:', error);
     return res.status(500).json({ message: 'Failed to complete interview.', error: error.message });
+  }
+};
+
+// Lightweight poll target: lets the client pick up the background analysis
+// (model answer, STAR, keywords…) as soon as it has been merged into the
+// stored feedback, without re-downloading the whole session.
+const getQuestionFeedback = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { sessionId, questionId } = req.params;
+    const session = await Session.findOne({ _id: sessionId, user: userId })
+      .select('questions.id questions.score questions.feedback')
+      .lean();
+    if (!session) return res.status(404).json({ message: 'Interview session not found.' });
+    const question = (session.questions || []).find(q => q.id === questionId);
+    if (!question) return res.status(404).json({ message: 'Question not found.' });
+
+    let parsed = {};
+    try { parsed = JSON.parse(question.feedback || '{}'); } catch { parsed = {}; }
+    const { pending, feedback } = resolveEnrichState(parsed);
+
+    return res.json({
+      questionId,
+      score: question.score,
+      enrichPending: pending,
+      feedback: JSON.stringify(feedback),
+    });
+  } catch (error) {
+    console.error('getQuestionFeedback error:', error);
+    return res.status(500).json({ message: 'Failed to load feedback.', error: error.message });
   }
 };
 
@@ -1220,6 +1346,7 @@ module.exports = {
   getInterviewSession,
   answerQuestion,
   completeInterview,
+  getQuestionFeedback,
   retryQuestion,
   getInterviewHistory,
   getInterviewResult,

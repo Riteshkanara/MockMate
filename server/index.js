@@ -26,6 +26,16 @@ const app = express();
 // 1 = one proxy hop (typical PaaS); set TRUST_PROXY_HOPS=0 for local dev.
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
+// ── Response compression (gzip/brotli-friendly JSON + text) ────────────────
+// Wrapped in try/catch so a missing install can never take the API down —
+// the server simply runs uncompressed, exactly as before.
+try {
+  const compression = require('compression');
+  app.use(compression());
+} catch (e) {
+  console.warn('compression not installed — responses will be uncompressed.');
+}
+
 // ── Security headers ───────────────────────────────────────────────────────
 app.use(helmet());
 
@@ -45,14 +55,36 @@ app.use('/payment/webhook', express.raw({ type: 'application/json', limit: '1mb'
 app.use(express.json());
 
 // ── Rate limiting ──────────────────────────────────────────────────────────
+// The interview screen briefly polls two cheap, authenticated read endpoints
+// (questions still being generated; background analysis of an answer). They
+// would eat the global 200-per-15-minutes budget within a couple of
+// interviews — and students on one college Wi-Fi share a single IP — so they
+// are exempt from the global cap and governed by their own, more generous
+// limiter below. Matching is exact (24-char hex session id) so no other
+// route is affected.
+const isInterviewPollPath = (req) =>
+  req.method === 'GET' &&
+  /^\/interview\/[a-f0-9]{24}(\/question\/[^/]+\/feedback)?$/i.test(req.path);
+
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: isInterviewPollPath,
   message: { error: 'Too many requests. Please try again later.' },
 });
 app.use(globalLimiter);
+
+const interviewPollLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !isInterviewPollPath(req),
+  message: { error: 'Too many requests. Please slow down.' },
+});
+app.use('/interview', interviewPollLimiter);
 
 const interviewLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -63,7 +95,7 @@ const interviewLimiter = rateLimit({
     if (req.method === 'GET') return true;
     const aiPosts = ['/interview/start', '/interview/ai-coach', '/interview/ai-freeform'];
     const isDynamicAiPost =
-      /^\/interview\/[^/]+\/(answer|complete)$/.test(req.path);
+      /^\/interview\/[^/]+\/(answer|complete|retry\/[^/]+)$/.test(req.path);
     return !aiPosts.includes(req.path) && !isDynamicAiPost;
   },
   message: { error: 'Too many interview requests. Slow down a bit.' },
@@ -132,4 +164,3 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
- 

@@ -101,6 +101,9 @@ const buildFeedback = (data, parsed) => ({
   timeTaken:    Number(data?.timeTaken) || 0,
   aiAvailable:  parsed.aiAvailable !== false,
   fallback:     parsed.fallback === true,
+  // 'basic' = free tier (Pro parts were removed by the server); locked = what exists but is held back
+  tier:         parsed.tier || data?.feedbackTier || 'full',
+  locked:       parsed.locked || null,
   good:         parsed.good         || '',
   missing:      parsed.missing      || '',
   idealHint:    parsed.idealHint    || '',
@@ -209,6 +212,13 @@ export const useInterview = ({ notify } = {}) => {
         notify_.success('Interview ready — good luck!');
         return data;
       } catch (err) {
+        // Plan walls (daily limit / Pro-only mode) are not errors: the page opens
+        // the upgrade modal instead, so no red banner or toast here.
+        const code = err?.response?.data?.error;
+        if (err?.response?.status === 403 && (code === 'daily_limit_reached' || code === 'plan_required')) {
+          notify_.dismiss();
+          throw err;
+        }
         const message = getErrorMessage(err, 'Unable to start the interview.');
         setError(message);
         notify_.error(message);

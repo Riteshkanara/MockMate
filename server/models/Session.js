@@ -126,6 +126,9 @@ const sessionSchema = new mongoose.Schema(
       default: 'quick',
     },
 
+    // true when this session was a free user's one-time trial of a Pro mode
+    isTrial:         { type: Boolean, default: false },
+
     company:         { type: String, default: '' },
     topic:           { type: String, default: '' },
     role:            { type: String, default: '' },

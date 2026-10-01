@@ -2,6 +2,10 @@ import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
 import { retryQuestion } from '../../Services/interviewService';
 import { usePendingAnswers } from '../../hooks/usePendingAnswers';
+import usePlan from '../../hooks/usePlan';
+import useUpgrade from '../../hooks/useUpgrade';
+import LockedInsights from '../pro/LockedInsights';
+import ProBadge from '../pro/ProBadge';
 import { C, F } from "../../styles/token";
 
 
@@ -66,6 +70,8 @@ const normalizeFeedback = (question) => {
       aiAvailable:  parsed.aiAvailable !== false,
       fallback:     parsed.fallback    === true,
       skippedPending: parsed.skippedPending === true,
+      tier:         parsed.tier || "full",
+      locked:       parsed.locked || null,
     };
   } catch { return null; }
 };
@@ -367,6 +373,12 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
   const takeaway  = useMemo(() => getTakeaway(question), [question]);
   const hasTime   = Number(question.timeTaken) > 0;
   const canRetry  = !objective && !question.skipped && question.userAnswer?.trim() && question.id;
+  const { canUseFeature } = usePlan();
+  const { openUpgrade }   = useUpgrade();
+  const basic             = feedback?.tier === "basic";
+  // Re-evaluating is Pro — except when OUR evaluator failed, which must stay free to fix.
+  const evalFailed        = feedback?.aiAvailable === false || feedback?.fallback === true;
+  const retryAllowed      = canUseFeature("retryQuestion") || evalFailed;
 
   const badgeColor = question.skipped
     ? C.muted
@@ -496,7 +508,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
 
       <div
         style={{
-          maxHeight: open ? 1400 : 0, opacity: open ? 1 : 0, overflow: "hidden",
+          maxHeight: open ? 1800 : 0, opacity: open ? 1 : 0, overflow: "hidden",
           transition: "max-height 0.35s cubic-bezier(.16,1,.3,1), opacity 0.25s ease",
         }}
       >
@@ -593,6 +605,10 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
             </div>
           )}
 
+          {question.skipped && !pending && !timedOut && basic && feedback?.locked?.modelAnswer && (
+            <LockedInsights locked={{ modelAnswer: true }} variant="compact" />
+          )}
+
           {objective && isEval && (
             <div
               style={{
@@ -606,7 +622,17 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
             </div>
           )}
 
-          {!objective && !question.skipped && isEval && feedback && (
+          {!objective && !question.skipped && isEval && feedback && basic && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <FeedbackBlock label="what worked"      value={feedback.good}    color={C.green} background={C.greenTint} />
+                <FeedbackBlock label="what was missing" value={feedback.missing} color={C.red}   background={C.redTint}   />
+              </div>
+              <LockedInsights locked={feedback.locked} usedVoice={false} variant="compact" />
+            </>
+          )}
+
+          {!objective && !question.skipped && isEval && feedback && !basic && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <FeedbackBlock label="what worked"      value={feedback.good}        color={C.green}   background={C.greenTint} />
               <FeedbackBlock label="what was missing" value={feedback.missing}     color={C.red}     background={C.redTint}   />
@@ -623,7 +649,23 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
             </div>
           )}
 
-          {canRetry && onRetry && (
+          {canRetry && onRetry && !retryAllowed && (
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => openUpgrade("retryQuestion")}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                  padding: "7px 12px 7px 14px", borderRadius: 9, border: `1px solid ${C.borderMd}`,
+                  background: C.card, color: C.sub, fontFamily: F.mono, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                }}
+              >
+                Re-evaluate this answer <ProBadge variant="pro" />
+              </button>
+            </div>
+          )}
+
+          {canRetry && onRetry && retryAllowed && (
             <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
               <button
                 type="button"
@@ -664,6 +706,7 @@ const propTypes = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const FeedbackList = ({ questions, sessionId }) => {
+  const { openUpgrade } = useUpgrade();
   const [expanded,     setExpanded]     = useState({});
   const [activeFilter, setActiveFilter] = useState("all");
   const [search,       setSearch]       = useState("");
@@ -748,11 +791,16 @@ const FeedbackList = ({ questions, sessionId }) => {
         { id: questionId, score: clamp(Number(data?.score) || 0), aiFeedback: parsed },
       ]);
     } catch (err) {
-      console.error("Retry failed:", err);
+      // Server says Pro-only (e.g. plan expired since this page loaded): explain, don't fail silently.
+      if (err?.response?.status === 403 && err?.response?.data?.error === "plan_required") {
+        openUpgrade("retryQuestion");
+      } else {
+        console.error("Retry failed:", err);
+      }
     } finally {
       setRetryingId(null);
     }
-  }, [sessionId, retryingId]);
+  }, [sessionId, retryingId, openUpgrade]);
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", boxShadow: C.shadow }}>

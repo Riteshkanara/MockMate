@@ -7,6 +7,10 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import useAuth from './hooks/useAuth';
 import API_BASE, { isServerLikelyWarm, markServerWarm } from './config/api';
+import { UpgradeProvider } from './context/UpgradeContext';
+import DemoPlanSwitch from './components/pro/DemoPlanSwitch';
+import PlanStatusBanner from './components/pro/PlanStatusBanner';
+import ProWelcome from './components/pro/ProWelcome';
 
 // ── Route code-splitting ───────────────────────────────────────────────────
 // Every page used to be bundled into ONE ~1.85 MB file that all visitors had
@@ -453,7 +457,12 @@ export default function App() {
     <BrowserRouter>
       <ErrorBoundary>
         <AppShell>
-          <InnerApp />
+          <UpgradeProvider>
+            <InnerApp />
+            <PlanStatusBanner />
+            <ProWelcome />
+            <DemoPlanSwitch />
+          </UpgradeProvider>
         </AppShell>
       </ErrorBoundary>
     </BrowserRouter>

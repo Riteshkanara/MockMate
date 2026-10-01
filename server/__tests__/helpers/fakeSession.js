@@ -53,6 +53,13 @@ class FakeSession {
     return doc;
   }
 
+  // Used by the daily-limit check (utils/planUsage.js). Counts this user's stored
+  // sessions; the date window and abandoned-session exclusion are not modelled.
+  static async countDocuments(filter) {
+    const uid = (filter?.$or || []).map(c => c.user ?? c.userId).find(Boolean);
+    return [...store.values()].filter(d => String(d.user) === String(uid)).length;
+  }
+
   static find() {
     const q = { lean: () => q, then: (res, rej) => Promise.resolve([]).then(res, rej) };
     return q;

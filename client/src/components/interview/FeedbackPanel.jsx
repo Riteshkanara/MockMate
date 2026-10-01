@@ -25,6 +25,7 @@
 
 import PropTypes from 'prop-types';
 import { useEffect, useRef, useState, useMemo } from 'react';
+import LockedInsights from '../pro/LockedInsights';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS
@@ -97,8 +98,9 @@ const mcqAccent = (correct) => correct
 // ═══════════════════════════════════════════════════════════════════════════════
 const rankOf = (s) => {
   if (s >= 90) return { name: 'Legend',  next: null,      need: 0      };
-  if (s >= 75) return { name: 'Pro',     next: 'Legend',  need: 90 - s };
-  if (s >= 60) return { name: 'Rising',  next: 'Pro',     need: 75 - s };
+  // 'Expert' (was 'Pro'): the rank must never share a name with the paid plan.
+  if (s >= 75) return { name: 'Expert',  next: 'Legend',  need: 90 - s };
+  if (s >= 60) return { name: 'Rising',  next: 'Expert',  need: 75 - s };
   if (s >= 40) return { name: 'Grinder', next: 'Rising',  need: 60 - s };
   return             { name: 'Rookie',   next: 'Grinder', need: 40 - s };
 };
@@ -247,6 +249,14 @@ function useCountUp(target, duration = 950, delay = 0) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function useHeroStats(feedback, score) {
   return useMemo(() => {
+    // Free tier: these three come from the locked deep analysis, so show a lock, not a fake "—".
+    if (feedback?.tier === 'basic') {
+      return [
+        { v: null, k: 'Confidence', locked: true },
+        { v: null, k: 'Framework',  locked: true },
+        { v: null, k: 'Keywords',   locked: true },
+      ];
+    }
     const kw    = feedback?.keywords || feedback?.keywordCoverage;
     const hit   = safeArr(kw?.hit).length;
     const total = hit + safeArr(kw?.missed).length;
@@ -339,7 +349,11 @@ function FeedbackHero({ score, mounted, questionIndex, totalQuestions, timeTaken
       <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', marginTop: 14, border: '1px solid rgba(255,255,255,.2)', borderRadius: 12, overflow: 'hidden', background: 'rgba(255,255,255,.08)' }}>
         {stats.map((st, i) => (
           <div key={i} style={{ padding: '10px 6px', textAlign: 'center', borderRight: i < 2 ? '1px solid rgba(255,255,255,.14)' : 'none', background: st.hot ? x.soft : 'transparent' }}>
-            <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 900, color: st.hot ? x.txt : '#fff' }}>{st.v}</div>
+            <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 900, color: st.hot ? x.txt : '#fff', minHeight: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {st.locked
+                ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label="Locked, Pro"><rect x="5" y="11" width="14" height="9" rx="2.5" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+                : st.v}
+            </div>
             <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,.55)', textTransform: 'uppercase', letterSpacing: '.8px', marginTop: 3 }}>{st.k}</div>
           </div>
         ))}
@@ -1230,6 +1244,7 @@ function FeedbackBody({ feedback, question, userAnswer, voiceMetrics, onNext, is
   const objective = ['mcq', 'aptitude'].includes(question?.questionType);
   const correct   = feedback?.correct === true;
   const vm        = voiceMetrics || feedback?.voiceMetrics || null;
+  const basic     = feedback?.tier === 'basic';
 
   if (skipped) {
     const hint   = feedback?.idealHint    || '';
@@ -1245,6 +1260,8 @@ function FeedbackBody({ feedback, question, userAnswer, voiceMetrics, onNext, is
         </div>
         {objective
           ? <McqExplanation question={question} correct={false} userAnswerIndex={null} skipped />
+          : basic
+          ? <LockedInsights locked={{ modelAnswer: true }} />
           : (
             <>
               {hint && (
@@ -1275,6 +1292,10 @@ function FeedbackBody({ feedback, question, userAnswer, voiceMetrics, onNext, is
             <EvalGrid good={feedback?.good} missing={feedback?.missing} />
           </div>
 
+          {basic ? (
+            <LockedInsights locked={feedback?.locked} usedVoice={Boolean(vm)} />
+          ) : (
+          <>
           <div>
             <SectionHeader ico="ti ti-trophy" em="🏆" title="Model answer" hint="Top-tier structure" icoColor="navy" />
             {feedback?.enrichPending && !feedback?.sampleAnswer
@@ -1304,6 +1325,8 @@ function FeedbackBody({ feedback, question, userAnswer, voiceMetrics, onNext, is
           {feedback?.timeEfficiency && <TimeEfficiency timeEfficiency={feedback.timeEfficiency} />}
           {vm && <VoiceEvaluationPanel voiceMetrics={vm} feedback={feedback} />}
           <FollowUpQuestions questions={feedback?.followUpQuestions} />
+          </>
+          )}
         </>
       )}
 

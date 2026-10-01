@@ -10,6 +10,9 @@ import FeedbackList       from "../components/result/FeedbackList";
 import ResultActions      from "../components/result/ResultActions";
 import { C, F }           from "../styles/token";
 import { revealStyle, useGradeColorMoment } from "../utils/resultHelpers";
+import usePlan from "../hooks/usePlan";
+import useUpgrade from "../hooks/useUpgrade";
+import ProUnlockBanner from "../components/pro/ProUnlockBanner";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const clamp = (v, min = 0, max = 100) =>
@@ -60,6 +63,8 @@ const parseFeedback = (question) => {
   aiAvailable: p.aiAvailable !== false,
   fallback: p.fallback === true,
   skippedPending: p.skippedPending === true,
+  tier: p.tier || "full",
+  locked: p.locked || null,
   isObjective: false,
 };
   } catch { return null; }
@@ -596,6 +601,10 @@ const Result = () => {
 
   const [copied,      setCopied]      = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [bannerHidden, setBannerHidden] = useState(false);
+  const { canUseFeature } = usePlan();
+  const { openUpgrade }   = useUpgrade();
+  const canDownload       = canUseFeature("scorecardDownload");
 
   useEffect(() => { if (!result) navigate("/"); }, [result, navigate]);
 
@@ -649,6 +658,8 @@ const Result = () => {
   }, [totalScore, answered.length, normalizedQuestions.length, strongAnswers, weakAnswers, skipped.length, topTopic, topicAverages, weakestTopic]);
 
   const handleDownload = useCallback(async () => {
+    // Client-side feature, so this lock is a UX lock (the image is drawn in the browser).
+    if (!canDownload) { openUpgrade("scorecardDownload"); return; }
     if (!shareRef.current || downloading) return;
     setDownloading(true);
     const id = toast.loading("Preparing your image…");
@@ -660,7 +671,13 @@ const Result = () => {
       toast.dismiss(id); toast.success("Image saved!");
     } catch (e) { toast.dismiss(id); console.error(e); toast.error("Could not create the image — try again."); }
     finally { setDownloading(false); }
-  }, [downloading]);
+  }, [downloading, canDownload, openUpgrade]);
+
+  // How many insights the server is holding back on this session (0 for Pro).
+  const lockedCount = useMemo(
+    () => normalizedQuestions.reduce((n, q) => n + (q.aiFeedback?.tier === "basic" ? (q.aiFeedback.locked?.count || 0) : 0), 0),
+    [normalizedQuestions]
+  );
 
   const heroResult = {
     score: totalScore, sessionId,
@@ -710,9 +727,20 @@ const Result = () => {
         {/* 2. hero */}
         <AnimSec delay={40}>
           <ErrBound>
-            <ResultHeroV2 result={heroResult} navigate={navigate} onCopy={handleCopy} copied={copied} onDownloadImage={handleDownload} downloading={downloading} />
+            <ResultHeroV2 result={heroResult} navigate={navigate} onCopy={handleCopy} copied={copied} onDownloadImage={handleDownload} downloading={downloading} downloadLocked={!canDownload} />
           </ErrBound>
         </AnimSec>
+
+        {!bannerHidden && (
+          <AnimSec delay={60}>
+            <ProUnlockBanner
+              isTrial={result?.isTrial === true}
+              mode={result?.mode}
+              lockedCount={lockedCount}
+              onDismiss={() => setBannerHidden(true)}
+            />
+          </AnimSec>
+        )}
 
         {/* 3. stat rail */}
         <AnimSec delay={80}>

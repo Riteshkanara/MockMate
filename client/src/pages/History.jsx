@@ -2,6 +2,7 @@ import PropTypes from 'prop-types';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getInterviewHistory } from '../Services/interviewService';
+import HistoryLockedStrip from '../components/pro/HistoryLockedStrip';
 import { C, F } from '../styles/token';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -225,6 +226,8 @@ const FILTER_TABS = [
 const History = () => {
   const navigate = useNavigate();
   const [history, setHistory] = useState([]);
+  const [olderCount, setOlderCount] = useState(0);
+  const [windowDays, setWindowDays] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter]   = useState('all');
   const [sort, setSort]       = useState('recent');
@@ -243,6 +246,8 @@ const History = () => {
           ? data.sessions
           : Array.isArray(data?.history) ? data.history : [];
         setHistory(sessions);
+        setOlderCount(Number(data?.olderCount) || 0);
+        setWindowDays(Number(data?.historyWindowDays) || null);
       } catch (err) {
         if (cancelled) return;
         setError(err?.response?.data?.message || 'Unable to load your interview history.');
@@ -369,12 +374,14 @@ const History = () => {
         {!error && filtered.length === 0 && (
           <div style={S.emptyCard}>
             <div style={S.emptyIcon}>🎯</div>
-            <h3 style={S.emptyTitle}>No interviews yet</h3>
+            <h3 style={S.emptyTitle}>{history.length === 0 && olderCount > 0 ? `No interviews in the last ${windowDays || 7} days` : 'No interviews yet'}</h3>
             <p style={S.emptyText}>
-              Your completed interviews will appear here. Start your first AI-powered mock interview and begin building your interview streak.
+              {history.length === 0 && olderCount > 0
+                ? `Your ${olderCount} older interview${olderCount === 1 ? ' is' : 's are'} saved. Practise today and it shows up here.`
+                : 'Your completed interviews will appear here. Start your first AI-powered mock interview and begin building your interview streak.'}
             </p>
             <button onClick={() => navigate('/interview')} style={S.emptyButton}>
-              Start Your First Interview
+              {history.length === 0 && olderCount > 0 ? 'Start an Interview' : 'Start Your First Interview'}
             </button>
           </div>
         )}
@@ -435,6 +442,8 @@ const History = () => {
             );
           })}
         </div>
+
+        <HistoryLockedStrip olderCount={olderCount} windowDays={windowDays} />
 
       </div>
     </div>

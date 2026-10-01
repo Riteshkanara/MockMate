@@ -6,12 +6,24 @@
 const { EventEmitter } = require('events');
 
 jest.mock('../models/Session', () => require('./helpers/fakeSession'));
-jest.mock('../models/User', () => ({
-  findById: () => {
-    const q = { select: () => q, lean: () => q, then: (res, rej) => Promise.resolve(null).then(res, rej) };
+// The plan the mocked user is on. Default is Pro so the flow tests below exercise the
+// unlimited path; the "free plan rules" block at the bottom switches it to free.
+let mockPlanUser = { plan: 'pro' };
+const mockUserUpdates = [];
+jest.mock('../models/User', () => {
+  const makeQuery = () => {
+    const q = {
+      select: () => q,
+      lean: () => q,
+      then: (res, rej) => Promise.resolve({ ...mockPlanUser, save: async () => {} }).then(res, rej),
+    };
     return q;
-  },
-}));
+  };
+  return {
+    findById: () => makeQuery(),
+    updateOne: async (...args) => { mockUserUpdates.push(args); return { modifiedCount: 1 }; },
+  };
+});
 jest.mock('../services/aiServices', () => ({
   generateQuestions: jest.fn(),
   evaluateOpenAnswer: jest.fn(),
@@ -62,6 +74,8 @@ const seed = (overrides = {}) => FakeSession.create({
 const stored = id => FakeSession._get(id);
 
 beforeEach(() => {
+  mockPlanUser = { plan: 'pro' };
+  mockUserUpdates.length = 0;
   FakeSession.reset();
   Object.values(ai).forEach(fn => fn.mockReset());
   jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -418,5 +432,83 @@ describe('completeInterview — waits (briefly) for in-flight analysis', () => {
     const t0 = Date.now();
     expect(await waitForPendingEnrichment(id, 5000)).toBe(true);
     expect(Date.now() - t0).toBeLessThan(200);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('free plan rules (Free/Pro gating)', () => {
+  const fastEval = { score: 70, good: 'Solid core idea', missing: 'No example', idealHint: 'Scope', tip: 'Add an example', aiAvailable: true, fallback: false };
+  const enrichedOk = { ok: true, fields: {
+    sampleAnswer: 'A closure is…', deliveryTip: null, starBreakdown: null, followUpQuestions: ['Why?'],
+    keywordCoverage: { hit: ['scope'], missed: [] }, confidenceScore: { score: 80, label: 'Assertive', note: 'ok' },
+    toneAnalysis: null, vocabularyRichness: null, hesitationPattern: null,
+  } };
+
+  beforeEach(() => { mockPlanUser = { plan: 'free' }; });
+
+  test('quick mode is open to a free user and is not a trial', async () => {
+    ai.generateQuestions.mockResolvedValue(batch(1, 5));
+    const res = await call(ctrl.startInterview, { body: { mode: 'quick' } });
+    expect(res.statusCode).toBe(201);
+    expect(res.body.trial).toBe(false);
+  });
+
+  test('the 4th interview of the day is refused with daily_limit_reached', async () => {
+    await seed({ mode: 'quick' }); await seed({ mode: 'quick' }); await seed({ mode: 'quick' });   // 3 already today
+    const res = await call(ctrl.startInterview, { body: { mode: 'quick' } });
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toMatchObject({ error: 'daily_limit_reached', limit: 3 });
+    expect(ai.generateQuestions).not.toHaveBeenCalled();
+  });
+
+  test('a Pro mode can be tried once: session is marked trial and the trial is burned only after it exists', async () => {
+    ai.generateQuestions.mockResolvedValue(batch(1, 3));
+    const res = await call(ctrl.startInterview, { body: { mode: 'full' } });
+    expect(res.statusCode).toBe(201);
+    expect(res.body.trial).toBe(true);
+    expect(stored(res.body.sessionId).isTrial).toBe(true);
+    expect(mockUserUpdates.some(([, upd]) => upd?.$addToSet?.proTrialsUsed === 'full')).toBe(true);
+  });
+
+  test('the same Pro mode again after its trial is refused with plan_required', async () => {
+    mockPlanUser = { plan: 'free', proTrialsUsed: ['full'] };
+    const res = await call(ctrl.startInterview, { body: { mode: 'full' } });
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toMatchObject({ error: 'plan_required', feature: 'mode_full', trialUsed: true });
+    expect(ai.generateQuestions).not.toHaveBeenCalled();
+  });
+
+  test('a free (non-trial) answer returns only score + worked/missing: Pro analysis never leaves the server', async () => {
+    const s = await seed({ mode: 'quick' });
+    ai.evaluateOpenAnswerFast.mockResolvedValue(fastEval);
+    ai.enrichOpenAnswer.mockResolvedValue(enrichedOk);
+    const res = await call(ctrl.answerQuestion, {
+      params: { sessionId: s._id },
+      body: { questionId: 'q1', answer: 'A closure keeps access to its outer scope.', timeTaken: 20 },
+    });
+    const fb = JSON.parse(res.body.feedback);
+    expect(res.body.score).toBe(70);
+    expect(fb.tier).toBe('basic');
+    expect(fb.good).toBe('Solid core idea');
+    expect(fb.missing).toBe('No example');
+    for (const locked of ['sampleAnswer', 'tip', 'idealHint', 'followUpQuestions', 'keywordCoverage', 'confidenceScore']) {
+      expect(fb[locked] ?? null).toBeFalsy();
+    }
+  });
+
+  test('the background-analysis poll route applies the same tier: a free user never receives Pro fields', async () => {
+    const s = await seed({ mode: 'quick' });
+    ai.evaluateOpenAnswerFast.mockResolvedValue(fastEval);
+    ai.enrichOpenAnswer.mockResolvedValue(enrichedOk);
+    await call(ctrl.answerQuestion, {
+      params: { sessionId: s._id },
+      body: { questionId: 'q1', answer: 'A closure keeps access to its outer scope.', timeTaken: 20 },
+    });
+    await flush(() => !String(stored(s._id).questions[0].feedback).includes('"enrichPending":true'));
+    const res = await call(ctrl.getQuestionFeedback, { params: { sessionId: s._id, questionId: 'q1' } });
+    const fb = typeof res.body.feedback === 'string' ? JSON.parse(res.body.feedback) : (res.body.feedback || {});
+    expect(fb.sampleAnswer ?? null).toBeFalsy();
+    expect(fb.followUpQuestions ?? null).toBeFalsy();
+    expect(fb.keywordCoverage ?? null).toBeFalsy();
   });
 });

@@ -98,7 +98,10 @@ const normalizeQuestion = question => ({
 const buildFeedback = (data, parsed) => ({
   score:        Number(data?.score) || 0,
   correct:      data?.correct ?? null,
-  timeTaken:    Number(data?.timeTaken) || 0,
+  // The server stores timeTaken inside the feedback JSON, not at the top level.
+  timeTaken:    Number(data?.timeTaken) || Number(parsed.timeTaken) || 0,
+  // True for skipped open questions whose model answer is still being generated.
+  skippedPending: parsed.skippedPending === true,
   aiAvailable:  parsed.aiAvailable !== false,
   fallback:     parsed.fallback === true,
   // 'basic' = free tier (Pro parts were removed by the server); locked = what exists but is held back

@@ -93,6 +93,7 @@ const withRetry = async (request, options = {}) => {
   const maxRetries = Number.isInteger(options.maxRetries)
     ? options.maxRetries
     : LIMITS.MAX_RETRIES;
+
   const timeoutMs = Number.isFinite(options.timeoutMs)
     ? options.timeoutMs
     : LIMITS.REQUEST_TIMEOUT_MS;
@@ -136,6 +137,7 @@ const withRetry = async (request, options = {}) => {
       lastError = error;
 
       const timedOut = isTimeoutError(error);
+
       console.error(
         `Gemini request failed. Attempt ${attempt + 1}/${maxRetries + 1}${timedOut ? ' (timed out)' : ''}:`,
         getErrorMessage(error)
@@ -839,7 +841,7 @@ Return ONLY JSON.
           responseJsonSchema: QUESTION_SCHEMA,
         },
       },
-      { maxRetries: 1, timeoutMs: LIMITS.REQUEST_TIMEOUT_MS }
+      { maxRetries: 1 }
     );
 
     const parsed = parseJson(result.text);
@@ -884,7 +886,7 @@ Return ONLY JSON.
               responseJsonSchema: QUESTION_SCHEMA,
             },
           },
-          { maxRetries: 1, timeoutMs: LIMITS.REQUEST_TIMEOUT_MS }
+          { maxRetries: 1 }
         );
         const retryParsed = parseJson(retryResult.text);
         if (retryParsed.questions?.length >= safeCount) {

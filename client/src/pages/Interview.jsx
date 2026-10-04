@@ -1237,7 +1237,7 @@ const Interview = () => {
 
         {/* ── Sticky console: where you are, how long is left ── */}
         <div ref={roomTopRef} aria-hidden="true" />
-        <section style={S.consoleCard} className="iv-console-card" aria-label="Interview progress">
+        <section style={S.consoleCard} className={`iv-console-card${isSubmitted ? ' iv-console-static' : ''}`} aria-label="Interview progress">
           <NotifBar notif={roomNotif} />
           <div style={S.consoleTop}>
             <div style={S.consoleContext}>
@@ -1305,7 +1305,7 @@ const Interview = () => {
         </section>
 
         {/* ── Question | answer (or feedback) ── */}
-        <main style={S.roomGrid} className="iv-room-grid">
+        <main style={S.roomGrid} className={`iv-room-grid${isSubmitted ? ' iv-room-done' : ''}`}>
           <QuestionDisplay
             key={`q-${questionKey}`}
             currentQuestion={currentQuestion}
@@ -1622,10 +1622,21 @@ const GlobalStyles = () => (
 
     @media (prefers-reduced-motion: reduce) { .iv-page * { animation:none !important; transition:none !important; } }
 
+    /* Sticky console: hide the strip between navbar and card, and fade content as it slides underneath */
+    .iv-console-card { box-shadow:0 -18px 0 0 ${C.bg}, ${C.shadow} !important; }
+    .iv-console-card::before { content:''; position:absolute; left:-12px; right:-12px; top:-18px; height:18px; background:${C.bg}; z-index:-1; pointer-events:none; }
+    .iv-console-card::after  { content:''; position:absolute; left:0; right:0; top:100%; height:14px; background:linear-gradient(${C.bg}, rgba(240,244,255,0)); pointer-events:none; }
+    /* Feedback showing: the timer is gone, so the console scrolls away with the page and can never overlap the feedback */
+    .iv-console-static { position:relative !important; top:auto !important; z-index:auto !important; }
+    .iv-console-static { box-shadow:${C.shadow} !important; }
+    .iv-console-static::before, .iv-console-static::after { display:none; }
+
     .iv-launch-bar { display:none; }
     @media (min-width: 1021px) {
       .iv-question-panel { position:sticky; top:228px; }
       .iv-aside          { position:sticky; top:100px; }
+      /* feedback showing: the console no longer sticks, so the question panel sits just under the navbar */
+      .iv-room-done .iv-question-panel { top:100px; }
     }
     @media (max-width: 1020px) {
       .iv-setup-grid  { grid-template-columns:1fr !important; }

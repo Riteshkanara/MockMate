@@ -24,6 +24,8 @@ import {
   getSessionWarmup,
 } from '../Services/interviewService';
 import { C as CT, F } from '../styles/token';
+import { useIsPreview } from '../components/pro/PreviewContext';
+import { SAMPLE_PRO_ANALYTICS, SAMPLE_WARMUP, SAMPLE_BLIND_SPOTS, SAMPLE_LAST_SESSION } from '../components/pro/previewData';
 
 // — Extracted sub-components
 import LivingAura     from '../components/analytics/LivingAura';
@@ -182,17 +184,18 @@ AnimatedRing.propTypes = {
 
 // — SessionOrderCard
 const SessionOrderCard = () => {
+  const preview = useIsPreview();
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
-      try { setData(await getSessionWarmup()); }
+      try { setData(preview ? SAMPLE_WARMUP : await getSessionWarmup()); }
       catch { /* silently fail */ }
       finally { setLoading(false); }
     };
     load();
-  }, []);
+  }, [preview]);
 
   if (loading || !data?.available) return null;
 
@@ -343,17 +346,18 @@ SkillVelocityGraph.propTypes = {
 
 // — BlindSpotAlertCard
 const BlindSpotAlertCard = () => {
+  const preview = useIsPreview();
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
-      try { setData(await getBlindSpots()); }
+      try { setData(preview ? SAMPLE_BLIND_SPOTS : await getBlindSpots()); }
       catch { /* silently fail */ }
       finally { setLoading(false); }
     };
     load();
-  }, []);
+  }, [preview]);
 
   if (loading) return (
     <div style={{ ...S.card, borderLeft: `3px solid ${C.border}`, marginBottom: 18 }}>
@@ -411,6 +415,7 @@ const BlindSpotAlertCard = () => {
 
 // — SessionQualityCard
 const SessionQualityCard = () => {
+  const preview = useIsPreview();
   const [breakdown, setBreakdown] = useState(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(false);
@@ -418,12 +423,12 @@ const SessionQualityCard = () => {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      try { setBreakdown(await getLastSessionBreakdown()); }
+      try { setBreakdown(preview ? SAMPLE_LAST_SESSION : await getLastSessionBreakdown()); }
       catch { setError(true); }
       finally { setLoading(false); }
     };
     load();
-  }, []);
+  }, [preview]);
 
   if (loading) return (
     <div style={S.card} className="an-card">
@@ -696,14 +701,16 @@ AnimatedSection.propTypes = {
 // — Analytics (main page component)
 const AnalyticsPro = () => {
   const navigate = useNavigate();
-  const [data, setData]                   = useState(null);
-  const [loading, setLoading]             = useState(true);
+  const preview = useIsPreview();
+  const [data, setData]                   = useState(preview ? SAMPLE_PRO_ANALYTICS : null);
+  const [loading, setLoading]             = useState(!preview);
   const [error, setError]                 = useState("");
   const [mounted, setMounted]             = useState(false);
   const [drillDim, setDrillDim]           = useState(null);
   const [selectedCompany, setSelectedCompany] = useState(null);
 
   useEffect(() => {
+    if (preview) { requestAnimationFrame(() => setTimeout(() => setMounted(true), 50)); return; }
     const load = async () => {
       setLoading(true);
       setError("");
@@ -718,7 +725,7 @@ const AnalyticsPro = () => {
       }
     };
     load();
-  }, []);
+  }, [preview]);
 
   const topicPerformance = useMemo(() => data?.topicPerformance ?? [], [data]);
   const scoreTrend       = useMemo(() => data?.scoreTrend ?? [], [data]);
@@ -1526,9 +1533,11 @@ const S = {
 
 // Free users get a purpose-built view (last 7 days + locked Pro depth). Pro users get the
 // full page above, unchanged. ProtectedRoute waits for the user, so the plan is known here.
+export { AnalyticsPro };
+
 const Analytics = () => {
   const { isPro } = usePlan();
-  return isPro ? <AnalyticsPro /> : <AnalyticsFree />;
+  return isPro ? <AnalyticsPro /> : <AnalyticsFree preview={<AnalyticsPro />} />;
 };
 
 export default Analytics;

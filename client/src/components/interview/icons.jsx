@@ -29,6 +29,10 @@ const PATHS = {
   lock:      <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
   message:   <path d="M4 5h16v11H9l-5 4V5Z" />,
   edit:      <path d="m4 20 4-1 11-11-3-3L5 16l-1 4ZM14 6l3 3" />,
+  trophy:    <><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z" /><path d="M8 6H5a2 2 0 0 0 2 4M16 6h3a2 2 0 0 1-2 4M12 13v4M9 20h6" /></>,
+  copy:      <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></>,
+  chart:     <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+  help:      <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01" /></>,
 };
 
 function Icon({ name, size = 18, stroke = 2, style, ...rest }) {

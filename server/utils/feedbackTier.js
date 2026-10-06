@@ -40,6 +40,33 @@ const tryParse = (raw) => {
   }
 };
 
+
+/**
+ * A short teaser of a locked text field, so a free user sees the real first line of THEIR
+ * answer's model answer / coaching and the rest stays behind the lock.
+ * Rules (so a teaser can never give the whole thing away):
+ *   - first sentence only, cleaned of markdown and line breaks, at most 110 characters
+ *   - if that sentence is most of the text (a one- or two-sentence answer), cut it shorter
+ *   - text too short to tease safely returns '' (no teaser)
+ */
+const TEASER_MAX = 110;
+const makeTeaser = (raw) => {
+  if (typeof raw !== 'string') return '';
+  const text = raw.replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim();
+  if (text.length < 40) return '';
+  const m = text.match(/^(.+?[.!?])(\s|$)/);
+  let out = (m ? m[1] : text).trim();
+  const cut = (s, n) => {
+    if (s.length <= n) return s;
+    const slice = s.slice(0, n);
+    const at = slice.lastIndexOf(' ');
+    return `${slice.slice(0, at > 20 ? at : n).replace(/[\s,;:.-]+$/, '')}…`;
+  };
+  if (out.length >= text.length * 0.6) out = cut(out, Math.floor(text.length * 0.5));
+  out = cut(out, TEASER_MAX);
+  return out.length >= 20 ? out : '';
+};
+
 /** 'full' | 'basic' for a given plan config + session. */
 const getFeedbackTier = (planCfg, session) => {
   if (planCfg?.feedbackDepth === 'full') return 'full';
@@ -79,6 +106,13 @@ const shapeFeedback = (question, tier) => {
   const basic = { tier: 'basic' };
   BASIC_KEEP.forEach((k) => { if (fb[k] !== undefined) basic[k] = fb[k]; });
   basic.locked = describeLocked(fb, { skipped: Boolean(question.skipped), hasVoice: has(question.voiceMetrics) });
+  // Real first line of the locked model answer / coaching (see makeTeaser for the safety rules).
+  const teasers = {};
+  const modelT = makeTeaser(fb.sampleAnswer);
+  const coachT = makeTeaser(fb.idealHint || fb.tip);
+  if (modelT) teasers.modelAnswer = modelT;
+  if (coachT) teasers.coaching = coachT;
+  if (Object.keys(teasers).length) basic.teasers = teasers;
   return JSON.stringify(basic);
 };
 
@@ -106,4 +140,4 @@ const shapeSession = (session, tier) => {
   };
 };
 
-module.exports = { getFeedbackTier, shapeFeedback, shapeQuestion, shapeSession, describeLocked, tryParse };
+module.exports = { getFeedbackTier, shapeFeedback, shapeQuestion, shapeSession, describeLocked, tryParse, makeTeaser };

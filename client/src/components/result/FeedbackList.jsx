@@ -4,7 +4,8 @@ import { retryQuestion } from '../../Services/interviewService';
 import { usePendingAnswers } from '../../hooks/usePendingAnswers';
 import usePlan from '../../hooks/usePlan';
 import useUpgrade from '../../hooks/useUpgrade';
-import LockedInsights from '../pro/LockedInsights';
+import { LockedBlock } from '../interview/feedback/Locked';
+import { SAMPLE_FEEDBACK } from '../interview/feedback/sampleFeedback';
 import ProBadge from '../pro/ProBadge';
 import { C, F } from "../../styles/token";
 import { Icon, scrollToId } from "./ResultNav";
@@ -83,6 +84,7 @@ const normalizeFeedback = (question) => {
       skippedPending: parsed.skippedPending === true,
       tier:         parsed.tier || "full",
       locked:       parsed.locked || null,
+      teasers:      parsed.teasers || null,
     };
   } catch { return null; }
 };
@@ -310,6 +312,51 @@ FeedbackBlock.propTypes = {
   value:      PropTypes.string,
   color:      PropTypes.string.isRequired,
   background: PropTypes.string.isRequired,
+};
+
+/**
+ * What a Pro user sees below worked/missing, rendered with SAMPLE data for free users.
+ * Same blocks, same order, same colours as the real thing, so the lock shows the true layout.
+ * Real Pro text is stripped server-side; only the first line (teaser) is the user's own.
+ */
+const LockedProBlocks = ({ locked = {}, teasers = {}, skipped = false }) => {
+  const showCoach = !skipped && locked.coaching;
+  const showModel = locked.modelAnswer;
+  if (!showCoach && !showModel) return null;
+  const count = [showCoach && 2, showModel && 1].filter(Boolean).reduce((a, b) => a + b, 0);
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+        <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", color: C.brand600 }}>
+          {count} MORE INSIGHT{count > 1 ? "S" : ""} ON THIS ANSWER
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: C.muted, border: `1px solid ${C.border}`, borderRadius: 5, padding: "2px 5px" }}>EXAMPLE</span>
+          <ProBadge variant="pro" />
+        </span>
+      </div>
+      {(teasers.coaching || teasers.modelAnswer) && (
+        <p style={{ margin: "0 0 8px", fontSize: 12.5, lineHeight: 1.6, color: C.text, fontWeight: 600 }}>
+          {showCoach && teasers.coaching ? teasers.coaching : teasers.modelAnswer}
+        </p>
+      )}
+      <LockedBlock feature="detailedFeedback" cta={count > 1 ? `Unlock all ${count} insights` : "Unlock this insight"} hint="Your own version appears when you upgrade" height={showCoach && showModel ? 230 : 150} blur={5}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 8 }}>
+          {showCoach && <FeedbackBlock label="key idea"  value={SAMPLE_FEEDBACK.idealHint} color={C.blue500} background={C.blue50} />}
+          {showCoach && <FeedbackBlock label="next move" value={SAMPLE_FEEDBACK.tip}       color={C.amber}   background={C.amberTint} />}
+          {showModel && (
+            <div style={{ gridColumn: "1 / -1", padding: 11, borderRadius: 10, background: cardAlt, border: `1px solid ${C.border}` }}>
+              <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, color: C.muted, marginBottom: 5 }}>better answer pattern</div>
+              <div style={{ fontSize: 12, lineHeight: 1.65, color: C.text }}>{SAMPLE_FEEDBACK.sampleAnswer}</div>
+            </div>
+          )}
+        </div>
+      </LockedBlock>
+    </div>
+  );
+};
+LockedProBlocks.propTypes = {
+  locked: PropTypes.object, teasers: PropTypes.object, skipped: PropTypes.bool,
 };
 
 // ─── Pill ─────────────────────────────────────────────────────────────────────
@@ -629,7 +676,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
           )}
 
           {question.skipped && !pending && !timedOut && basic && feedback?.locked?.modelAnswer && (
-            <LockedInsights locked={{ modelAnswer: true }} variant="compact" />
+            <LockedProBlocks locked={{ modelAnswer: true }} teasers={feedback?.teasers} skipped />
           )}
 
           {objective && isEval && (
@@ -651,7 +698,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
                 <FeedbackBlock label="what worked"      value={feedback.good}    color={C.green} background={C.greenTint} />
                 <FeedbackBlock label="what was missing" value={feedback.missing} color={C.red}   background={C.redTint}   />
               </div>
-              <LockedInsights locked={feedback.locked} usedVoice={false} variant="compact" />
+              <LockedProBlocks locked={feedback.locked} teasers={feedback.teasers} />
             </>
           )}
 

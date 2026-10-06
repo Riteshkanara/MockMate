@@ -2,7 +2,8 @@ import PropTypes from 'prop-types';
 import { C, F } from '../../styles/token';
 import useUpgrade from '../../hooks/useUpgrade';
 import ProBadge from './ProBadge';
-import ProIcon from './ProIcon';
+import ProTease from './ProTease';
+import { SAMPLE_INSIGHTS } from './previewData';
 
 /**
  * LockedInsights — what a free user sees where the Pro parts of an evaluation would be.
@@ -30,12 +31,7 @@ const LockGlyph = ({ size = 12 }) => (
 );
 LockGlyph.propTypes = { size: PropTypes.number };
 
-const Skeleton = ({ w }) => (
-  <span aria-hidden="true" style={{ display: 'block', height: 7, width: w, borderRadius: 99, background: `linear-gradient(90deg, ${C.border}, ${C.surfaceAlt}, ${C.border})` }} />
-);
-Skeleton.propTypes = { w: PropTypes.string.isRequired };
-
-export default function LockedInsights({ locked, usedVoice = false, variant = 'panel' }) {
+export default function LockedInsights({ locked, usedVoice = false, variant = 'panel', teasers = null }) {
   const { openUpgrade } = useUpgrade();
   if (!locked) return null;
 
@@ -76,62 +72,66 @@ export default function LockedInsights({ locked, usedVoice = false, variant = 'p
     );
   }
 
+  if (variant === 'preview') {
+    // One slim blurred card for list views (Result page): real first line, blurred rest, one CTA.
+    const lead = teasers?.modelAnswer || teasers?.coaching || SAMPLE_INSIGHTS[keys[0] === 'delivery' && usedVoice ? 'voice' : keys[0]].lead;
+    return (
+      <div style={{ marginTop: 10 }}>
+        <ProTease
+          feature={feature}
+          eyebrow={`${count} more insight${count > 1 ? 's' : ''} on this answer`}
+          title={keys.map((k) => (k === 'delivery' && usedVoice ? 'Voice report' : ROWS[k].title)).join(' · ')}
+          lead={lead}
+          tag={teasers?.modelAnswer || teasers?.coaching ? 'YOUR ANSWER' : 'EXAMPLE'}
+          cta={count > 1 ? `Unlock all ${count} insights` : 'Unlock this insight'}
+          blurHeight={86}
+          blurPx={5}
+          showBadge
+        >
+          {keys.flatMap((k) => SAMPLE_INSIGHTS[k === 'delivery' && usedVoice ? 'voice' : k].rest.slice(0, 1)).map((line) => (
+            <p key={line} style={{ margin: '0 0 6px' }}>{line}</p>
+          ))}
+        </ProTease>
+      </div>
+    );
+  }
+
   return (
-    <section
-      aria-label="Pro insights for this answer"
-      style={{ fontFamily: F.body, borderRadius: 16, overflow: 'hidden', border: `1px solid ${C.brand100}`, background: C.surface, boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}
-    >
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 16px', background: `linear-gradient(135deg, ${C.brand50}, #fff)`, borderBottom: `1px solid ${C.brand100}` }}>
+    <section aria-label="Pro insights for this answer" style={{ fontFamily: F.body, display: 'grid', gap: 12 }}>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '2px 4px' }}>
         <div>
           <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '.12em', color: C.brand600, marginBottom: 2 }}>
             {count} MORE INSIGHT{count > 1 ? 'S' : ''} ON THIS ANSWER
           </div>
-          <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 800, color: C.text }}>
+          <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 800, color: C.text }}>
             {voiceHot ? 'Your voice report is ready' : 'See exactly how to score higher'}
           </div>
         </div>
         <ProBadge variant="pro" size="md" />
       </header>
 
-      <ul style={{ listStyle: 'none', margin: 0, padding: '6px 16px' }}>
-        {keys.map((k, i) => {
-          const row = k === 'delivery' && usedVoice ? VOICE_ROW : ROWS[k];
-          const hot = k === 'delivery' && usedVoice;
-          return (
-            <li key={k} style={{ display: 'flex', gap: 12, padding: '12px 0', borderTop: i === 0 ? 'none' : `1px solid ${C.border}` }}>
-              <span style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, background: hot ? C.brand500 : C.brand50, color: hot ? '#fff' : C.brand600, border: `1px solid ${hot ? 'transparent' : C.brand100}` }}>
-                <ProIcon name={row.icon} size={16} />
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: F.display, fontSize: 13.5, fontWeight: 700, color: C.text }}>
-                  {row.title}
-                  <span style={{ color: C.textMuted, display: 'inline-flex' }}><LockGlyph size={11} /></span>
-                </div>
-                <div style={{ fontSize: 12.5, color: C.textSub, lineHeight: 1.45, marginTop: 2 }}>{row.desc}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 9 }}>
-                  <Skeleton w="92%" /><Skeleton w="64%" />
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      {keys.map((k) => {
+        const s = k === 'delivery' && usedVoice ? SAMPLE_INSIGHTS.voice : SAMPLE_INSIGHTS[k];
+        const row = k === 'delivery' && usedVoice ? VOICE_ROW : ROWS[k];
+        return (
+          <ProTease
+            key={k}
+            feature={k === 'delivery' && usedVoice ? 'voiceEvaluation' : 'detailedFeedback'}
+            eyebrow={row.desc}
+            title={s.title}
+            lead={teasers?.[k] || s.lead}
+            tag={teasers?.[k] ? 'YOUR ANSWER' : 'EXAMPLE'}
+            cta={k === 'delivery' && usedVoice ? 'Unlock my voice report' : `Unlock ${s.title.toLowerCase()}`}
+            blurHeight={118}
+            showBadge={false}
+          >
+            {s.rest.map((line) => <p key={line} style={{ margin: '0 0 6px' }}>{line}</p>)}
+          </ProTease>
+        );
+      })}
 
-      <div style={{ padding: '4px 16px 16px' }}>
-        <button
-          type="button"
-          onClick={cta}
-          style={{
-            width: '100%', height: 44, borderRadius: 12, border: 'none', cursor: 'pointer',
-            background: `linear-gradient(135deg, ${C.brand500}, ${C.brand700})`, color: '#fff',
-            fontFamily: F.display, fontSize: 14, fontWeight: 700, boxShadow: '0 6px 18px rgba(26,110,255,.26)',
-          }}
-        >
-          {voiceHot ? 'Unlock my voice report' : 'Unlock with Pro'}
-        </button>
-        <div style={{ textAlign: 'center', marginTop: 8, fontSize: 11.5, color: C.textMuted }}>
-          Your answer is saved. Everything here appears the moment you upgrade, including past sessions.
-        </div>
+      <div style={{ textAlign: 'center', fontSize: 12, color: C.textMuted, padding: '0 8px' }}>
+        The blurred text is an example. Your answer is saved, and your own version appears the moment you upgrade, including past sessions.
       </div>
     </section>
   );
@@ -140,5 +140,6 @@ export default function LockedInsights({ locked, usedVoice = false, variant = 'p
 LockedInsights.propTypes = {
   locked:    PropTypes.shape({ modelAnswer: PropTypes.bool, coaching: PropTypes.bool, delivery: PropTypes.bool, analysis: PropTypes.bool }),
   usedVoice: PropTypes.bool,
-  variant:   PropTypes.oneOf(['panel', 'compact']),
+  variant:   PropTypes.oneOf(['panel', 'compact', 'preview']),
+  teasers:   PropTypes.shape({ modelAnswer: PropTypes.string, coaching: PropTypes.string }),
 };

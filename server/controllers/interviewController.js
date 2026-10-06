@@ -1,5 +1,16 @@
 const Session = require('../models/Session');
 const User = require('../models/User');
+const {
+  ALL_MODES, MODE_QUESTION_COUNT, TRIAL_ELIGIBLE_MODES, getPlanConfig, isPaid,
+} = require('../config/planConfig');
+const { getDayWindowIST, countTodaySessions } = require('../utils/planUsage');
+const {
+  getFeedbackTier, shapeFeedback, shapeSession, tryParse,
+} = require('../utils/feedbackTier');
+
+// Resolve a user's plan config with one tiny projected query.
+const loadPlanCfg = async (userId) =>
+  getPlanConfig(await User.findById(userId).select('plan planExpiry').lean());
 const { evaluateBadges } = require('../utils/badgeEngine');
 const {
   buildDimensionProfile,
@@ -124,11 +135,7 @@ const getSessionScore = session => {
   return 0;
 };
 
-const getQuestionCount = mode => {
-  if (mode === 'quick') return 5;
-  if (['mcq', 'aptitude'].includes(mode)) return 8;
-  return 10; // mixed + default
-};
+const getQuestionCount = mode => MODE_QUESTION_COUNT[mode] ?? 10;
 
 const calculateReadiness = ({ averageScore, bestScore, streak, totalInterviews }) => {
   if (!totalInterviews) return 0;
@@ -267,6 +274,52 @@ const startInterview = async (req, res) => {
       experienceLevel = '',
       difficulty = 'mixed',
     } = req.body || {};
+
+    if (!ALL_MODES.includes(mode)) {
+      return res.status(400).json({ error: 'invalid_mode', message: 'Unknown interview mode.' });
+    }
+
+    // ── Plan enforcement (server is authoritative; the client only mirrors it) ──
+    const planUser = await User.findById(userId).select('plan planExpiry proTrialsUsed').lean();
+    const planCfg  = getPlanConfig(planUser);
+
+    // 1) Daily limit
+    if (Number.isFinite(planCfg.dailyInterviewLimit)) {
+      const used = await countTodaySessions(userId);
+      if (used >= planCfg.dailyInterviewLimit) {
+        return res.status(403).json({
+          error:       'daily_limit_reached',
+          feature:     'dailyInterviewLimit',
+          currentPlan: planCfg._effectivePlan,
+          expired:     planCfg._expired,
+          used,
+          limit:       planCfg.dailyInterviewLimit,
+          resetsAt:    getDayWindowIST().end.toISOString(),
+          message:     `You've used all ${planCfg.dailyInterviewLimit} interviews for today.`,
+        });
+      }
+    }
+
+    // 2) Mode access — allowed on plan, or a one-time free trial of a Pro mode
+    let isTrialSession = false;
+    if (!planCfg.allowedModes.includes(mode)) {
+      const trialUsed = (planUser?.proTrialsUsed || []).includes(mode);
+      if (TRIAL_ELIGIBLE_MODES.includes(mode) && !trialUsed) {
+        isTrialSession = true;
+      } else {
+        return res.status(403).json({
+          error:       'plan_required',
+          feature:     `mode_${mode}`,
+          currentPlan: planCfg._effectivePlan,
+          expired:     planCfg._expired,
+          trialUsed,
+          message:     trialUsed
+            ? 'You have used your free trial of this mode. Upgrade to Pro to keep using it.'
+            : 'This mode requires a Pro subscription.',
+        });
+      }
+    }
+
     const count = getQuestionCount(mode);
     // Long interviews start with a small first batch; the rest is generated
     // in the background while the student answers (see services/interviewFlow).
@@ -314,6 +367,7 @@ const startInterview = async (req, res) => {
       topic: Array.isArray(topics) && topics.length ? topics.join(', ') : topic,
       role: effectiveRole,
       experienceLevel: effectiveExperience,
+      isTrial: isTrialSession,
       questions: questions.map(toStoredQuestion),
       expectedQuestionCount: splitPending ? count : questions.length,
       questionsPending: splitPending,
@@ -321,6 +375,11 @@ const startInterview = async (req, res) => {
       status: 'active',
       startedAt: new Date(),
     });
+
+    // Burn the trial only once the session really exists (a failed AI call shouldn't cost it).
+    if (isTrialSession) {
+      await User.updateOne({ _id: userId }, { $addToSet: { proTrialsUsed: mode } });
+    }
 
     const publicQuestions = session.questions.map(q => ({
       id: q.id,
@@ -335,6 +394,7 @@ const startInterview = async (req, res) => {
     res.status(201).json({
       sessionId: session._id,
       mode,
+      trial: isTrialSession,
       questions: publicQuestions,
       totalQuestions: session.expectedQuestionCount,
       questionsPending: splitPending,
@@ -355,6 +415,33 @@ const startInterview = async (req, res) => {
   } catch (error) {
     console.error('startInterview error:', error);
     return res.status(500).json({ message: 'Failed to start interview.', error: error.message });
+  }
+};
+
+// GET /interview/usage — everything the UI needs to render locks, meters and trials.
+const getUsage = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const planUser = await User.findById(userId).select('plan planExpiry proTrialsUsed').lean();
+    const cfg = getPlanConfig(planUser);
+    const limit = Number.isFinite(cfg.dailyInterviewLimit) ? cfg.dailyInterviewLimit : null;
+    const used = limit === null ? null : await countTodaySessions(userId);
+    const trialsUsed = planUser?.proTrialsUsed || [];
+
+    return res.json({
+      plan:      cfg._effectivePlan,
+      isPro:     isPaid(cfg),
+      expired:   cfg._expired,
+      daily:     { used, limit, remaining: limit === null ? null : Math.max(0, limit - used), resetsAt: getDayWindowIST().end.toISOString() },
+      allowedModes: cfg.allowedModes,
+      trialModes:   TRIAL_ELIGIBLE_MODES.filter(m => !cfg.allowedModes.includes(m) && !trialsUsed.includes(m)),
+      trialsUsed,
+      questionCounts: MODE_QUESTION_COUNT,
+      demoSwitch: process.env.DEMO_PLAN_SWITCH === 'true',
+    });
+  } catch (error) {
+    console.error('getUsage error:', error);
+    return res.status(500).json({ error: 'Failed to load usage.' });
   }
 };
 
@@ -523,11 +610,16 @@ const answerQuestion = async (req, res) => {
     const isObjective = ['mcq', 'aptitude'].includes(question.questionType);
     const wasSkippedOpenQuestion = skipped && !isObjective;
 
+    // Decide how much of the evaluation this user may see; locked parts are
+    // removed HERE, so they never reach the browser.
+    const feedbackTier = getFeedbackTier(await loadPlanCfg(userId), session);
+
     res.json({
       success:            true,
       questionId,
+      feedbackTier,
       score:              question.score,
-      feedback:           question.feedback,
+      feedback:           shapeFeedback(question, feedbackTier),
       skipped:            Boolean(question.skipped),
       correct:            isObjective ? question.score === 100 : null,
       correctAnswerIndex: isObjective ? question.correctAnswerIndex : null,
@@ -535,7 +627,9 @@ const answerQuestion = async (req, res) => {
       nextQuestion:       session.currentQuestion < session.questions.length - 1,
       // NEW: echo back voiceMetrics so the client can display them in FeedbackPanel
       // without having to store them in React state across a round-trip.
-      voiceMetrics:       question.voiceMetrics || null,
+      // Voice delivery data belongs to the Pro voice report. It is still SAVED
+      // (so it unlocks on upgrade); it just isn't sent back on the basic tier.
+      voiceMetrics:       feedbackTier === 'full' ? (question.voiceMetrics || null) : null,
       enrichPending:      willEnrich,
     });
 
@@ -638,10 +732,13 @@ const completeInterview = async (req, res) => {
     await session.save();
     const user = await User.findById(userId);
     if (user) await updateUserStats({ user, score: averageScore });
+    const feedbackTier = getFeedbackTier(getPlanConfig(user), session);
     return res.json({
       success: true,
       sessionId: session._id,
       mode: session.mode,
+      isTrial: session.isTrial === true,
+      feedbackTier,
       score: averageScore,
       totalScore,
       questionCount: session.questions.length,
@@ -660,7 +757,7 @@ const completeInterview = async (req, res) => {
         userAnswerIndex: q.userAnswerIndex,
         correctAnswerIndex: q.questionType === 'open' ? null : q.correctAnswerIndex,
         score: q.score,
-        feedback: q.feedback,
+        feedback: shapeFeedback(q, feedbackTier),
         skipped: q.skipped,
         timeTaken: q.timeTaken,
       })),
@@ -679,7 +776,7 @@ const getQuestionFeedback = async (req, res) => {
     const userId = getUserId(req);
     const { sessionId, questionId } = req.params;
     const session = await Session.findOne({ _id: sessionId, user: userId })
-      .select('questions.id questions.score questions.feedback')
+      .select('isTrial questions.id questions.score questions.feedback questions.questionType questions.skipped questions.voiceMetrics')
       .lean();
     if (!session) return res.status(404).json({ message: 'Interview session not found.' });
     const question = (session.questions || []).find(q => q.id === questionId);
@@ -689,11 +786,16 @@ const getQuestionFeedback = async (req, res) => {
     try { parsed = JSON.parse(question.feedback || '{}'); } catch { parsed = {}; }
     const { pending, feedback } = resolveEnrichState(parsed);
 
+    // Same plan tiering as every other route: the background analysis (model answer,
+    // keywords, STAR, follow-ups) is Pro depth, so free users never receive it.
+    const tier = getFeedbackTier(await loadPlanCfg(userId), session);
+
     return res.json({
       questionId,
       score: question.score,
       enrichPending: pending,
-      feedback: JSON.stringify(feedback),
+      feedbackTier: tier,
+      feedback: shapeFeedback({ ...question, feedback: JSON.stringify(feedback) }, tier),
     });
   } catch (error) {
     console.error('getQuestionFeedback error:', error);
@@ -715,6 +817,22 @@ const retryQuestion = async (req, res) => {
     if (!question.userAnswer) {
       return res.status(400).json({ message: 'This question has no submitted answer to re-evaluate.' });
     }
+
+    // Re-evaluation is a Pro feature — EXCEPT when our own evaluator failed
+    // (AI unavailable / fallback answer). Paying to fix our outage would be wrong.
+    const planCfg = await loadPlanCfg(userId);
+    const prev = tryParse(question.feedback);
+    const evaluationFailed = prev?.aiAvailable === false || prev?.fallback === true;
+    if (!planCfg.retryQuestion && !evaluationFailed) {
+      return res.status(403).json({
+        error:       'plan_required',
+        feature:     'retryQuestion',
+        currentPlan: planCfg._effectivePlan,
+        expired:     planCfg._expired,
+        message:     'Re-evaluating an answer requires a Pro subscription.',
+      });
+    }
+
     const result = await evaluateOpenAnswer({
       question,
       answer: question.userAnswer,
@@ -740,7 +858,11 @@ const retryQuestion = async (req, res) => {
       hesitationPattern:  result.hesitationPattern  || null,
     });
     await session.save();
-    return res.json({ success: true, questionId, score: question.score, feedback: question.feedback });
+    const retryTier = getFeedbackTier(planCfg, session);
+    return res.json({
+      success: true, questionId, feedbackTier: retryTier,
+      score: question.score, feedback: shapeFeedback(question, retryTier),
+    });
   } catch (error) {
     console.error('retryQuestion error:', error);
     return res.status(500).json({ message: 'Failed to retry question.', error: error.message });
@@ -757,7 +879,25 @@ const getInterviewHistory = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();
-    const sessions = rawSessions.map(session => {
+    const planCfg = await loadPlanCfg(userId);
+
+    // Free plan: only the last N days are listed. Older sessions stay saved and are
+    // COUNTED so the UI can say "12 older sessions are waiting" and mean it.
+    const windowDays = planCfg.analyticsHistoryDays;
+    let visibleSessions = rawSessions;
+    let olderCount = 0;
+    if (Number.isFinite(windowDays)) {
+      const cutoff = new Date(Date.now() - windowDays * 86400000);
+      visibleSessions = rawSessions.filter(s => new Date(s.createdAt) >= cutoff);
+      olderCount = await Session.countDocuments({
+        $or: [{ user: userId }, { userId }],
+        status: 'completed',
+        createdAt: { $lt: cutoff },
+      });
+    }
+
+    const sessions = visibleSessions.map(rawSession => {
+      const session = shapeSession(rawSession, getFeedbackTier(planCfg, rawSession));
       const score = getSessionScore(session);
       return {
         ...session,
@@ -766,7 +906,12 @@ const getInterviewHistory = async (req, res) => {
         questionCount: Array.isArray(session.questions) ? session.questions.length : 0,
       };
     });
-    return res.json({ success: true, sessions });
+    return res.json({
+      success: true,
+      sessions,
+      olderCount,
+      historyWindowDays: Number.isFinite(windowDays) ? windowDays : null,
+    });
   } catch (error) {
     console.error('getInterviewHistory error:', error);
     return res.status(500).json({ message: 'Failed to load interview history.', error: error.message });
@@ -779,7 +924,8 @@ const getInterviewResult = async (req, res) => {
     const { sessionId } = req.params;
     const session = await Session.findOne({ _id: sessionId, user: userId });
     if (!session) return res.status(404).json({ message: 'Interview result not found.' });
-    return res.json({ session });
+    const tier = getFeedbackTier(await loadPlanCfg(userId), session);
+    return res.json({ session: shapeSession(session.toObject(), tier) });
   } catch (error) {
     console.error('getInterviewResult error:', error);
     return res.status(500).json({ message: 'Failed to load result.', error: error.message });
@@ -1342,6 +1488,7 @@ const getSessionWarmup = async (req, res) => {
 
 module.exports = {
   startInterview,
+  getUsage,
   getInterviewMeta,
   getInterviewSession,
   answerQuestion,

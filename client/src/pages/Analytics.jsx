@@ -12,6 +12,8 @@ import {
   ReferenceLine,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
+import usePlan from "../hooks/usePlan";
+import AnalyticsFree from "../components/analytics/AnalyticsFree";
 import WarRoomSection from "../components/WarRoom";
 import BookLoader from "../components/BookLoader";
 import {
@@ -692,7 +694,7 @@ AnimatedSection.propTypes = {
 };
 
 // — Analytics (main page component)
-const Analytics = () => {
+const AnalyticsPro = () => {
   const navigate = useNavigate();
   const [data, setData]                   = useState(null);
   const [loading, setLoading]             = useState(true);
@@ -1520,6 +1522,13 @@ const S = {
   emptyCard:  { maxWidth: 620, margin: "80px auto", padding: "56px 28px", textAlign: "center", background: C.card, border: `1px solid ${C.border}`, borderRadius: 24, boxShadow: "0 8px 40px rgba(26,110,255,0.09)" },
   emptyTitle: { margin: "10px 0 0", fontFamily: F.display, fontSize: 22, fontWeight: 800, color: C.text },
   emptyText:  { maxWidth: 480, margin: "10px auto 22px", color: C.sub, lineHeight: 1.7, fontSize: 13.5 },
+};
+
+// Free users get a purpose-built view (last 7 days + locked Pro depth). Pro users get the
+// full page above, unchanged. ProtectedRoute waits for the user, so the plan is known here.
+const Analytics = () => {
+  const { isPro } = usePlan();
+  return isPro ? <AnalyticsPro /> : <AnalyticsFree />;
 };
 
 export default Analytics;

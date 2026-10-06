@@ -1023,7 +1023,7 @@ const Navbar = () => {
                   >
                     <span className="mm-link-emoji">{link.emoji}</span>
                     {link.label}
-                    {link.badge && <span className="mm-link-badge">{link.badge}</span>}
+                    {link.badge && <span className="mm-link-badge">{link.badge === 'AI' && !isProUser ? 'PRO' : link.badge}</span>}
                   </Link>
                 ))}
               </div>
@@ -1365,7 +1365,7 @@ const Navbar = () => {
                   <span className="mm-mob-tile-emoji">{link.emoji}</span>
                   <span className="mm-mob-tile-label">{link.label}</span>
                   {link.badge && (
-                    <span className="mm-mob-tile-badge">{link.badge}</span>
+                    <span className="mm-mob-tile-badge">{link.badge === 'AI' && !isProUser ? 'PRO' : link.badge}</span>
                   )}
                 </Link>
               ))}

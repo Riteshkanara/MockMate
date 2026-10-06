@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { C, F } from "../styles/token";
+import ProBadge from "../components/pro/ProBadge";
 
 const clamp = (v, min = 0, max = 100) =>
   Math.max(min, Math.min(max, Number.isFinite(Number(v)) ? Number(v) : 0));
@@ -121,7 +122,7 @@ const BtnGhost  = ({ children, onClick }) => { const [h, setH] = useState(false)
 BtnGhost.propTypes = { children: PropTypes.node.isRequired, onClick: PropTypes.func };
 
 // ═══ EXPORT ══════════════════════════════════════════════════════════════════
-export const ResultHeroV2 = ({ result, navigate, onCopy, copied, onDownloadImage, downloading }) => {
+export const ResultHeroV2 = ({ result, navigate, onCopy, copied, onDownloadImage, downloading, downloadLocked = false }) => {
   const { score = 0, totalQuestions = 0, answeredQuestions = 0, skippedQuestions = 0,
           strongAnswers = 0, weakAnswers = 0, averageTime = 0, trendDelta = null } = result;
 
@@ -185,7 +186,13 @@ export const ResultHeroV2 = ({ result, navigate, onCopy, copied, onDownloadImage
             <BtnWhite onClick={() => navigate("/interview")}>⚡ Start another interview</BtnWhite>
             <BtnGhost onClick={() => navigate("/dashboard")}>📊 Dashboard</BtnGhost>
             <BtnGhost onClick={onCopy}>{copied ? "✓ Copied!" : "📋 Copy summary"}</BtnGhost>
-            <BtnGhost onClick={onDownloadImage} disabled={downloading}>{downloading ? "⏳ Preparing…" : "⬇ Download image"}</BtnGhost>
+            <BtnGhost onClick={onDownloadImage} disabled={downloading}>
+              {downloading ? "⏳ Preparing…" : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  ⬇ Download image{downloadLocked && <ProBadge variant="pro" />}
+                </span>
+              )}
+            </BtnGhost>
           </div>
         </div>
       </div>
@@ -223,4 +230,5 @@ ResultHeroV2.propTypes = {
   copied:          PropTypes.bool.isRequired,
   onDownloadImage: PropTypes.func.isRequired,
   downloading:     PropTypes.bool.isRequired,
+  downloadLocked:  PropTypes.bool,
 };

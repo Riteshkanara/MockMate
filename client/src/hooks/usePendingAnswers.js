@@ -146,6 +146,8 @@ export const usePendingAnswers = (sessionId, questions) => {
               aiAvailable:  parsed.aiAvailable !== false,
               fallback:     parsed.fallback === true,
               skippedPending: false,
+              tier:         parsed.tier || "full",
+              locked:       parsed.locked || null,
             },
           });
         });

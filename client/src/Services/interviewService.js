@@ -219,3 +219,8 @@ export const fixBadges = async () => {
     throw error;
   }
 };
+
+export const getUsage = async () => {
+  const response = await API.get('/usage');
+  return response.data;
+};

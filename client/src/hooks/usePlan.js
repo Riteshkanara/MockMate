@@ -5,20 +5,43 @@
  * Usage:
  *   const { isPro, canUseMode, canUseFeature } = usePlan();
  *
- * Mirrors server/config/planConfig.js exactly — keep both in sync when
- * limits change. This client copy exists purely so buttons/gates can
- * render correctly without a round-trip; the SERVER config is what's
- * actually authoritative and enforced (see planMiddleware.js). Never trust
- * this file alone to gate anything security-sensitive.
+ * Mirrors server/config/planConfig.js — keep both in sync when limits change.
+ * This client copy exists purely so buttons/gates can render without a
+ * round-trip; the SERVER config is what's actually enforced (planMiddleware.js
+ * and startInterview). Never trust this file alone to gate anything real.
  */
 
 import { useMemo } from 'react';
 import useAuth from './useAuth';
 
+const ALL_MODES = ['quick', 'full', 'company', 'topic', 'mcq', 'aptitude', 'mixed'];
+
+const PRO = {
+  dailyInterviewLimit:    Infinity,
+  maxQuestionsPerSession: 10,
+  allowedModes:           ALL_MODES,
+  voiceDictation:         true,
+  voiceEvaluation:        true,
+  feedbackDepth:          'full',
+  aiCoach:                true,
+  detailedFeedback:       true,
+  retryQuestion:          true,
+  analyticsHistoryDays:   Infinity,
+  fullAnalytics:          true,
+  blindSpots:             true,
+  sessionWarmup:          true,
+  scorecardDownload:      true,
+  badges:                 true,
+};
+
 const PLAN_CONFIG = {
   free: {
     dailyInterviewLimit:    3,
+    maxQuestionsPerSession: 5,
     allowedModes:           ['quick'],
+    voiceDictation:         true,
+    voiceEvaluation:        false,
+    feedbackDepth:          'basic',
     aiCoach:                false,
     detailedFeedback:       false,
     retryQuestion:          false,
@@ -27,34 +50,10 @@ const PLAN_CONFIG = {
     blindSpots:             false,
     sessionWarmup:          false,
     scorecardDownload:      false,
-    badges:                 false,
-  },
-  pro: {
-    dailyInterviewLimit:    Infinity,
-    allowedModes:           ['quick', 'mixed', 'mcq', 'aptitude', 'behavioral'],
-    aiCoach:                true,
-    detailedFeedback:       true,
-    retryQuestion:          true,
-    analyticsHistoryDays:   Infinity,
-    fullAnalytics:          true,
-    blindSpots:             true,
-    sessionWarmup:          true,
-    scorecardDownload:      true,
     badges:                 true,
   },
-  college: {
-    dailyInterviewLimit:    Infinity,
-    allowedModes:           ['quick', 'mixed', 'mcq', 'aptitude', 'behavioral'],
-    aiCoach:                true,
-    detailedFeedback:       true,
-    retryQuestion:          true,
-    analyticsHistoryDays:   Infinity,
-    fullAnalytics:          true,
-    blindSpots:             true,
-    sessionWarmup:          true,
-    scorecardDownload:      true,
-    badges:                 true,
-  },
+  pro:     { ...PRO },
+  college: { ...PRO },
 };
 
 const usePlan = () => {
@@ -80,9 +79,10 @@ const usePlan = () => {
   const isExpired  = planConfig._expired;
   const planLabel  = isPro ? (planConfig._effectivePlan === 'college' ? 'College' : 'Pro') : 'Free';
 
+  // true for boolean flags, Infinity limits and the 'full' feedback tier
   const canUseFeature = (feature) => {
     const val = planConfig[feature];
-    return val === true || val === Infinity;
+    return val === true || val === Infinity || val === 'full';
   };
 
   const canUseMode = (mode) =>

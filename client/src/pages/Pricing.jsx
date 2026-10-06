@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useAuth from '../hooks/useAuth';
 import usePlan from '../hooks/usePlan';
@@ -7,6 +7,7 @@ import Button from '../components/Button';
 import { openRazorpayCheckout } from '../Services/paymentService';
 import { getDashboardAnalytics } from '../Services/interviewService';
 import { C, F } from '../styles/token';
+import { FEATURE_LABELS, PRO_WELCOME_KEY } from '../utils/planHelpers';
 
 // ── Tier ladder ──────────────────────────────────────────────────────────
 const TIERS = [
@@ -38,7 +39,7 @@ const BILLING_OPTIONS = [
 
 const PRO_FEATURES = [
   { e: '♾️', t: 'No limit on daily interviews' },
-  { e: '🎯', t: 'All 5 modes: Quick, Mixed, MCQ, Aptitude, Behavioral' },
+  { e: '🎯', t: 'All 7 modes: Quick, Full, Company, Topic, MCQ, Aptitude, Mixed' },
   { e: '📝', t: 'Detailed feedback with ideal answers' },
   { e: '🧠', t: 'AI Coach: guidance built from your sessions' },
   { e: '📊', t: 'Full analytics, IRS score and tier chart' },
@@ -46,7 +47,7 @@ const PRO_FEATURES = [
   { e: '🔥', t: 'Session warmup pattern analysis' },
   { e: '🔁', t: 'Re-evaluate any answer with a fresh AI pass' },
   { e: '🖼️', t: 'Download your scorecard as a PNG' },
-  { e: '🏅', t: 'Full badge and streak system' },
+  { e: '📚', t: 'Your full interview history, not just 7 days' },
 ];
 
 // ── Gauge comparison rows ────────────────────────────────────────────────
@@ -57,14 +58,14 @@ const GAUGE_GROUPS = [
     label: 'Practice volume',
     rows: [
       { e: '🎤', name: 'Daily interviews',       freePct: 30, freeLabel: '3/day',       proLabel: 'Unlimited' },
-      { e: '🧩', name: 'Interview modes',        freePct: 20, freeLabel: '1 mode',       proLabel: '5 modes' },
+      { e: '🧩', name: 'Interview modes',        freePct: 20, freeLabel: '1 mode + 1 trial each', proLabel: 'All 7 modes' },
       { e: '❓', name: 'Questions per session',  freePct: 50, freeLabel: '5 questions',  proLabel: '10 questions' },
     ],
   },
   {
     label: 'Feedback depth',
     rows: [
-      { e: '📝', name: 'AI feedback detail',     freePct: 25, freeLabel: 'Pass/fail',    proLabel: 'Line-by-line + ideal answer' },
+      { e: '📝', name: 'AI feedback detail',     freePct: 30, freeLabel: 'Score + what was missing', proLabel: 'Ideal answer, coaching, deep analysis' },
       { e: '🔁', name: 'Answer re-evaluation',   freePct: 0,  freeLabel: 'Not available', proLabel: 'Unlimited re-runs' },
       { e: '📈', name: 'Analytics history',      freePct: 18, freeLabel: '7 days',       proLabel: 'Full history' },
     ],
@@ -81,7 +82,7 @@ const GAUGE_GROUPS = [
 ];
 
 const HOW_IT_WORKS = [
-  { e: '🎤', title: 'Practice',   desc: 'Run interviews in any of 5 modes. Pro removes the daily cap so you can drill as much as you need.' },
+  { e: '🎤', title: 'Practice',   desc: 'Run interviews in any of 7 modes. Pro removes the daily cap so you can drill as much as you need.' },
   { e: '🎯', title: 'Get scored', desc: 'Every answer feeds your IRS: a weighted readiness score mapped to real salary tiers.' },
   { e: '🔍', title: 'Find gaps',  desc: 'Blind spot detection and warmup analysis show which topics keep costing you points.' },
   { e: '🚀', title: 'Climb',      desc: 'The AI Coach turns your data into a plan. Re-evaluate answers until the tier moves.' },
@@ -90,7 +91,7 @@ const HOW_IT_WORKS = [
 const TESTIMONIALS = [
   { initial: 'A', name: 'Ananya S.', tag: 'Mixed mode · 22 sessions',
     quote: 'Blind spot detection kept flagging the same DBMS gap. Fixed it, and my IRS moved up a full tier in about two weeks.' },
-  { initial: 'R', name: 'Rohit K.', tag: 'Behavioral mode',
+  { initial: 'R', name: 'Rohit K.', tag: 'Full Mock',
     quote: 'The re-evaluate button is what sold me. I could see the exact difference between my answer and the ideal one, not just a score.' },
   { initial: 'P', name: 'Priya M.', tag: 'Aptitude + MCQ',
     quote: 'Free mode was fine for warmup, but the daily cap kept cutting me off mid-streak. Pro just removed the friction.' },
@@ -108,7 +109,7 @@ const FAQ = [
 // ── Mocked session data for the right-panel live demo ───────────────────
 const MOCK_SESSIONS = [
   { mode: 'Mixed', score: 78, delta: '+6', tier: '🚀', label: '₹6–12L',  ago: '2h ago' },
-  { mode: 'Behavioral', score: 71, delta: '+3', tier: '🚀', label: '₹6–12L', ago: '1d ago' },
+  { mode: 'Full Mock', score: 71, delta: '+3', tier: '🚀', label: '₹6–12L', ago: '1d ago' },
   { mode: 'Quick', score: 64, delta: '+2', tier: '🌱', label: '₹3–6L',   ago: '2d ago' },
 ];
 const MOCK_IRS = 78;
@@ -716,6 +717,7 @@ export default function Pricing() {
   const { user, refreshUser } = useAuth();
   const { isPro, isExpired } = usePlan();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [billing, setBilling] = useState('pro_yearly');
   const [loading, setLoading] = useState(false);
@@ -772,6 +774,8 @@ export default function Pricing() {
         planKey: billing, user,
         onSuccess: async () => {
           toast.success('Welcome to MockMate Pro.');
+          // Payment is verified at this point: arm the one-time "You're on Pro" moment.
+          try { sessionStorage.setItem(PRO_WELCOME_KEY, String(Date.now())); } catch { /* optional nicety */ }
           try { await refreshUser(); } catch (e) {
             console.warn('refreshUser failed silently:', e);
           }
@@ -820,6 +824,17 @@ export default function Pricing() {
               {/* rotated stamp */}
               <span className="pg-lock-stamp" aria-hidden="true">LOCKED IN</span>
             </div>
+          </div>
+        )}
+
+        {/* Arrived from a lock? Say what they came to unlock, so the page feels like the answer. */}
+        {!alreadyPro && FEATURE_LABELS[location.state?.from] && (
+          <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 14px', padding: '11px 16px', borderRadius: 14, background: C.brand50, border: `1px solid ${C.brand100}`, fontSize: 13.5, color: C.textSub }}>
+            <span aria-hidden="true">🔓</span>
+            <span>
+              {location.state.from === 'expired' ? 'Renewing Pro' : <>You&apos;re unlocking <b style={{ color: C.text }}>{FEATURE_LABELS[location.state.from]}</b></>}
+              {location.state.from === 'expired' ? ' brings back everything below. Your data was never deleted.' : '. It is included in every plan below.'}
+            </span>
           </div>
         )}
 
@@ -1019,7 +1034,7 @@ export default function Pricing() {
         {/* testimonials */}
         <div className="pg-sec">
           <div className="pg-sec-head">
-            <div className="pg-sec-eyebrow">from pro users</div>
+            <div className="pg-sec-eyebrow">illustrative examples</div>
             <h2 className="pg-sec-title">What actually changes after upgrading</h2>
           </div>
           <div className="pg-tsx">

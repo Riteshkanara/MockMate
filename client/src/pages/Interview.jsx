@@ -11,6 +11,11 @@ import QuestionDisplay   from '../components/interview/QuestionDisplay';
 import InterviewControls from '../components/interview/InterviewControls';
 import { FeedbackPanel } from '../components/interview/FeedbackPanel';
 import { getInterviewMeta } from '../Services/interviewService';
+import useUsage from '../hooks/useUsage';
+import useUpgrade from '../hooks/useUpgrade';
+import ProBadge from '../components/pro/ProBadge';
+import UsageMeter from '../components/pro/UsageMeter';
+import DailyLimitCard from '../components/pro/DailyLimitCard';
 
 
 const C = {
@@ -132,7 +137,8 @@ const FALLBACK_EXPERIENCE_LEVELS = [
 
 const TIME_LIMITS = { mcq: 45, aptitude: 60, open: 90 };
 
-const MODE_QUESTION_COUNT  = { full: 10, mixed: 8 };
+// Fallback only — the live values come from GET /interview/usage (server-authoritative).
+const MODE_QUESTION_COUNT  = { quick: 5, mcq: 8, aptitude: 8, mixed: 10, full: 10, company: 10, topic: 10 };
 const getQuestionCount     = (mode) => MODE_QUESTION_COUNT[mode] ?? 5;
 
 const FALLBACK_TIME_LIMIT  = 120;
@@ -261,6 +267,20 @@ const Interview = () => {
     handleStart, hydrateSession, handleSubmit, handleStopSubmit, handleSkip,
     handleTimeUp, handleNext, selectAnswer, handleAbandon,
   } = useInterview({ notify });
+
+  // ── Plan awareness ────────────────────────────────────────────────────
+  // usage === null until the server answers; we don't show locks before we know
+  // (the server enforces the real rules either way).
+  const { usage, refresh: refreshUsage } = useUsage();
+  const { openUpgrade } = useUpgrade();
+
+  // 'open' | 'trial' | 'locked'
+  const getModeAccess = (value) => {
+    if (!usage) return 'open';
+    if (usage.allowedModes.includes(value)) return 'open';
+    if (usage.trialModes.includes(value)) return 'trial';
+    return 'locked';
+  };
 
   const [showExitConfirm,    setShowExitConfirm]    = useState(false);
   const [selectedDifficulty, setSelectedDifficulty] = useState(
@@ -742,13 +762,53 @@ const Interview = () => {
     return () => modal.removeEventListener('keydown', trap);
   }, [showExitConfirm]);
 
-  const estimatedMinutes = useMemo(() => {
-    const perQ  = TIME_LIMITS[selectedMode] ?? TIME_LIMITS.open;
-    const count = getQuestionCount(selectedMode);
-    return Math.round((perQ * count) / 60);
-  }, [selectedMode]);
+  // A free user must never land on a Pro mode by default (e.g. the role-based default
+  // 'topic') and burn their one-time trial on the first click of "Start".
+  // Modes chosen deliberately (via navigation state) that turn out locked also fall back.
+  const usageReady = !!usage;
+  useEffect(() => {
+    if (!usageReady) return;
+    const explicit = location.state?.mode === selectedMode;
+    const access = usage.allowedModes.includes(selectedMode) ? 'open'
+      : usage.trialModes.includes(selectedMode) ? 'trial' : 'locked';
+    if (access === 'locked' || (access === 'trial' && !explicit)) setSelectedMode('quick');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usageReady]);
 
-  const questionCount = getQuestionCount(selectedMode);
+  const serverCounts = usage?.questionCounts;
+  const questionCount = serverCounts?.[selectedMode] ?? getQuestionCount(selectedMode);
+
+  const estimatedMinutes = useMemo(() => {
+    const perQ = TIME_LIMITS[selectedMode] ?? TIME_LIMITS.open;
+    return Math.round((perQ * questionCount) / 60);
+  }, [selectedMode, questionCount]);
+
+  const selectedAccess = getModeAccess(selectedMode);
+  const daily          = usage?.daily;
+  const limitReached   = !!daily && daily.limit !== null && daily.remaining === 0;
+
+  // Start handler: server is the judge. If it says "upgrade", open the modal;
+  // any other failure was already surfaced by useInterview.
+  const launchInterview = async () => {
+    if (limitReached) { openUpgrade('dailyInterviewLimit', { resetsAt: daily?.resetsAt }); return; }
+    try {
+      await handleStart(selectedMode, effectiveCompany, selectedTopics[0] || '', selectedDifficulty, {
+        topics: selectedTopics,
+        role: selectedRole,
+        experienceLevel: selectedExperience,
+      });
+      refreshUsage();
+    } catch (err) {
+      const d = err?.response?.data;
+      if (err?.response?.status === 403 && d?.error === 'daily_limit_reached') {
+        refreshUsage();
+        openUpgrade('dailyInterviewLimit', { resetsAt: d.resetsAt });
+      } else if (err?.response?.status === 403 && d?.error === 'plan_required') {
+        refreshUsage();
+        openUpgrade(d.feature, { trialUsed: d.trialUsed });
+      }
+    }
+  };
 
   // The effective company name for launch/preview — either a quick-pick
   // chip or the free-typed value, whichever mode is active.
@@ -834,6 +894,11 @@ const Interview = () => {
                   <span style={S.previewMetaChip}>{(roleOptions.find((r) => r.value === selectedRole) || {}).label || selectedRole}</span>
                   <span style={S.previewMetaChip}>{(experienceOptions.find((x) => x.value === selectedExperience) || {}).label || selectedExperience}</span>
                 </div>
+                {daily && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.14)' }}>
+                    <UsageMeter daily={daily} tone="dark" />
+                  </div>
+                )}
               </div>
 
               <div style={S.verdictBlock}>
@@ -862,23 +927,40 @@ const Interview = () => {
               <div style={S.modeGrid} className="iv-mode-grid">
                 {Object.entries(MODE_META).map(([value, meta]) => {
                   const selected = selectedMode === value;
+                  const access   = getModeAccess(value);   // 'open' | 'trial' | 'locked'
+                  const locked   = access === 'locked';
                   return (
                     <button
                       key={value}
                       type="button"
                       style={{ ...S.modeCard, ...(selected ? { ...S.modeCardActive, borderStyle: 'solid', borderWidth: 1.5, borderColor: meta.accent } : {}) }}
                       className="iv-mode-card"
-                      onClick={() => setSelectedMode(value)}
+                      onClick={() => {
+                        // Locked modes never get selected: the click explains the mode and offers Pro.
+                        if (locked) { openUpgrade(`mode_${value}`, { trialUsed: true }); return; }
+                        setSelectedMode(value);
+                      }}
                       aria-pressed={selected}
+                      aria-label={locked ? `${meta.label} (Pro). Opens upgrade options.` : undefined}
                     >
-                      <div style={{ ...S.modeIcon, color: meta.accent, background: meta.soft }}>{meta.icon}</div>
+                      <div style={{ ...S.modeIcon, color: meta.accent, background: meta.soft, opacity: locked ? 0.75 : 1 }}>{meta.icon}</div>
                       <div style={S.modeCopy}>
-                        <strong style={S.modeLabel} className="iv-mode-label">{meta.label}</strong>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                          <strong style={S.modeLabel} className="iv-mode-label">{meta.label}</strong>
+                          {access === 'trial'  && <ProBadge variant="trial" label="Try once free" />}
+                          {access === 'locked' && <ProBadge variant="pro" />}
+                        </span>
                         <span style={S.modeDesc} className="iv-mode-desc">{meta.description}</span>
                       </div>
-                      <div style={{ ...S.modeCheck, background: selected ? meta.accent : '#fff', borderStyle: 'solid', borderWidth: 1.5, borderColor: selected ? meta.accent : C.borderMd, transform: selected ? 'scale(1)' : 'scale(0.82)' }}>
-                        {selected ? '✓' : ''}
-                      </div>
+                      {locked ? (
+                        <div style={{ ...S.modeCheck, background: C.surfaceAlt, borderColor: C.border, transform: 'scale(1)', color: C.textMuted }} aria-hidden="true">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="9" rx="2.5" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+                        </div>
+                      ) : (
+                        <div style={{ ...S.modeCheck, background: selected ? meta.accent : '#fff', borderStyle: 'solid', borderWidth: 1.5, borderColor: selected ? meta.accent : C.borderMd, transform: selected ? 'scale(1)' : 'scale(0.82)' }}>
+                          {selected ? '✓' : ''}
+                        </div>
+                      )}
                     </button>
                   );
                 })}
@@ -1046,6 +1128,10 @@ const Interview = () => {
 
             <div style={S.divider} />
 
+            {limitReached && (
+              <DailyLimitCard daily={daily} onUpgrade={() => openUpgrade('dailyInterviewLimit', { resetsAt: daily?.resetsAt })} />
+            )}
+
             <div style={S.launchArea} className="iv-launch-area">
               <div style={S.sessionSummary}>
                 <div style={{ ...S.summaryIcon, color: mode.accent, background: mode.soft }}>{mode.icon}</div>
@@ -1053,7 +1139,9 @@ const Interview = () => {
                   <strong style={S.summaryTitle}>{mode.label}</strong>
                   <span style={S.summarySub}>
                     {difficultyLabel}{' · '}
-                    {user?.name ? `${user.name.split(' ')[0]}'s session` : 'Personalized session'}
+                    {selectedAccess === 'trial'
+                      ? 'One-time free trial of a Pro mode'
+                      : (user?.name ? `${user.name.split(' ')[0]}'s session` : 'Personalized session')}
                   </span>
                 </div>
               </div>
@@ -1062,13 +1150,13 @@ const Interview = () => {
                 style={{ ...S.btnLaunch, ...(canLaunch ? {} : S.btnDisabled) }}
                 className="iv-btn-launch"
                 disabled={!canLaunch}
-                onClick={() => handleStart(selectedMode, effectiveCompany, selectedTopics[0] || '', selectedDifficulty, {
-                  topics: selectedTopics,
-                  role: selectedRole,
-                  experienceLevel: selectedExperience,
-                })}
+                onClick={launchInterview}
               >
-                {isLoading ? <><span style={S.spinner} />Generating questions…</> : <><span>Start interview</span><i className="ti ti-arrow-right" style={{ fontSize: 15, marginLeft: 6 }} /></>}
+                {isLoading
+                  ? <><span style={S.spinner} />Generating questions…</>
+                  : limitReached
+                    ? <><span>Go unlimited with Pro</span><i className="ti ti-arrow-right" style={{ fontSize: 15, marginLeft: 6 }} /></>
+                    : <><span>{selectedAccess === 'trial' ? 'Start free trial' : 'Start interview'}</span><i className="ti ti-arrow-right" style={{ fontSize: 15, marginLeft: 6 }} /></>}
               </button>
             </div>
 

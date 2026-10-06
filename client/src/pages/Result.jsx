@@ -7,7 +7,7 @@ import { ResultHeroV2 }  from "./ResultHeroV2";
 import ScoreCard          from "../components/ScoreCard";
 import ScoreSummary       from "../components/result/ScoreSummary";
 import FeedbackList       from "../components/result/FeedbackList";
-import ResultActions      from "../components/result/ResultActions";
+import { ResultNav, BackToTop, Icon, RESULT_NAV_CSS } from "../components/result/ResultNav";
 import { C, F }           from "../styles/token";
 import { revealStyle, useGradeColorMoment } from "../utils/resultHelpers";
 import usePlan from "../hooks/usePlan";
@@ -83,7 +83,7 @@ const Card = ({ children, style = {} }) => (
 Card.propTypes = { children: PropTypes.node.isRequired, style: PropTypes.object };
 
 const Eyebrow = ({ children }) => (
-  <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: ".8px", color: C.blue500, textTransform: "lowercase", marginBottom: 5 }}>{children}</div>
+  <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".8px", color: C.blue500, textTransform: "lowercase", marginBottom: 5 }}>{children}</div>
 );
 Eyebrow.propTypes = { children: PropTypes.node.isRequired };
 
@@ -93,7 +93,7 @@ const CardH2 = ({ children }) => (
 CardH2.propTypes = { children: PropTypes.node.isRequired };
 
 // ─── animated section (intersection-triggered) ────────────────────────────────
-const AnimSec = ({ children, delay = 0, style = {} }) => {
+const AnimSec = ({ children, delay = 0, style = {}, id }) => {
   const [vis, setVis] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -104,12 +104,12 @@ const AnimSec = ({ children, delay = 0, style = {} }) => {
     return () => { clearTimeout(t); obs.disconnect(); };
   }, [delay]);
   return (
-    <div ref={ref} style={{ opacity: vis ? 1 : 0, transform: vis ? "translateY(0)" : "translateY(18px)", transition: `opacity .5s cubic-bezier(.16,1,.3,1) ${delay}ms, transform .5s cubic-bezier(.16,1,.3,1) ${delay}ms`, ...style }}>
+    <div ref={ref} id={id} style={{ scrollMarginTop: "calc(var(--res-sticky-top, 84px) + 62px)", opacity: vis ? 1 : 0, transform: vis ? "translateY(0)" : "translateY(18px)", transition: `opacity .5s cubic-bezier(.16,1,.3,1) ${delay}ms, transform .5s cubic-bezier(.16,1,.3,1) ${delay}ms`, ...style }}>
       {children}
     </div>
   );
 };
-AnimSec.propTypes = { children: PropTypes.node.isRequired, delay: PropTypes.number, style: PropTypes.object };
+AnimSec.propTypes = { children: PropTypes.node.isRequired, delay: PropTypes.number, style: PropTypes.object, id: PropTypes.string };
 
 // ─── error boundary ───────────────────────────────────────────────────────────
 class ErrBound extends Component {
@@ -170,7 +170,7 @@ const MiniSparkline = ({ points, color }) => {
 MiniSparkline.propTypes = { points: PropTypes.array.isRequired, color: PropTypes.string.isRequired };
 
 const RailBadge = ({ children, color, bg, border }) => (
-  <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 999, fontFamily: F.mono, fontSize: 9, fontWeight: 800, color, background: bg, border: `1px solid ${border}`, marginTop: 5 }}>{children}</span>
+  <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 999, fontFamily: F.mono, fontSize: 10, fontWeight: 800, color, background: bg, border: `1px solid ${border}`, marginTop: 5 }}>{children}</span>
 );
 RailBadge.propTypes = { children: PropTypes.node.isRequired, color: PropTypes.string.isRequired, bg: PropTypes.string.isRequired, border: PropTypes.string.isRequired };
 
@@ -190,7 +190,7 @@ const StatRail = ({ result, scoreHistory }) => {
   const cells = [
     // 1. answered
     <div key="ans">
-      <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>answered</div>
+      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>answered</div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <MiniRing value={answeredQuestions} max={totalQuestions || 1} color={C.blue500} />
         <div>
@@ -202,7 +202,7 @@ const StatRail = ({ result, scoreHistory }) => {
     </div>,
     // 2. performance
     <div key="perf">
-      <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>performance</div>
+      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>performance</div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <MiniRing value={strongAnswers} max={answeredQuestions || 1} color={C.green} />
         <div>
@@ -214,7 +214,7 @@ const StatRail = ({ result, scoreHistory }) => {
     </div>,
     // 3. pace
     <div key="pace">
-      <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>avg pace</div>
+      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>avg pace</div>
       <div style={{ fontFamily: F.display, fontSize: 22, fontWeight: 900, color: paceColor, lineHeight: 1 }}>{averageTime > 0 ? fmt(averageTime) : "—"}</div>
       <div style={{ marginTop: 5, fontSize: 10.5, color: C.muted, marginBottom: 10 }}>per question</div>
       {averageTime > 0 && (
@@ -225,7 +225,7 @@ const StatRail = ({ result, scoreHistory }) => {
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
             <span style={{ fontFamily: F.mono, fontSize: 7.5, color: C.faint }}>fast</span>
-            <span style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 700, color: paceColor }}>{paceLabel}</span>
+            <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: paceColor }}>{paceLabel}</span>
             <span style={{ fontFamily: F.mono, fontSize: 7.5, color: C.faint }}>slow</span>
           </div>
         </>
@@ -233,7 +233,7 @@ const StatRail = ({ result, scoreHistory }) => {
     </div>,
     // 4. score + sparkline
     <div key="score">
-      <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>this session</div>
+      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>this session</div>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 5 }}>
         <div>
           <div style={{ fontFamily: F.display, fontSize: 22, fontWeight: 900, color: scoreColor(score), lineHeight: 1 }}>{clamp(score)}</div>
@@ -246,7 +246,7 @@ const StatRail = ({ result, scoreHistory }) => {
         )}
       </div>
       <MiniSparkline points={spark} color={scoreColor(score)} />
-      {spark.length >= 2 && <div style={{ fontFamily: F.mono, fontSize: 8, color: C.faint, marginTop: 4 }}>last {spark.length} sessions</div>}
+      {spark.length >= 2 && <div style={{ fontFamily: F.mono, fontSize: 10, color: C.faint, marginTop: 4 }}>last {spark.length} sessions</div>}
     </div>,
   ];
 
@@ -271,11 +271,11 @@ StatRail.propTypes = { result: PropTypes.object.isRequired, scoreHistory: PropTy
 const NextStep = ({ text, weakestTopic, navigate, score }) => {
   const [hov, setHov] = useState(false);
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 18px", marginBottom: 12, borderRadius: 12, background: `linear-gradient(135deg,${C.blue50} 0%,#F5F0FF 100%)`, border: `1px solid rgba(26,110,255,.2)`, flexWrap: "wrap" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 11, background: `linear-gradient(135deg,${C.blue500},${C.cyan500})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, boxShadow: `0 6px 18px rgba(26,110,255,.28)`, flexShrink: 0 }}>→</div>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, padding: "14px 18px", marginBottom: 12, borderRadius: 12, background: `linear-gradient(135deg,${C.blue50} 0%,#F5F0FF 100%)`, border: `1px solid rgba(26,110,255,.2)` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flex: "1 1 240px", minWidth: 0 }}>
+        <div style={{ width: 40, height: 40, borderRadius: 11, background: `linear-gradient(135deg,${C.blue500},${C.cyan500})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, boxShadow: `0 6px 18px rgba(26,110,255,.28)`, flexShrink: 0 }}><Icon name="right" size={18} stroke={2.6} /></div>
         <div>
-          <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: "1.2px", color: C.blue600, marginBottom: 4 }}>what to do next</div>
+          <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: "1.2px", color: C.blue600, marginBottom: 4 }}>what to do next</div>
           <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 900, color: C.text, marginBottom: 4 }}>
             {weakestTopic ? <>Drill <span style={{ color: C.blue500 }}>{weakestTopic.topic}</span> next</> : (score >= 80 ? "Raise the difficulty" : "Start your next rep")}
           </div>
@@ -286,7 +286,7 @@ const NextStep = ({ text, weakestTopic, navigate, score }) => {
         onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
         onClick={() => navigate("/interview")}
         style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: `linear-gradient(135deg,${C.blue500},${C.blue600})`, color: "#fff", fontWeight: 800, fontSize: 12.5, fontFamily: F.body, cursor: "pointer", boxShadow: hov ? `0 6px 20px rgba(26,110,255,.46)` : `0 3px 14px rgba(26,110,255,.38)`, whiteSpace: "nowrap", transform: hov ? "translateY(-2px)" : "none", transition: "all .15s ease", flexShrink: 0 }}
-      >{weakestTopic ? `Practice ${weakestTopic.topic} →` : "Start interview →"}</button>
+      ><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{weakestTopic ? `Practice ${weakestTopic.topic}` : "Start interview"}<Icon name="right" size={15} stroke={2.6} style={{ transform: hov ? "translateX(3px)" : "none", transition: "transform .18s ease" }} /></span></button>
     </div>
   );
 };
@@ -304,18 +304,18 @@ const BadgeBridge = ({ streak, newBadges, navigate }) => {
           <span style={{ fontSize: 16 }}>◆</span>
           <div>
             <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 900, color: C.text }}>{streak.current} day streak</div>
-            <div style={{ fontFamily: F.mono, fontSize: 8, color: C.muted }}>consistency compounds</div>
+            <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>consistency compounds</div>
           </div>
         </div>
       )}
       {badges.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, flexWrap: "wrap" }}>
-          <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted }}>earned</span>
-          {badges.map((b, i) => <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, background: C.violetTint, border: `1px solid ${C.violet}45`, color: C.violet, fontFamily: F.mono, fontSize: 9, fontWeight: 700 }}>★ {b}</span>)}
+          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>earned</span>
+          {badges.map((b, i) => <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, background: C.violetTint, border: `1px solid ${C.violet}45`, color: C.violet, fontFamily: F.mono, fontSize: 10, fontWeight: 700 }}>★ {b}</span>)}
         </div>
       )}
       <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexShrink: 0 }}>
-        <button onClick={() => navigate("/dashboard")} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.violet}45`, background: C.violetTint, color: C.violet, fontFamily: F.body, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>View badges →</button>
+        <button onClick={() => navigate("/dashboard")} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.violet}45`, background: C.violetTint, color: C.violet, fontFamily: F.body, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>View badges<Icon name="right" size={13} stroke={2.6} /></button>
         <button onClick={() => setGone(true)} style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.faint, fontSize: 12, cursor: "pointer" }}>✕</button>
       </div>
     </div>
@@ -339,7 +339,7 @@ const DNARow = ({ score, label, sub, visible, delay }) => {
         <div style={{ position: "absolute", left: "50%", top: 3, bottom: 3, borderRadius: "0 3px 3px 0", background: `linear-gradient(90deg,${col}60,${col}22)`, width: visible ? `${pct * 50}%` : "0%", transition: `width .9s cubic-bezier(.16,1,.3,1) ${delay}ms` }} />
       </div>
       <div style={{ width: 80, paddingLeft: 12, flexShrink: 0 }}>
-        <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>{label}</div>
+        <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>{label}</div>
         <div style={{ fontFamily: F.mono, fontSize: 7.5, color: C.muted, marginTop: 1 }}>{sub}</div>
       </div>
     </div>
@@ -417,7 +417,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
         {/* OVERVIEW — DNA fingerprint */}
         {tab === "overview" && (
           <>
-            <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>session fingerprint</div>
+            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>session fingerprint</div>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>4-axis read from how you answered — not just what you scored.</div>
             <div style={{ padding: "16px 14px", borderRadius: 12, background: C.card, border: `1px solid ${C.border}` }}>
               {dna.map((a, i) => <DNARow key={a.label} score={a.score} label={a.label} sub={a.sub} visible={vis} delay={i * 120} />)}
@@ -429,7 +429,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
         {/* PACE */}
         {tab === "pace" && (
           <>
-            <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>pace vs score</div>
+            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>pace vs score</div>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>How your response time correlated with answer quality.</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               {questions.filter(q => !q.skipped && typeof q.aiFeedback?.score === "number" && Number(q.timeTaken) > 0).map((q, i) => {
@@ -438,7 +438,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
                 const col = s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.red;
                 return (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderRadius: 9, background: C.card, border: `1px solid ${C.border}` }}>
-                    <span style={{ fontFamily: F.mono, fontSize: 9, color: C.faint, flexShrink: 0 }}>Q{(q.index ?? i) + 1}</span>
+                    <span style={{ fontFamily: F.mono, fontSize: 10, color: C.faint, flexShrink: 0 }}>Q{(q.index ?? i) + 1}</span>
                     <span style={{ fontSize: 11, color: C.sub, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.topic}</span>
                     <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, flexShrink: 0 }}>{fmt(t)}</span>
                     <span style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: col, flexShrink: 0 }}>{s}</span>
@@ -452,7 +452,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
         {/* PATTERNS */}
         {tab === "patterns" && (
           <>
-            <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>recurring gaps</div>
+            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>recurring gaps</div>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Topics or concepts that appeared in multiple weak answers.</div>
             {(() => {
               const weak = questions.filter(q => !q.skipped && typeof q.aiFeedback?.score === "number" && q.aiFeedback.score < 60);
@@ -475,7 +475,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
         {/* PROGRESS */}
         {tab === "progress" && (
           <>
-            <div style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>score curve</div>
+            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>score curve</div>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Answer-by-answer progression this session.</div>
             {(() => {
               const pts = questions.filter(q => !q.skipped && typeof q.aiFeedback?.score === "number").map(q => q.aiFeedback.score);
@@ -492,7 +492,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
                   <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: drift >= 0 ? C.greenTint : C.redTint, border: `1px solid ${drift >= 0 ? C.green : C.red}30` }}>
                       <span style={{ fontFamily: F.display, fontSize: 12, fontWeight: 900, color: drift >= 0 ? C.green : C.red }}>{drift >= 0 ? "+" : ""}{drift} pts</span>
-                      <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.sub }}>drift</span>
+                      <span style={{ fontFamily: F.mono, fontSize: 10, color: C.sub }}>drift</span>
                     </span>
                   </div>
                   <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", minWidth: 300 }}>
@@ -524,14 +524,14 @@ const MissionReport = ({ result, totalScore, normalizedQuestions }) => {
         <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(circle,rgba(255,255,255,.06) 1px,transparent 1px)", backgroundSize: "20px 20px", opacity: .5, pointerEvents: "none" }} />
         <div style={{ position: "absolute", top: -80, right: -60, width: 240, height: 240, borderRadius: "50%", background: "radial-gradient(circle,rgba(0,194,232,.22),transparent 68%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", zIndex: 1 }}>
-          <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "1.2px", color: "#00C8F0", textTransform: "uppercase", marginBottom: 4 }}>mission report · where you stand overall</div>
+          <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: "1.2px", color: "#00C8F0", textTransform: "uppercase", marginBottom: 4 }}>mission report · where you stand overall</div>
           <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 900, color: "#fff", marginBottom: 3 }}>
             {totalScore}/100 · <span style={{ color: g.accent }}>{g.g} — {g.desc}</span>
           </div>
           <div style={{ fontFamily: F.mono, fontSize: 10, color: "rgba(255,255,255,.4)", marginBottom: 12 }}>skill fingerprint · rank · archetype · tier progress · shareable card</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, borderRadius: 999, padding: "3px 10px", background: "rgba(5,150,105,.18)", color: "#79F2B2", border: "1px solid rgba(5,150,105,.3)" }}>{result.strongAnswers} strong</span>
-            <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, borderRadius: 999, padding: "3px 10px", background: "rgba(220,38,38,.18)", color: "#fca5a5", border: "1px solid rgba(220,38,38,.3)" }}>{result.weakAnswers} to fix</span>
+            <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 10px", background: "rgba(5,150,105,.18)", color: "#79F2B2", border: "1px solid rgba(5,150,105,.3)" }}>{result.strongAnswers} strong</span>
+            <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 10px", background: "rgba(220,38,38,.18)", color: "#fca5a5", border: "1px solid rgba(220,38,38,.3)" }}>{result.weakAnswers} to fix</span>
           </div>
         </div>
       </div>
@@ -554,7 +554,7 @@ const ShareCard = ({ result, cardRef }) => {
       <div style={{ padding: "28px 32px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: "1.4px", color: "rgba(255,255,255,.38)", textTransform: "uppercase" }}>MockMate · Session Result</div>
-          <div style={{ fontFamily: F.mono, fontSize: 9, padding: "3px 9px", borderRadius: 6, background: `${g.accent}20`, color: g.accent, border: `1px solid ${g.accent}40`, fontWeight: 700 }}>{g.g} · {g.desc}</div>
+          <div style={{ fontFamily: F.mono, fontSize: 10, padding: "3px 9px", borderRadius: 6, background: `${g.accent}20`, color: g.accent, border: `1px solid ${g.accent}40`, fontWeight: 700 }}>{g.g} · {g.desc}</div>
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 14 }}>
           <span style={{ fontFamily: F.display, fontSize: 80, fontWeight: 900, color: "#fff", letterSpacing: "-4px", lineHeight: 1 }}>{s}</span>
@@ -572,7 +572,7 @@ const ShareCard = ({ result, cardRef }) => {
       </div>
       <div style={{ padding: "12px 32px", background: "rgba(0,0,0,.32)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 800, color: g.accent }}>mockmate.app</div>
-        <div style={{ fontFamily: F.mono, fontSize: 8.5, color: "rgba(255,255,255,.3)" }}>AI interview coaching</div>
+        <div style={{ fontFamily: F.mono, fontSize: 10, color: "rgba(255,255,255,.3)" }}>AI interview coaching</div>
       </div>
     </div>
   );
@@ -580,6 +580,14 @@ const ShareCard = ({ result, cardRef }) => {
 ShareCard.propTypes = { result: PropTypes.object.isRequired, cardRef: PropTypes.oneOfType([PropTypes.func, PropTypes.shape({ current: PropTypes.any })]).isRequired };
 
 // ─── global keyframes ─────────────────────────────────────────────────────────
+const NAV_ITEMS = [
+  { id: "res-overview",  label: "Overview"  },
+  { id: "res-topics",    label: "Topics"    },
+  { id: "res-analytics", label: "Analytics" },
+  { id: "res-answers",   label: "Answers"   },
+  { id: "res-report",    label: "Report"    },
+];
+
 const GlobalStyles = () => (
   <style>{`
     @keyframes resFadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
@@ -588,6 +596,7 @@ const GlobalStyles = () => (
     body{background:${C.bg}}
     button:focus-visible{outline:2px solid ${C.blue500};outline-offset:3px;border-radius:6px}
     @media(prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:0.01ms!important}}
+    ${RESULT_NAV_CSS}
   `}</style>
 );
 
@@ -724,8 +733,15 @@ const Result = () => {
           </div>
         </AnimSec>
 
+        {/* sticky section nav */}
+        <ResultNav
+          items={NAV_ITEMS}
+          onPractice={() => navigate("/interview")}
+          practiceLabel={weakestTopic ? "Practice again" : "New interview"}
+        />
+
         {/* 2. hero */}
-        <AnimSec delay={40}>
+        <AnimSec delay={40} id="res-overview">
           <ErrBound>
             <ResultHeroV2 result={heroResult} navigate={navigate} onCopy={handleCopy} copied={copied} onDownloadImage={handleDownload} downloading={downloading} downloadLocked={!canDownload} />
           </ErrBound>
@@ -767,32 +783,34 @@ const Result = () => {
         </AnimSec>
 
         {/* 6. score summary */}
-        <AnimSec>
+        <AnimSec id="res-topics">
           <ErrBound>
             <ScoreSummary topicAverages={topicAverages} topicStatus={topicStatus} averageTime={averageTime} totalScore={totalScore} />
           </ErrBound>
         </AnimSec>
 
         {/* 7. tabbed analytics */}
-        <AnimSec>
+        <AnimSec id="res-analytics">
           <ErrBound>
             <TabbedAnalytics questions={normalizedQuestions} totalScore={totalScore} scoreHistory={result?.scoreHistory ?? []} />
           </ErrBound>
         </AnimSec>
 
         {/* 8. feedback list */}
-        <AnimSec>
+        <AnimSec id="res-answers">
           <ErrBound>
             <FeedbackList questions={normalizedQuestions} sessionId={sessionId} />
           </ErrBound>
         </AnimSec>
 
         {/* 9. mission report */}
-        <AnimSec>
+        <AnimSec id="res-report">
           <ErrBound>
             <MissionReport result={heroResult} totalScore={totalScore} normalizedQuestions={normalizedQuestions} />
           </ErrBound>
         </AnimSec>
+
+        <BackToTop />
 
         {/* 10. footer */}
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, padding: "16px 4px 0", opacity: .35 }}>

@@ -28,7 +28,7 @@ const injectStyles = () => {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const MetricRow = ({ icon, label, value, valueColor, hint, barPercent, barColor }) => (
+const MetricRow = ({ icon, label, value, valueColor = null, hint = null, barPercent = null, barColor = null }) => (
   <div style={{ padding: '10px 12px', borderRadius: 11, background: C.cardAlt, border: `1px solid ${C.border}` }}>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: barPercent != null ? 6 : 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
@@ -63,7 +63,6 @@ MetricRow.propTypes = {
   icon: PropTypes.string.isRequired, label: PropTypes.string.isRequired, value: PropTypes.string.isRequired,
   valueColor: PropTypes.string, hint: PropTypes.string, barPercent: PropTypes.number, barColor: PropTypes.string,
 };
-MetricRow.defaultProps = { valueColor: null, hint: null, barPercent: null, barColor: null };
 
 const wpmColor    = (band) => ({ tooSlow: C.amber, ideal: C.green, tooFast: C.danger }[band] || C.blue500);
 const wpmPercent  = (wpm)  => Math.min(100, Math.round((wpm / 200) * 100));
@@ -86,7 +85,7 @@ FillerChip.propTypes = { word: PropTypes.string.isRequired, count: PropTypes.num
 // ─── Delivery score ring (compact, inline) ─────────────────────────────────────
 const deliveryScoreColor = (s) => (s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.warning : C.danger);
 
-const DeliveryScoreBadge = ({ score }) => {
+const DeliveryScoreBadge = ({ score = null }) => {
   if (score == null) return null;
   const color = deliveryScoreColor(score);
   return (
@@ -114,7 +113,6 @@ const DeliveryScoreBadge = ({ score }) => {
   );
 };
 DeliveryScoreBadge.propTypes = { score: PropTypes.number };
-DeliveryScoreBadge.defaultProps = { score: null };
 
 // ─── Pause analysis row ─────────────────────────────────────────────────────────
 const pauseRatingCopy = {
@@ -123,7 +121,7 @@ const pauseRatingCopy = {
   'frequent-gaps':  { label: 'Frequent gaps',     color: 'danger',  icon: '🔴' },
 };
 
-const PauseRow = ({ pauses }) => {
+const PauseRow = ({ pauses = null }) => {
   if (!pauses) return null;
   const copy = pauseRatingCopy[pauses.rating] || pauseRatingCopy.smooth;
   const colorVal = C[copy.color] || C.blue500;
@@ -151,7 +149,6 @@ const PauseRow = ({ pauses }) => {
   );
 };
 PauseRow.propTypes = { pauses: PropTypes.object };
-PauseRow.defaultProps = { pauses: null };
 
 // ─── Pace consistency row ────────────────────────────────────────────────────
 const consistencyCopy = {
@@ -160,7 +157,7 @@ const consistencyCopy = {
   volatile: { label: 'Pace swung a lot', color: 'danger' },
 };
 
-const ConsistencyNote = ({ consistency }) => {
+const ConsistencyNote = ({ consistency = null }) => {
   if (!consistency || consistency.rating === 'steady') return null;
   const copy = consistencyCopy[consistency.rating];
   const colorVal = C[copy.color] || C.blue500;
@@ -173,7 +170,6 @@ const ConsistencyNote = ({ consistency }) => {
   );
 };
 ConsistencyNote.propTypes = { consistency: PropTypes.object };
-ConsistencyNote.defaultProps = { consistency: null };
 
 // ─── Filler trend note ────────────────────────────────────────────────────────
 const fillerTrendCopy = {
@@ -183,7 +179,7 @@ const fillerTrendCopy = {
 };
 
 // ─── DeliveryCard (shown after recording stops) ───────────────────────────────
-export const DeliveryCard = ({ voiceMetrics }) => {
+export const DeliveryCard = ({ voiceMetrics = null }) => {
   if (!voiceMetrics) return null;
   const { fillerWords, wpm, answerLength, pauses, deliveryScore } = voiceMetrics;
 
@@ -275,10 +271,9 @@ DeliveryCard.propTypes = {
     deliveryScore: PropTypes.number,
   }),
 };
-DeliveryCard.defaultProps = { voiceMetrics: null };
 
 // ─── Inline recording-status strip (silence nudge / live error) ──────────────
-export const VoiceStatusStrip = ({ isRecording, isSilent, voiceError, onDismissError }) => {
+export const VoiceStatusStrip = ({ isRecording = false, isSilent = false, voiceError = null, onDismissError = null }) => {
   if (voiceError) {
     return (
       <div className="mb-fade-in" style={{
@@ -329,7 +324,6 @@ VoiceStatusStrip.propTypes = {
   voiceError: PropTypes.string,
   onDismissError: PropTypes.func,
 };
-VoiceStatusStrip.defaultProps = { isRecording: false, isSilent: false, voiceError: null, onDismissError: null };
 
 // ─── MicButton ────────────────────────────────────────────────────────────────
 /**
@@ -347,7 +341,7 @@ VoiceStatusStrip.defaultProps = { isRecording: false, isSilent: false, voiceErro
  *   onStart           {function}
  *   onStop            {function}
  */
-function MicButton({ isRecording, isSupported, unsupportedReason, isSubmitted, isSilent, onStart, onStop }) {
+function MicButton({ isRecording, isSupported, unsupportedReason = null, isSubmitted = false, isSilent = false, onStart, onStop }) {
   injectStyles();
 
   if (!isSupported) {
@@ -415,6 +409,5 @@ MicButton.propTypes = {
   onStart:     PropTypes.func.isRequired,
   onStop:      PropTypes.func.isRequired,
 };
-MicButton.defaultProps = { unsupportedReason: null, isSubmitted: false, isSilent: false };
 
 export default MicButton;

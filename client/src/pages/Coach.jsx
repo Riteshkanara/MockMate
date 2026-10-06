@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import usePlan from "../hooks/usePlan";
 import CoachFree from "../components/coach/CoachFree";
+import { useIsPreview } from "../components/pro/PreviewContext";
+import { SAMPLE_PRO_ANALYTICS, SAMPLE_LAST_SESSION, SAMPLE_BLIND_SPOTS } from "../components/pro/previewData";
 import {
   getAIFreeform,
   getDashboardAnalytics,
@@ -621,22 +623,23 @@ const loadCoachData = async () => {
 // — Coach page
 const CoachPro = () => {
   const navigate = useNavigate();
+  const preview  = useIsPreview();
   const { user } = useAuth();
   const userId   = user?._id ?? user?.id ?? null;
 
-  const [analyticsData,  setAnalyticsData]  = useState(null);
-  const [breakdownData,  setBreakdownData]  = useState(null);
-  const [blindSpotsData, setBlindSpotsData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [analyticsData,  setAnalyticsData]  = useState(preview ? SAMPLE_PRO_ANALYTICS : null);
+  const [breakdownData,  setBreakdownData]  = useState(preview ? SAMPLE_LAST_SESSION : null);
+  const [blindSpotsData, setBlindSpotsData] = useState(preview ? SAMPLE_BLIND_SPOTS.blindSpots : null);
+  const [loading, setLoading] = useState(!preview);
   const [error, setError]     = useState("");
   const fetchedForUser = useRef(undefined);
 
-  const cacheKeys = useMemo(() => buildCacheKeys(userId), [userId]);
+  const cacheKeys = useMemo(() => buildCacheKeys(userId, preview), [userId, preview]);
 
-  useEffect(() => { purgeOtherUsersCache(userId); }, [userId]);
+  useEffect(() => { if (!preview) purgeOtherUsersCache(userId); }, [userId, preview]);
 
   useEffect(() => {
-    if (fetchedForUser.current === userId) return;
+    if (preview || fetchedForUser.current === userId) return;
     fetchedForUser.current = userId;
     setAnalyticsData(null); setBreakdownData(null); setBlindSpotsData(null);
     setError(""); setLoading(true);
@@ -654,7 +657,7 @@ const CoachPro = () => {
         setLoading(false);
       }
     })();
-  }, [userId]);
+  }, [userId, preview]);
 
   const { irs, tier, totalSessions, scoreTrend, lastScore, slope } = useMemo(() => {
     const st = analyticsData?.scoreTrend ?? [];
@@ -787,9 +790,11 @@ const CoachPro = () => {
 };
 
 // The Coach spends AI quota on every message, so it is Pro-only (also enforced on the server).
+export { CoachPro };
+
 const Coach = () => {
   const { isPro } = usePlan();
-  return isPro ? <CoachPro /> : <CoachFree />;
+  return isPro ? <CoachPro /> : <CoachFree preview={<CoachPro />} />;
 };
 
 export default Coach;

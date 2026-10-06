@@ -2,6 +2,7 @@
 import { useState,useEffect,Component,useRef } from "react";
 import PropTypes from "prop-types";
 import { C as CT, F } from "../../styles/token";
+import { COACH_PREVIEW_PREFIX, COACH_PREVIEW_CACHE } from '../pro/previewData';
 
 export const C = {
   ...CT,
@@ -45,7 +46,11 @@ export const TIER_META = {
 export const CACHE_PREFIX = "mm_coach_";
 export const CACHE_TTL    = 30 * 60 * 1000;
 
-export const buildCacheKeys = (userId) => {
+export const buildCacheKeys = (userId, preview = false) => {
+  if (preview) {
+    // Locked preview for free users: keys under this prefix are served from example data.
+    return { today: `${COACH_PREVIEW_PREFIX}today`, weekly: `${COACH_PREVIEW_PREFIX}weekly`, debrief: `${COACH_PREVIEW_PREFIX}debrief`, company: (id) => `${COACH_PREVIEW_PREFIX}company_${id}` };
+  }
   const uid = userId ?? "anon";
   return {
     today:   `${CACHE_PREFIX}today_${uid}_v1`,
@@ -56,6 +61,10 @@ export const buildCacheKeys = (userId) => {
 };
 
 export const readCache = (key) => {
+  if (key.startsWith(COACH_PREVIEW_PREFIX)) {
+    const hit = COACH_PREVIEW_CACHE[key.slice(COACH_PREVIEW_PREFIX.length)];
+    return hit ? { ...hit, ts: Date.now() } : null;
+  }
   try {
     const raw = sessionStorage.getItem(key);
     if (!raw) return null;
@@ -65,6 +74,7 @@ export const readCache = (key) => {
 };
 
 export const writeCache = (key, data) => {
+  if (key.startsWith(COACH_PREVIEW_PREFIX)) return;
   try { sessionStorage.setItem(key, JSON.stringify({ ...data, ts: Date.now() })); }
   catch { /* non-fatal */ }
 };

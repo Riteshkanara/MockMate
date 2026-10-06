@@ -43,6 +43,9 @@ const interviewControlsPropTypes = {
   shortSubmitPending: PropTypes.bool.isRequired,
   wordCount:          PropTypes.number.isRequired,
   onSkip:             PropTypes.func.isRequired,
+  // Optional: while an open answer is being scored, Skip becomes "Stop".
+  isEvaluating:       PropTypes.bool,
+  onStopSubmit:       PropTypes.func,
   onSubmit:           PropTypes.func.isRequired,
   textAreaRef:        PropTypes.shape({ current: PropTypes.any }),
   mode:               PropTypes.shape({ accent: PropTypes.string.isRequired, soft: PropTypes.string.isRequired }).isRequired,
@@ -72,6 +75,8 @@ function InterviewControls({
   shortSubmitPending,
   wordCount,
   onSkip,
+  isEvaluating,
+  onStopSubmit,
   onSubmit,
   textAreaRef,
   mode,
@@ -227,15 +232,29 @@ function InterviewControls({
         )}
 
         <div style={S.answerActions} className="iv-answer-actions">
-          <button
-            type="button"
-            style={S.skipBtn}
-            className="iv-skip-btn"
-            disabled={isLoading}
-            onClick={onSkip}
-          >
-            Skip
-          </button>
+          {isEvaluating && onStopSubmit ? (
+            // Same slot and style as Skip, so nothing shifts when evaluation
+            // starts. Stopping keeps the typed answer so it can be edited.
+            <button
+              type="button"
+              style={S.skipBtn}
+              className="iv-skip-btn"
+              aria-label="Stop evaluating and keep editing your answer"
+              onClick={onStopSubmit}
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              style={S.skipBtn}
+              className="iv-skip-btn"
+              disabled={isLoading}
+              onClick={onSkip}
+            >
+              Skip
+            </button>
+          )}
           <button
             type="button"
             style={{

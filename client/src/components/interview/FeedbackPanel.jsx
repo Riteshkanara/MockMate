@@ -1196,6 +1196,36 @@ function NextBtn({ onNext, isLoading, isLast }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // FEEDBACK BODY
 // ═══════════════════════════════════════════════════════════════════════════════
+// Shown where a section WILL appear once the background analysis (model answer,
+// keywords, STAR, confidence, follow-ups…) has been generated. The score and
+// core feedback above are already final — only these extras are still loading.
+function PendingBlock({ label, lines = 3 }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={label}
+      style={{ borderRadius: 14, border: `1px solid ${C.border}`, background: C.surface, padding: '14px 15px' }}
+    >
+      <div style={{ fontFamily: F.mono, fontSize: 10.5, fontWeight: 800, color: C.textMuted, letterSpacing: '.6px', textTransform: 'uppercase', marginBottom: 11 }}>
+        {label}
+      </div>
+      {Array.from({ length: lines }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            height: 10, borderRadius: 6, marginTop: i ? 9 : 0,
+            width: i === lines - 1 ? '62%' : '100%',
+            backgroundImage: `linear-gradient(90deg, ${C.border}, ${C.surfaceAlt}, ${C.border})`,
+            backgroundSize: '300% 100%',
+            animation: 'mmShimmer 1.4s linear infinite',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function FeedbackBody({ feedback, question, userAnswer, voiceMetrics, onNext, isLoading, isLast, userAnswerIndex, skipped }) {
   const objective = ['mcq', 'aptitude'].includes(question?.questionType);
   const correct   = feedback?.correct === true;
@@ -1247,13 +1277,24 @@ function FeedbackBody({ feedback, question, userAnswer, voiceMetrics, onNext, is
 
           <div>
             <SectionHeader ico="ti ti-trophy" em="🏆" title="Model answer" hint="Top-tier structure" icoColor="navy" />
-            <ModelAnswer sampleAnswer={feedback?.sampleAnswer} />
+            {feedback?.enrichPending && !feedback?.sampleAnswer
+              ? <PendingBlock label="Writing your model answer…" lines={2} />
+              : <ModelAnswer sampleAnswer={feedback?.sampleAnswer} />}
           </div>
 
           <div>
             <SectionHeader ico="ti ti-sparkles" em="✨" title="Coaching" hint="Improve next time" icoColor="green" />
             <CoachingGrid idealHint={feedback?.idealHint} tip={feedback?.tip} />
           </div>
+
+          {feedback?.enrichPending && (
+            <PendingBlock label="Analysing keywords, structure and confidence…" lines={3} />
+          )}
+          {feedback?.enrichFailed && !feedback?.enrichPending && !feedback?.sampleAnswer && (
+            <div style={{ fontSize: 12.5, color: C.textMuted, fontFamily: F.body, padding: '2px 4px' }}>
+              The detailed breakdown couldn&apos;t be generated for this answer — your score and feedback above are unaffected.
+            </div>
+          )}
 
           <WeakPattern weakPattern={feedback?.weakPattern} />
           <KeywordCoverage keywords={feedback?.keywords || feedback?.keywordCoverage} />
@@ -1289,7 +1330,9 @@ function FeedbackPanel({
     setMounted(false);
     const id = setTimeout(() => setMounted(true), 30);
     return () => clearTimeout(id);
-  }, [feedback]);
+    // Keyed on the score, not the whole object: the background analysis merges
+    // new fields into `feedback` and must not replay the score animation.
+  }, [feedback?.score]);
 
   return (
     <div style={{ fontFamily: F.body, borderRadius: 22, overflow: 'hidden', boxShadow: SH_MD, background: C.surface, border: `1px solid ${C.border}` }}>

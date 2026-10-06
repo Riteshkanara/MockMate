@@ -96,6 +96,21 @@ router.post(
   interviewController.completeInterview
 );
 
+// Poll target for the background analysis of an answer (see interviewFlow.js).
+router.get(
+  '/:sessionId/question/:questionId/feedback',
+  authMiddleware,
+  interviewController.getQuestionFeedback
+);
+
+// Re-evaluate an already-submitted open answer (client: retryQuestion in
+// interviewService.js). Was missing → every retry 404'd.
+router.post(
+  '/:sessionId/retry/:questionId',
+  authMiddleware,
+  interviewController.retryQuestion
+);
+
 router.get(
   '/:sessionId/result',
   authMiddleware,

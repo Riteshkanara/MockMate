@@ -107,6 +107,8 @@ const buildFeedback = (data, parsed) => ({
   // 'basic' = free tier (Pro parts were removed by the server); locked = what exists but is held back
   tier:         parsed.tier || data?.feedbackTier || 'full',
   locked:       parsed.locked || null,
+  // Real first line of the locked model answer / coaching (free tier only; set by the server)
+  teasers:      parsed.teasers || null,
   good:         parsed.good         || '',
   missing:      parsed.missing      || '',
   idealHint:    parsed.idealHint    || '',

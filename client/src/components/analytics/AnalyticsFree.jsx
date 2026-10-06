@@ -4,8 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { getDashboardAnalytics } from '../../Services/interviewService';
 import { C, F } from '../../styles/token';
 import useUpgrade from '../../hooks/useUpgrade';
-import LockedFeatureCard from '../pro/LockedFeatureCard';
 import ProBadge from '../pro/ProBadge';
+import ProTease from '../pro/ProTease';
+import DNAFingerprint from './DNAFingerprint';
+import StreakCalendar from './StreakCalendar';
+import { SAMPLE_ANALYTICS_CARDS, SAMPLE_DNA, SAMPLE_TREND } from '../pro/previewData';
 
 /**
  * AnalyticsFree — the Analytics page for free users.
@@ -270,18 +273,82 @@ export default function AnalyticsFree({ initialData = null }) {
           </Card>
         </div>
 
-        <div style={{ margin: '22px 0 12px' }}>
+        <div style={{ margin: '26px 0 6px' }}>
           <Eyebrow>Unlock with Pro</Eyebrow>
-          <div style={{ fontFamily: F.display, fontSize: 17, fontWeight: 800, color: C.text }}>The parts of your analytics that show you how to improve</div>
+          <div style={{ fontFamily: F.display, fontSize: 'clamp(18px, 2.4vw, 22px)', fontWeight: 900, color: C.text, letterSpacing: '-0.3px' }}>
+            The parts of your analytics that show you how to improve
+          </div>
+          <p style={{ margin: '6px 0 0', fontSize: 12.5, color: C.textMuted }}>
+            This is the full Pro analytics. The blurred content is an example; yours is built from your own sessions.
+          </p>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 290px), 1fr))', gap: 12 }}>
-          <LockedFeatureCard icon="radar" title="Skill DNA and dimension breakdown" feature="fullAnalytics" desc="Six skill dimensions scored separately, so you know what to fix first." />
-          <LockedFeatureCard icon="route" title="Salary-tier roadmap" feature="fullAnalytics" desc="Which single skill is blocking your next tier, and how many sessions it takes." hook={view.next ? `Next up for you: ${view.next.label}` : undefined} />
-          <LockedFeatureCard icon="target" title="Blind spot detection" feature="blindSpots" desc="Topics that keep costing you points across your last 10 sessions." hook={view.weakest ? `Your lowest topic right now: ${view.weakest.topic} (${view.weakest.averageScore}%)` : undefined} />
-          <LockedFeatureCard icon="flame" title="Warmup analysis" feature="sessionWarmup" desc="See whether you start slow and which question positions cost you the most." />
-          <LockedFeatureCard icon="spark" title="AI Coach" feature="aiCoach" desc="A coach that reads your sessions and tells you what to practise next." />
-          <LockedFeatureCard icon="clock" title="Full history" feature="fullAnalytics" desc="Every session, not just the last 7 days." hook={view.hidden > 0 ? `${view.hidden} older session${view.hidden === 1 ? ' is' : 's are'} waiting` : undefined} />
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 440px), 1fr))', gap: 14, marginTop: 12 }}>
+          <ProTease feature="fullAnalytics" eyebrow="Performance DNA" title="Your six skill dimensions" lead="A fingerprint of your score across all six skills, so you know what to fix first." cta="Unlock Skill DNA" blurHeight={230}>
+            <DNAFingerprint profile={SAMPLE_DNA} />
+          </ProTease>
+          <ProTease
+            feature="fullAnalytics" eyebrow="Salary-tier roadmap" title="What is blocking your next tier"
+            lead={view.next ? `Next up for you: ${view.next.label}.` : 'See the one skill standing between you and your next salary tier.'}
+            cta="Unlock your roadmap" blurHeight={230}
+          >
+            <p style={{ margin: '0 0 8px' }}>You are currently at <strong>{SAMPLE_ANALYTICS_CARDS.roadmap.now}</strong>. The next tier is <strong>{SAMPLE_ANALYTICS_CARDS.roadmap.next}</strong>.</p>
+            <p style={{ margin: '0 0 8px' }}>Blocker: <strong>{SAMPLE_ANALYTICS_CARDS.roadmap.blocker}</strong>, {SAMPLE_ANALYTICS_CARDS.roadmap.gap} points short.</p>
+            <p style={{ margin: 0 }}>About {SAMPLE_ANALYTICS_CARDS.roadmap.sessions} focused sessions closes the gap.</p>
+          </ProTease>
+          <ProTease
+            feature="blindSpots" eyebrow="Blind spot detection" title="Topics that keep costing you points"
+            lead={view.weakest ? `Your lowest topic right now: ${view.weakest.topic} (${view.weakest.averageScore}%).` : 'Topics that keep costing you points across your last 10 sessions.'}
+            cta="Unlock blind spots" blurHeight={200}
+          >
+            {SAMPLE_ANALYTICS_CARDS.blindSpots.map(([n, times, avg]) => (
+              <div key={n} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: 13.5 }}>
+                <span>{n}</span><span>missed {times} times, avg {avg}%</span>
+              </div>
+            ))}
+          </ProTease>
+          <ProTease feature="sessionWarmup" eyebrow="Warmup analysis" title="Do you start slow?" lead="See whether your first question costs you marks, and which positions hurt most." cta="Unlock warmup analysis" blurHeight={200}>
+            <p style={{ margin: '0 0 8px' }}>Question 1 averages 12 points below your later questions.</p>
+            <p style={{ margin: '0 0 8px' }}>Your strongest position is question 4, at 74.</p>
+            <p style={{ margin: 0 }}>A 2-minute warmup before you start closes most of that gap.</p>
+          </ProTease>
         </div>
+
+        <div style={{ marginTop: 14 }}>
+          <ProTease feature="fullAnalytics" eyebrow="Topic intelligence" title="Every topic, with its trend" lead={view.extraTopics > 0 ? `You have ${view.topics.length} topics. Free shows your 3 weakest.` : 'Every topic you have practised, ranked, with its trend.'} cta="Unlock the full topic grid" blurHeight={200}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+              {SAMPLE_ANALYTICS_CARDS.topics.map(([n, s, tr]) => (
+                <div key={n} style={{ padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                  <div style={{ fontWeight: 800, color: C.text }}>{n}</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: scoreColor(s) }}>{s}%</div>
+                  <div style={{ fontSize: 11.5 }}>{tr === 'up' ? 'Improving' : tr === 'down' ? 'Slipping' : 'Steady'}</div>
+                </div>
+              ))}
+            </div>
+          </ProTease>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <ProTease feature="fullAnalytics" eyebrow="Activity" title="Your practice streak calendar" lead={view.hidden > 0 ? `${view.hidden} older session${view.hidden === 1 ? ' is' : 's are'} waiting in your full history.` : 'Every session you have done, day by day.'} cta="Unlock full history" blurHeight={190}>
+            <StreakCalendar scoreTrend={SAMPLE_TREND} />
+          </ProTease>
+        </div>
+
+        <section style={{ marginTop: 22, borderRadius: 22, padding: 'clamp(20px, 3.6vw, 30px)', background: 'linear-gradient(135deg, #0A3FCC 0%, #1A6EFF 60%, #0891B2 130%)', color: '#fff', boxShadow: '0 16px 36px rgba(10,63,204,.26)' }}>
+          <div style={{ fontFamily: F.mono, fontSize: 10.5, fontWeight: 800, letterSpacing: '0.14em', opacity: 0.8 }}>MOCKMATE PRO</div>
+          <h2 style={{ margin: '6px 0 8px', fontFamily: F.display, fontSize: 'clamp(21px, 3vw, 27px)', fontWeight: 900, letterSpacing: '-0.5px' }}>See exactly what stands between you and the offer</h2>
+          <p style={{ margin: '0 0 18px', maxWidth: 560, fontSize: 14.5, lineHeight: 1.65, color: 'rgba(255,255,255,.9)' }}>
+            Skill DNA, blind spots, your salary-tier roadmap and your complete history, all built from your own sessions.
+          </p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => openUpgrade('fullAnalytics')} style={{ height: 50, padding: '0 26px', borderRadius: 14, border: 'none', cursor: 'pointer', background: '#fff', color: C.brand700, fontFamily: F.display, fontSize: 15, fontWeight: 800 }}>
+              Go Pro and unlock everything
+            </button>
+            <button type="button" onClick={() => navigate('/pricing')} style={{ height: 50, padding: '0 22px', borderRadius: 14, border: '1px solid rgba(255,255,255,.4)', cursor: 'pointer', background: 'rgba(255,255,255,.12)', color: '#fff', fontFamily: F.display, fontSize: 14.5, fontWeight: 700 }}>
+              See plans and pricing
+            </button>
+          </div>
+        </section>
 
         <p style={{ margin: '22px 4px 0', fontSize: 12, color: C.textMuted, lineHeight: 1.6 }}>
           Nothing is ever deleted on the Free plan. Every session and score stays saved, and it all appears the moment you upgrade.

@@ -13,9 +13,7 @@ import { FeedbackPanel } from '../components/interview/FeedbackPanel';
 import { getInterviewMeta } from '../Services/interviewService';
 import useUsage from '../hooks/useUsage';
 import useUpgrade from '../hooks/useUpgrade';
-import ProBadge from '../components/pro/ProBadge';
-import UsageMeter from '../components/pro/UsageMeter';
-import DailyLimitCard from '../components/pro/DailyLimitCard';
+import SetupScreen from '../components/interview/SetupScreen';
 import Icon from '../components/interview/icons';
 
 
@@ -101,11 +99,6 @@ const MODE_META = {
   aptitude: { label: 'Aptitude',         group: 'test',      icon: 'calc',      count: 5,  perQ: 60,  kind: 'Reasoning',                   timeNote: '60 seconds per question',               blurb: 'Quantitative and logical reasoning problems.',                          accent: C.teal,    soft: C.tealTint   },
   mixed:    { label: 'Mixed assessment', group: 'test',      icon: 'shuffle',   count: 8,  perQ: 75,  kind: 'MCQ, aptitude and written',   timeNote: '45 seconds to 2 minutes per question',  blurb: 'Technical MCQs, aptitude and open questions in one session.',           accent: C.blue500, soft: C.blue50     },
 };
-
-const MODE_GROUPS = [
-  { id: 'interview', title: 'Interview practice', hint: 'Open questions you answer by typing or speaking.' },
-  { id: 'test',      title: 'Written test',       hint: 'Multiple choice and reasoning, marked instantly.' },
-];
 
 const DIFFICULTIES = [
   { value: 'easy',   label: 'Easy',   description: 'Build confidence',   accent: C.green   },
@@ -934,242 +927,47 @@ const Interview = () => {
     return (
       <div style={S.page} className="iv-page iv-page-setup">
         <GlobalStyles />
-
-        <div style={{ ...S.container, maxWidth: 1120, opacity: mounted ? 1 : 0, transform: mounted ? 'none' : 'translateY(10px)' }}>
-          <header style={S.setupHead}>
-            <h1 style={S.setupTitle}>Set up your interview</h1>
-            <p style={S.setupSub}>
-              Pick a format and MockMate writes the questions for your role and level.
-              Every answer is scored, with specific fixes and a model answer to compare against.
-            </p>
-          </header>
-
-          <div style={S.setupGrid} className="iv-setup-grid">
-            {/* ── Left: the choices ── */}
-            <div style={S.builder}>
-              <section style={S.card} aria-labelledby="sec-format">
-                <h2 id="sec-format" style={S.secTitle}>Format</h2>
-                {MODE_GROUPS.map((group) => (
-                  <div key={group.id} style={S.modeGroup}>
-                    <div style={S.modeGroupHead}>
-                      <span style={S.modeGroupTitle}>{group.title}</span>
-                      <span style={S.modeGroupHint}>{group.hint}</span>
-                    </div>
-                    <div style={S.modeGrid} className="iv-mode-grid" role="radiogroup" aria-label={group.title}>
-                      {Object.entries(MODE_META).filter(([, m]) => m.group === group.id).map(([value, meta], idx, arr) => {
-                        const selected = selectedMode === value;
-                        const spanRow  = arr.length % 2 === 1 && idx === arr.length - 1;
-                        const cardCount = countFor(value);
-                        const mins = Math.max(1, Math.round((cardCount * meta.perQ) / 60));
-                        const access = getModeAccess(value);   // 'open' | 'trial' | 'locked'
-                        const locked = access === 'locked';
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            role="radio"
-                            aria-checked={selected}
-                            aria-label={locked ? `${meta.label} (Pro). Opens upgrade options.` : undefined}
-                            className="iv-mode-card"
-                            style={{
-                              ...S.modeCard,
-                              ...(spanRow ? { gridColumn: '1 / -1', minHeight: 0 } : null),
-                              ...(selected ? { borderColor: meta.accent, background: meta.soft, boxShadow: `0 0 0 3px ${meta.accent}22` } : null),
-                            }}
-                            onClick={() => {
-                              // Locked modes never get selected: the click explains the mode and offers Pro.
-                              if (locked) { openUpgrade(`mode_${value}`, { trialUsed: true }); return; }
-                              setSelectedMode(value);
-                            }}
-                          >
-                            <span style={S.modeTop} className="iv-mode-top">
-                              <span className="iv-mode-icon" style={{ ...S.modeIcon, color: meta.accent, background: selected ? '#fff' : meta.soft }}>
-                                <Icon name={meta.icon} size={20} />
-                              </span>
-                              {locked ? (
-                                <span className="iv-mode-check" style={{ ...S.modeCheck, background: C.cardAlt, color: C.sub }} aria-hidden="true">
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="9" rx="2.5" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
-                                </span>
-                              ) : (
-                                <span className="iv-mode-check" style={{ ...S.modeCheck, ...(selected ? { background: meta.accent, borderColor: meta.accent, color: '#fff' } : null) }}>
-                                  {selected && <Icon name="check" size={12} stroke={3} />}
-                                </span>
-                              )}
-                            </span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-                              <strong style={S.modeLabel} className="iv-mode-label">{meta.label}</strong>
-                              {access === 'trial'  && <ProBadge variant="trial" label="Try once free" />}
-                              {access === 'locked' && <ProBadge variant="pro" />}
-                            </span>
-                            <span style={S.modeDesc} className="iv-mode-desc">{meta.blurb}</span>
-                            <span style={S.modeFacts} className="iv-mode-facts">{cardCount} questions, up to {mins} min</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </section>
-
-              <section style={S.card} aria-labelledby="sec-difficulty">
-                <h2 id="sec-difficulty" style={S.secTitle}>Difficulty</h2>
-                <div style={S.diffGrid} className="iv-diff-grid" role="radiogroup" aria-label="Difficulty">
-                  {DIFFICULTIES.map((option) => {
-                    const selected = selectedDifficulty === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        className="iv-diff-card"
-                        style={{ ...S.diffCard, ...(selected ? { borderColor: option.accent, background: C.cardAlt, boxShadow: `0 0 0 3px ${option.accent}20` } : null) }}
-                        onClick={() => setSelectedDifficulty(option.value)}
-                      >
-                        <span style={{ ...S.diffDot, background: option.accent }} />
-                        <span style={{ minWidth: 0 }}>
-                          <strong style={S.diffLabel}>{option.label}</strong>
-                          <span style={S.diffDesc}>{option.description}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              {selectedMode === 'company' && (
-                <section style={S.card} className="iv-fade-in" aria-labelledby="sec-company">
-                  <h2 id="sec-company" style={S.secTitle}>Target company</h2>
-                  <p style={S.secHint}>Not on the list? Type it. Questions follow the company&apos;s general hiring style.</p>
-                  <input
-                    type="text"
-                    style={S.input}
-                    className="iv-input"
-                    placeholder="Type a company, or pick one below"
-                    aria-label="Target company"
-                    value={company}
-                    onChange={(e) => setCompany(e.target.value)}
-                    maxLength={80}
-                  />
-                  <div style={{ ...S.chipGrid, marginTop: 12 }}>
-                    {companyChips.map((c) => {
-                      const selected = company.trim().toLowerCase() === c.toLowerCase();
-                      return (
-                        <button
-                          key={c}
-                          type="button"
-                          style={{ ...S.chip, ...(selected ? S.chipActive : null) }}
-                          onClick={() => setCompany(c)}
-                          aria-pressed={selected}
-                        >
-                          {c}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {selectedMode === 'topic' && (
-                <section style={S.card} className="iv-fade-in" aria-labelledby="sec-topics">
-                  <div style={S.secRow}>
-                    <h2 id="sec-topics" style={{ ...S.secTitle, margin: 0 }}>Topics</h2>
-                    <span style={S.secMeta}>{selectedTopics.length ? `${selectedTopics.length} selected` : 'None selected'}</span>
-                  </div>
-                  <p style={S.secHint}>Pick one or more. Questions blend across everything you choose.</p>
-                  {topicGroups.map((group) => (
-                    <div key={group.id} style={S.topicGroup}>
-                      <div style={S.topicGroupLabel}>{group.label}</div>
-                      <div style={S.chipGrid}>
-                        {group.topics.map((t) => {
-                          const selected = selectedTopics.includes(t);
-                          return (
-                            <button
-                              key={t}
-                              type="button"
-                              style={{ ...S.chip, ...(selected ? S.chipActive : null) }}
-                              onClick={() => toggleTopic(t)}
-                              aria-pressed={selected}
-                            >
-                              {selected && <Icon name="check" size={13} stroke={3} style={{ display: 'inline-block', marginRight: 5, verticalAlign: '-2px' }} />}
-                              {t}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </section>
-              )}
-
-              <section style={S.card} aria-labelledby="sec-profile">
-                <h2 id="sec-profile" style={S.secTitle}>Your role and level</h2>
-                <p style={S.secHint}>
-                  This sets how deep the questions go, so a fresher gets fresher-level questions.
-                  {fromProfile ? ' Filled in from your profile.' : ''}
-                </p>
-                <div style={S.roleExpRow} className="iv-role-exp-row">
-                  <label style={S.field}>
-                    <span style={S.fieldLabel}>Target role</span>
-                    <select style={S.select} className="iv-input" value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}>
-                      {roleOptions.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                    </select>
-                  </label>
-                  <label style={S.field}>
-                    <span style={S.fieldLabel}>Experience</span>
-                    <select style={S.select} className="iv-input" value={selectedExperience} onChange={(e) => setSelectedExperience(e.target.value)}>
-                      {experienceOptions.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-                    </select>
-                  </label>
-                </div>
-              </section>
-
-              {error && (
-                <div style={S.errorBanner} role="alert" className="iv-fade-in">
-                  <Icon name="alert" size={16} />
-                  <span><strong>Couldn&apos;t start the interview.</strong> {error}</span>
-                </div>
-              )}
-            </div>
-
-            {/* ── Right: live summary + Start ── */}
-            <aside style={S.aside} className="iv-aside" aria-label="Your session">
-              {limitReached && (
-                <DailyLimitCard daily={daily} onUpgrade={() => openUpgrade('dailyInterviewLimit', { resetsAt: daily?.resetsAt })} />
-              )}
-              <SessionPanel
-                mode={mode}
-                count={questionCount}
-                minutes={estimatedMinutes}
-                difficulty={difficultyLabel}
-                role={roleLabel}
-                level={levelLabel}
-                company={selectedMode === 'company' ? effectiveCompany : ''}
-                topics={selectedMode === 'topic' ? selectedTopics : []}
-                blocker={launchBlocker}
-                canLaunch={canLaunch}
-                onLaunch={launch}
-                showKeys={!isTouchDevice}
-                daily={daily}
-                access={selectedAccess}
-                limitReached={limitReached}
-              />
-            </aside>
-          </div>
-        </div>
-
-        {/* Mobile / tablet: Start stays reachable without scrolling back up */}
-        <div style={S.launchBar} className="iv-launch-bar">
-          <div style={{ minWidth: 0 }}>
-            <strong style={S.launchBarTitle}>{mode.label}</strong>
-            <span style={{ ...S.launchBarSub, ...(launchBlocker ? { color: C.amber, fontWeight: 600 } : null) }}>
-              {launchBlocker || `${questionCount} questions, up to ${estimatedMinutes} min`}
-            </span>
-          </div>
-          <button type="button" style={{ ...S.launchBarBtn, ...(canLaunch ? null : S.btnDisabled) }} className="iv-btn-launch" disabled={!canLaunch} onClick={launch}>
-            {limitReached ? 'Go Pro' : selectedAccess === 'trial' ? 'Try free' : 'Start'}
-            <Icon name="arrow" size={16} stroke={2.4} />
-          </button>
+        <div style={{ ...S.container, maxWidth: 1120 }}>
+          <SetupScreen
+            modes={Object.entries(MODE_META)}
+            selectedMode={selectedMode}
+            onSelectMode={setSelectedMode}
+            getAccess={getModeAccess}
+            countFor={countFor}
+            onLockedClick={(value) => openUpgrade(`mode_${value}`, { trialUsed: true })}
+            difficulties={DIFFICULTIES}
+            selectedDifficulty={selectedDifficulty}
+            onSelectDifficulty={setSelectedDifficulty}
+            company={company}
+            onCompany={setCompany}
+            companyChips={companyChips}
+            topicGroups={topicGroups}
+            selectedTopics={selectedTopics}
+            onToggleTopic={toggleTopic}
+            roleOptions={roleOptions}
+            selectedRole={selectedRole}
+            onRole={setSelectedRole}
+            experienceOptions={experienceOptions}
+            selectedExperience={selectedExperience}
+            onExperience={setSelectedExperience}
+            fromProfile={fromProfile}
+            mode={mode}
+            questionCount={questionCount}
+            minutes={estimatedMinutes}
+            difficultyLabel={difficultyLabel}
+            roleLabel={roleLabel}
+            levelLabel={levelLabel}
+            canLaunch={canLaunch}
+            launchBlocker={launchBlocker}
+            onLaunch={launch}
+            limitReached={limitReached}
+            daily={daily}
+            access={selectedAccess}
+            onUpgrade={() => openUpgrade('dailyInterviewLimit', { resetsAt: daily?.resetsAt })}
+            error={error || ''}
+            showKeys={!isTouchDevice}
+            mounted={mounted}
+          />
         </div>
       </div>
     );
@@ -1237,7 +1035,7 @@ const Interview = () => {
 
         {/* ── Sticky console: where you are, how long is left ── */}
         <div ref={roomTopRef} aria-hidden="true" />
-        <section style={S.consoleCard} className={`iv-console-card${isSubmitted ? ' iv-console-static' : ''}`} aria-label="Interview progress">
+        <section style={S.consoleCard} className="iv-console-card" aria-label="Interview progress">
           <NotifBar notif={roomNotif} />
           <div style={S.consoleTop}>
             <div style={S.consoleContext}>
@@ -1305,7 +1103,7 @@ const Interview = () => {
         </section>
 
         {/* ── Question | answer (or feedback) ── */}
-        <main style={S.roomGrid} className={`iv-room-grid${isSubmitted ? ' iv-room-done' : ''}`}>
+        <main style={S.roomGrid} className="iv-room-grid">
           <QuestionDisplay
             key={`q-${questionKey}`}
             currentQuestion={currentQuestion}
@@ -1413,110 +1211,6 @@ const resultLabel = (r) => {
 // SESSION PANEL — live summary of what will be generated, plus Start
 // ═══════════════════════════════════════════════════════════════════════════
 
-const SessionPanel = ({ mode, count, minutes, difficulty, role, level, company = '', topics = [], blocker = '', canLaunch, onLaunch, showKeys = true, daily = null, access = 'open', limitReached = false }) => {
-  const isOpen = mode.group === 'interview' || mode.kind.includes('written');
-  const rows = [
-    ['Difficulty', difficulty],
-    ['Role', role],
-    ['Level', level],
-    company ? ['Company', company] : null,
-    topics.length ? ['Topics', topics.join(', ')] : null,
-  ].filter(Boolean);
-
-  const gets = isOpen
-    ? ['A score out of 100 for each answer', 'Specific fixes and a model answer', 'A full report when you finish']
-    : ['Instant marking with an explanation', 'A score and the correct answer for each', 'A full report when you finish'];
-
-  return (
-    <div style={S.panel}>
-      <div style={S.panelKicker}>Your session</div>
-
-      <div style={S.panelMode}>
-        <span key={mode.label} style={S.panelModeIcon} className="iv-pop-in"><Icon name={mode.icon} size={22} /></span>
-        <div style={{ minWidth: 0 }}>
-          <div style={S.panelModeLabel}>{mode.label}</div>
-          <div style={S.panelModeKind}>{mode.kind}</div>
-        </div>
-      </div>
-
-      <div style={S.panelStats}>
-        <div>
-          <div style={S.panelStatNum}>{count}</div>
-          <div style={S.panelStatLabel}>questions</div>
-        </div>
-        <div>
-          <div style={S.panelStatNum}>~{minutes}</div>
-          <div style={S.panelStatLabel}>minutes at most</div>
-        </div>
-      </div>
-      <div style={S.panelNote}>{mode.timeNote}</div>
-
-      <dl style={S.panelList}>
-        {rows.map(([k, v]) => (
-          <div key={k} style={S.panelRow}>
-            <dt style={S.panelRowKey}>{k}</dt>
-            <dd style={S.panelRowVal} title={v}>{v}</dd>
-          </div>
-        ))}
-      </dl>
-
-      {daily && (
-        <div style={{ marginBottom: 14, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.14)' }}>
-          <UsageMeter daily={daily} tone="dark" />
-        </div>
-      )}
-
-      <button
-        type="button"
-        style={{ ...S.panelBtn, ...(canLaunch ? null : S.panelBtnOff) }}
-        className="iv-panel-btn"
-        disabled={!canLaunch}
-        onClick={onLaunch}
-      >
-        {limitReached ? 'Go unlimited with Pro' : access === 'trial' ? 'Start free trial' : 'Start interview'}
-        <Icon name="arrow" size={18} stroke={2.4} />
-      </button>
-      <div style={{ ...S.panelFine, ...(blocker ? S.panelBlocker : null) }} role={blocker ? 'status' : undefined}>
-        {blocker || (access === 'trial' ? 'One-time free trial of a Pro mode.' : 'The timer starts when the first question appears.')}
-      </div>
-
-      <ul style={S.panelGets}>
-        {gets.map((g) => (
-          <li key={g} style={S.panelGet}>
-            <Icon name="check" size={14} stroke={2.6} style={{ marginTop: 3, color: C.cyan300 }} />
-            <span>{g}</span>
-          </li>
-        ))}
-      </ul>
-
-      {showKeys && (
-        <div style={S.panelKeys}>
-          {isOpen
-            ? <>In the room: <kbd style={S.kbd}>Enter</kbd> submits, <kbd style={S.kbd}>Shift</kbd>+<kbd style={S.kbd}>Enter</kbd> adds a line.</>
-            : <>In the room: <kbd style={S.kbd}>1</kbd>–<kbd style={S.kbd}>4</kbd> or <kbd style={S.kbd}>A</kbd>–<kbd style={S.kbd}>D</kbd> picks, <kbd style={S.kbd}>Enter</kbd> submits.</>}
-        </div>
-      )}
-    </div>
-  );
-};
-
-SessionPanel.propTypes = {
-  mode:      PropTypes.object.isRequired,
-  count:     PropTypes.number.isRequired,
-  minutes:   PropTypes.number.isRequired,
-  difficulty: PropTypes.string.isRequired,
-  role:      PropTypes.string.isRequired,
-  level:     PropTypes.string.isRequired,
-  company:   PropTypes.string,
-  topics:    PropTypes.arrayOf(PropTypes.string),
-  blocker:   PropTypes.string,
-  canLaunch: PropTypes.bool.isRequired,
-  onLaunch:  PropTypes.func.isRequired,
-  showKeys:  PropTypes.bool,
-  daily:     PropTypes.object,
-  access:    PropTypes.oneOf(['open', 'trial', 'locked']),
-  limitReached: PropTypes.bool,
-};
 // ═══════════════════════════════════════════════════════════════════════════
 // TIMER RING
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1622,21 +1316,10 @@ const GlobalStyles = () => (
 
     @media (prefers-reduced-motion: reduce) { .iv-page * { animation:none !important; transition:none !important; } }
 
-    /* Sticky console: hide the strip between navbar and card, and fade content as it slides underneath */
-    .iv-console-card { box-shadow:0 -18px 0 0 ${C.bg}, ${C.shadow} !important; }
-    .iv-console-card::before { content:''; position:absolute; left:-12px; right:-12px; top:-18px; height:18px; background:${C.bg}; z-index:-1; pointer-events:none; }
-    .iv-console-card::after  { content:''; position:absolute; left:0; right:0; top:100%; height:14px; background:linear-gradient(${C.bg}, rgba(240,244,255,0)); pointer-events:none; }
-    /* Feedback showing: the timer is gone, so the console scrolls away with the page and can never overlap the feedback */
-    .iv-console-static { position:relative !important; top:auto !important; z-index:auto !important; }
-    .iv-console-static { box-shadow:${C.shadow} !important; }
-    .iv-console-static::before, .iv-console-static::after { display:none; }
-
     .iv-launch-bar { display:none; }
     @media (min-width: 1021px) {
       .iv-question-panel { position:sticky; top:228px; }
       .iv-aside          { position:sticky; top:100px; }
-      /* feedback showing: the console no longer sticks, so the question panel sits just under the navbar */
-      .iv-room-done .iv-question-panel { top:100px; }
     }
     @media (max-width: 1020px) {
       .iv-setup-grid  { grid-template-columns:1fr !important; }

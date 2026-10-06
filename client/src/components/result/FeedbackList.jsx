@@ -83,6 +83,7 @@ const normalizeFeedback = (question) => {
       skippedPending: parsed.skippedPending === true,
       tier:         parsed.tier || "full",
       locked:       parsed.locked || null,
+      teasers:      parsed.teasers || null,
     };
   } catch { return null; }
 };
@@ -629,7 +630,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
           )}
 
           {question.skipped && !pending && !timedOut && basic && feedback?.locked?.modelAnswer && (
-            <LockedInsights locked={{ modelAnswer: true }} variant="compact" />
+            <LockedInsights locked={{ modelAnswer: true }} variant="preview" teasers={feedback?.teasers} />
           )}
 
           {objective && isEval && (
@@ -651,7 +652,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
                 <FeedbackBlock label="what worked"      value={feedback.good}    color={C.green} background={C.greenTint} />
                 <FeedbackBlock label="what was missing" value={feedback.missing} color={C.red}   background={C.redTint}   />
               </div>
-              <LockedInsights locked={feedback.locked} usedVoice={false} variant="compact" />
+              <LockedInsights locked={feedback.locked} usedVoice={false} variant="preview" teasers={feedback.teasers} />
             </>
           )}
 

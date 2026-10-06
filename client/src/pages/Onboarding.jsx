@@ -19,6 +19,7 @@ const C = {
   blu50:  '#EFF6FF',
   blu100: '#DBEAFE',
   blu200: '#BFDBFE',
+  blu300: '#93C5FD',
   blu400: '#60A5FA',
   blu500: '#3B82F6',
   blu600: '#2563EB',

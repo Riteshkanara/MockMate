@@ -92,23 +92,6 @@ const Logomark = ({ size = 36 }) => (
   </svg>
 );
 
-const MicGlyph = ({ size = 17 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <rect x="8.5" y="2" width="7" height="12" rx="3.5" fill="white" opacity="0.95"/>
-    <path d="M5 12.5a7 7 0 0 0 14 0" stroke="white" strokeWidth="2" strokeLinecap="round" fill="none"/>
-    <line x1="12" y1="19.5" x2="12" y2="22" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-    <line x1="8.5" y1="22" x2="15.5" y2="22" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-  </svg>
-);
-
-const ChevronDown = ({ size = 14, open }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-    style={{ transition: 'transform .22s cubic-bezier(.22,1,.36,1)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-    <path d="M6 9l6 6 6-6"/>
-  </svg>
-);
-
 const CloseIcon = ({ size = 13 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -150,31 +133,6 @@ const CrownEmoji = ({ size = 20 }) => (
     <path d="M6.6 13.2 7.6 20.5M14.2 10.6 12.6 15" stroke="rgba(255,255,255,.6)" strokeWidth="1.2" strokeLinecap="round" fill="none"/>
   </svg>
 );
-
-// ─── Score ring ───────────────────────────────────────────────────────────────
-const ScoreRing = ({ value = 0, size = 20, strokeW = 2, id = 'sr' }) => {
-  const radius = (size - strokeW * 2) / 2;
-  const circ   = 2 * Math.PI * radius;
-  const pct    = Math.max(0, Math.min(100, Number(value) || 0));
-  const offset = circ - (pct / 100) * circ;
-  const accent = scoreColor(pct);
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
-      style={{ transform: 'rotate(-90deg)', display: 'block', flexShrink: 0 }}>
-      <defs>
-        <linearGradient id={`sg-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor={accent} stopOpacity="0.35"/>
-          <stop offset="100%" stopColor={accent}/>
-        </linearGradient>
-      </defs>
-      <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={C.border} strokeWidth={strokeW}/>
-      <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={`url(#sg-${id})`}
-        strokeWidth={strokeW} strokeDasharray={circ}
-        strokeDashoffset={pct > 0 ? offset : circ} strokeLinecap="round"
-        style={{ transition: 'stroke-dashoffset 1.1s cubic-bezier(.16,1,.3,1)' }}/>
-    </svg>
-  );
-};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CSS
@@ -1065,7 +1023,7 @@ const Navbar = () => {
                   >
                     <span className="mm-link-emoji">{link.emoji}</span>
                     {link.label}
-                    {link.badge && <span className="mm-link-badge">{link.badge}</span>}
+                    {link.badge && <span className="mm-link-badge">{link.badge === 'AI' && !isProUser ? 'PRO' : link.badge}</span>}
                   </Link>
                 ))}
               </div>
@@ -1407,7 +1365,7 @@ const Navbar = () => {
                   <span className="mm-mob-tile-emoji">{link.emoji}</span>
                   <span className="mm-mob-tile-label">{link.label}</span>
                   {link.badge && (
-                    <span className="mm-mob-tile-badge">{link.badge}</span>
+                    <span className="mm-mob-tile-badge">{link.badge === 'AI' && !isProUser ? 'PRO' : link.badge}</span>
                   )}
                 </Link>
               ))}

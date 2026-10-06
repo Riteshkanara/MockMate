@@ -3,6 +3,7 @@ const router = express.Router();
 
 const authMiddleware = require('../middleware/authMiddleware');
 const interviewController = require('../controllers/interviewController');
+const { requirePro } = require('../middleware/planMiddleware');
 
 // --------------------------------------------------
 // START
@@ -24,6 +25,8 @@ router.get(
   interviewController.getInterviewHistory
 );
 
+router.get('/usage', authMiddleware, interviewController.getUsage);
+
 router.get(
   '/badges',
   authMiddleware,
@@ -43,15 +46,18 @@ router.get(
   interviewController.getLastSessionBreakdown
 );
 
+// Pro-only analytics (server-enforced; the client also shows a designed lock)
 router.get(
   '/blind-spots',
   authMiddleware,
+  requirePro('blindSpots'),
   interviewController.getBlindSpots
 );
 
 router.get(
   '/session-warmup',
   authMiddleware,
+  requirePro('sessionWarmup'),
   interviewController.getSessionWarmup
 );
 
@@ -65,9 +71,12 @@ router.get(
   interviewController.getInterviewMeta
 );
 
+// AI Coach + free-form AI both spend real Gemini quota, so they are Pro-only.
+// (ai-freeform powers the Coach chat, War Room and Coach insights — all Pro surfaces.)
 router.post(
   '/ai-coach',
   authMiddleware,
+  requirePro('aiCoach'),
   interviewController.getAICoach
 );
 
@@ -75,6 +84,7 @@ router.post(
 router.post(
   '/ai-freeform',
   authMiddleware,
+  requirePro('aiCoach'),
   interviewController.getAIFreeform
 );
 
@@ -96,10 +106,33 @@ router.post(
   interviewController.completeInterview
 );
 
+// Poll target for the background analysis of an answer (see interviewFlow.js).
+router.get(
+  '/:sessionId/question/:questionId/feedback',
+  authMiddleware,
+  interviewController.getQuestionFeedback
+);
+
+// Re-evaluate an already-submitted open answer (client: retryQuestion in
+// interviewService.js). Was missing → every retry 404'd.
+router.post(
+  '/:sessionId/retry/:questionId',
+  authMiddleware,
+  interviewController.retryQuestion
+);
+
 router.get(
   '/:sessionId/result',
   authMiddleware,
   interviewController.getInterviewResult
+);
+
+// Re-evaluate one answer. Plan check lives in the controller because it has one
+// exception (our own evaluator failing must stay free to retry).
+router.post(
+  '/:sessionId/retry/:questionId',
+  authMiddleware,
+  interviewController.retryQuestion
 );
 
 router.post(

@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { C, F } from "../../styles/token";
+import { Icon } from "./ResultNav";
 
 const GRADE_MAP = [
   { min: 90, grade: "S", glyph: "◆", desc: "Elite",          accent: C.violet, tint: C.violetTint, glow: C.violet  },
@@ -38,7 +39,7 @@ const ResultActions = ({ nextStepText, weakestTopic, navigate, score = 0 }) => {
       <div style={{ flex: 1 }}>
         <div
           style={{
-            fontFamily: F.mono, fontSize: 9, fontWeight: 800,
+            fontFamily: F.mono, fontSize: 10, fontWeight: 800,
             letterSpacing: "1.2px", color: grade.accent, marginBottom: 4,
           }}
         >
@@ -63,7 +64,7 @@ const ResultActions = ({ nextStepText, weakestTopic, navigate, score = 0 }) => {
           boxShadow: `0 3px 14px ${grade.accent}50`, whiteSpace: "nowrap",
         }}
       >
-        Start another →
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>Start another<Icon name="right" size={15} stroke={2.6} /></span>
       </button>
     </div>
   );

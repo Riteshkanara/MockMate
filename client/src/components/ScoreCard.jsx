@@ -4,6 +4,9 @@ import { useReducedMotion } from 'framer-motion';
 import { toPng } from 'html-to-image';
 import toast from 'react-hot-toast';
 import useAuth from '../hooks/useAuth';
+import usePlan from '../hooks/usePlan';
+import useUpgrade from '../hooks/useUpgrade';
+import ProBadge from './pro/ProBadge';
 import { getMyProfile } from '../Services/profileServices';
 import { C as TOKENS, F as TOKENS_F } from '../styles/token';
 
@@ -506,6 +509,9 @@ const ScoreCard = (props) => {
   const [profile, setProfile] = useState(null);
   const [loadState, setLoadState] = useState('loading'); // loading | ready | empty | error
   const [sharing, setSharing] = useState(false);
+  const { canUseFeature } = usePlan();
+  const { openUpgrade }   = useUpgrade();
+  const canDownload       = canUseFeature('scorecardDownload');
 
   useEffect(() => {
     let cancelled = false;
@@ -527,6 +533,7 @@ const ScoreCard = (props) => {
   const shareText = useMemo(() => profile ? buildShareText(profile) : '', [profile]);
 
   const handleDownload = async () => {
+    if (!canDownload) { openUpgrade('scorecardDownload'); return; }
     if (!cardRef.current) return;
     const id = toast.loading('Preparing your report…');
     try {
@@ -599,7 +606,9 @@ const ScoreCard = (props) => {
                 background: C.signal, boxShadow: `0 8px 20px ${C.signal}40`,
               }}
             >
-              Download report
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                Download report{!canDownload && <ProBadge variant="pro" style={{ background: 'rgba(255,255,255,.22)', boxShadow: 'none' }} />}
+              </span>
             </button>
             <button
               onClick={handleShare}

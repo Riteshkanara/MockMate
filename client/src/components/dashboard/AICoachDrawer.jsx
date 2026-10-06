@@ -71,7 +71,9 @@ const AICoachDrawer = ({ open, onClose, irs, archetype, topTier, weakest, strong
         setAnalysis('Unable to generate analysis. Try again.');
       }
     } catch (err) {
-      setAnalysis(err?.isQuota
+      setAnalysis(err?.response?.status === 403 && err?.response?.data?.error === 'plan_required'
+        ? 'AI COACH IS A PRO FEATURE\n\nYour plan no longer includes the AI Coach. Renew on the Pricing page to get it back. Your sessions and scores are all still saved.'
+        : err?.isQuota
         ? 'QUOTA EXHAUSTED\n\nGemini free-tier limit (20 req/day) used up. Open server/.env, set GEMINI_MODEL=gemini-2.5-flash, restart. Resets at midnight Pacific.'
         : 'Could not reach AI coach. Check your connection and try again.'
       );

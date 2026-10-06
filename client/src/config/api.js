@@ -1,5 +1,27 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+// ── Warm-server memory ─────────────────────────────────────────────────────
+// Render's free tier sleeps after ~15 min without traffic. Whenever we get a
+// successful /health reply we remember the time. If that was < 10 min ago the
+// server is (almost certainly) still awake, so the app can skip the blocking
+// "waking up" gate and render instantly. All storage access is guarded —
+// private mode / disabled storage simply means "not known warm".
+const SERVER_OK_KEY = 'mm_server_ok_at';
+const WARM_TTL_MS   = 10 * 60 * 1000;
+
+export const markServerWarm = () => {
+  try { localStorage.setItem(SERVER_OK_KEY, String(Date.now())); } catch { /* ignore */ }
+};
+
+export const isServerLikelyWarm = () => {
+  try {
+    const t = Number(localStorage.getItem(SERVER_OK_KEY));
+    return t > 0 && Date.now() - t < WARM_TTL_MS;
+  } catch {
+    return false;
+  }
+};
+
 // ── Keep-alive ping ────────────────────────────────────────────────────────
 // Render free tier sleeps after 15 min of inactivity.
 // We ping every 10 min so the server stays warm during an active session.
@@ -12,11 +34,12 @@ export const startKeepAlive = () => {
 
   const ping = async () => {
     try {
-      await fetch(`${API_BASE}/health`, {
+      const res = await fetch(`${API_BASE}/health`, {
         method: 'GET',
         // No-cache so the request always hits the server
         headers: { 'Cache-Control': 'no-cache' },
       });
+      if (res.ok) markServerWarm();
     } catch {
       // silently ignore — server might be momentarily unavailable
     }

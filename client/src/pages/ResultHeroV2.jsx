@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { C, F } from "../styles/token";
+import ProBadge from "../components/pro/ProBadge";
 
 const clamp = (v, min = 0, max = 100) =>
   Math.max(min, Math.min(max, Number.isFinite(Number(v)) ? Number(v) : 0));
@@ -85,7 +86,7 @@ const ScoreRing = ({ score, g }) => {
         <span style={{ fontFamily: F.mono, fontSize: 14, color: "rgba(255,255,255,.28)", marginTop: 2 }}>/100</span>
         <div style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 14px", borderRadius: 999, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.24)" }}>
           <span style={{ fontFamily: F.display, fontSize: 14, fontWeight: 900, color: "#fff" }}>{g.g}</span>
-          <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 700, letterSpacing: ".4px", color: "rgba(255,255,255,.88)" }}>{g.desc}</span>
+          <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".4px", color: "rgba(255,255,255,.88)" }}>{g.desc}</span>
         </div>
       </div>
     </div>
@@ -102,13 +103,13 @@ const MetricCard = ({ label, icon, value, small, foot, valueColor = "#fff" }) =>
       onMouseLeave={() => setHov(false)}
       style={{ padding: "11px 12px", borderRadius: 12, background: hov ? "rgba(2,20,55,.28)" : "rgba(2,20,55,.19)", border: "1px solid rgba(255,255,255,.15)", backdropFilter: "blur(5px)", transition: "background .18s, transform .18s", transform: hov ? "translateY(-2px)" : "none" }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontFamily: F.mono, fontSize: 8, letterSpacing: ".7px", color: "rgba(255,255,255,.5)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontFamily: F.mono, fontSize: 10, letterSpacing: ".7px", color: "rgba(255,255,255,.5)" }}>
         <span>{label}</span><span>{icon}</span>
       </div>
       <div style={{ marginTop: 6, fontFamily: F.display, fontSize: 21, fontWeight: 900, color: valueColor, lineHeight: 1 }}>
         {value}{small && <span style={{ fontFamily: F.mono, fontSize: 10, color: "rgba(255,255,255,.35)", fontWeight: 400 }}>{small}</span>}
       </div>
-      <div style={{ marginTop: 5, color: "rgba(255,255,255,.58)", fontFamily: F.mono, fontSize: 8.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{foot}</div>
+      <div style={{ marginTop: 5, color: "rgba(255,255,255,.58)", fontFamily: F.mono, fontSize: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{foot}</div>
     </div>
   );
 };
@@ -121,7 +122,7 @@ const BtnGhost  = ({ children, onClick }) => { const [h, setH] = useState(false)
 BtnGhost.propTypes = { children: PropTypes.node.isRequired, onClick: PropTypes.func };
 
 // ═══ EXPORT ══════════════════════════════════════════════════════════════════
-export const ResultHeroV2 = ({ result, navigate, onCopy, copied, onDownloadImage, downloading }) => {
+export const ResultHeroV2 = ({ result, navigate, onCopy, copied, onDownloadImage, downloading, downloadLocked = false }) => {
   const { score = 0, totalQuestions = 0, answeredQuestions = 0, skippedQuestions = 0,
           strongAnswers = 0, weakAnswers = 0, averageTime = 0, trendDelta = null } = result;
 
@@ -157,7 +158,7 @@ export const ResultHeroV2 = ({ result, navigate, onCopy, copied, onDownloadImage
       {/* header row */}
       <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
         <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: "1.8px", color: "rgba(255,255,255,.85)", textTransform: "uppercase" }}>session complete · full stack track</span>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 9px", borderRadius: 999, background: "rgba(255,255,255,.10)", border: "1px solid rgba(255,255,255,.20)", fontFamily: F.mono, fontSize: 8.5, fontWeight: 700, letterSpacing: ".5px", color: "rgba(255,255,255,.74)", textTransform: "uppercase" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 9px", borderRadius: 999, background: "rgba(255,255,255,.10)", border: "1px solid rgba(255,255,255,.20)", fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: "rgba(255,255,255,.74)", textTransform: "uppercase" }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#79F2B2", boxShadow: "0 0 0 3px rgba(121,242,178,.14)", display: "inline-block", animation: "rhLive 2.2s ease-in-out infinite" }} />
           scored just now
         </div>
@@ -185,7 +186,13 @@ export const ResultHeroV2 = ({ result, navigate, onCopy, copied, onDownloadImage
             <BtnWhite onClick={() => navigate("/interview")}>⚡ Start another interview</BtnWhite>
             <BtnGhost onClick={() => navigate("/dashboard")}>📊 Dashboard</BtnGhost>
             <BtnGhost onClick={onCopy}>{copied ? "✓ Copied!" : "📋 Copy summary"}</BtnGhost>
-            <BtnGhost onClick={onDownloadImage} disabled={downloading}>{downloading ? "⏳ Preparing…" : "⬇ Download image"}</BtnGhost>
+            <BtnGhost onClick={onDownloadImage} disabled={downloading}>
+              {downloading ? "⏳ Preparing…" : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  ⬇ Download image{downloadLocked && <ProBadge variant="pro" />}
+                </span>
+              )}
+            </BtnGhost>
           </div>
         </div>
       </div>
@@ -223,4 +230,5 @@ ResultHeroV2.propTypes = {
   copied:          PropTypes.bool.isRequired,
   onDownloadImage: PropTypes.func.isRequired,
   downloading:     PropTypes.bool.isRequired,
+  downloadLocked:  PropTypes.bool,
 };

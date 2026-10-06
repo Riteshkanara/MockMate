@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState, useCallback, useRef, Component } from 're
 import { useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import useAuth from '../hooks/useAuth';
+import usePlan from '../hooks/usePlan';
+import useUpgrade from '../hooks/useUpgrade';
+import PlanStrip from '../components/pro/PlanStrip';
 import { getDashboardAnalytics, startInterview, fixBadges } from '../Services/interviewService';
 import PageLoader from '../components/PageLoader';
 import Button from '../components/Button';
@@ -344,7 +347,14 @@ const Dashboard = () => {
   const [loadError,  setLoadError]  = useState(false);
   const [retrying,   setRetrying]   = useState(false);
   const [starting,   setStarting]   = useState(false);
-  const [coachOpen,  setCoachOpen]  = useState(false);
+  const [coachOpen,  setCoachOpenRaw]  = useState(false);
+  const { isPro: hasCoachAccess } = usePlan();
+  const { openUpgrade } = useUpgrade();
+  // Free users get the upgrade modal instead of a drawer that would only show an error.
+  const setCoachOpen = useCallback((value) => {
+    if (value && !hasCoachAccess) { openUpgrade('aiCoach'); return; }
+    setCoachOpenRaw(value);
+  }, [hasCoachAccess, openUpgrade]);
   const [toast,      setToast]      = useState(null);
   const [fixingBadges, setFixingBadges] = useState(false);
 
@@ -479,6 +489,8 @@ const Dashboard = () => {
       />
 
       <div style={S.container}>
+
+        <PlanStrip />
 
         <AnimatedSection delay={0}>
           <div style={S.strip} className="mm-strip">

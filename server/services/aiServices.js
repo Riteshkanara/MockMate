@@ -4,7 +4,7 @@ const { ROLES, EXPERIENCE_LEVELS, resolveRole, resolveExperience } = require('..
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'
 
 const LIMITS = {
   MAX_RETRIES: 2,
@@ -17,6 +17,21 @@ const LIMITS = {
   TIME_MCQ: 45,
   TIME_APTITUDE: 60,
   TIME_FALLBACK_OPEN: 90,
+  // Per-request hard ceiling on a single Gemini call. Without this, a
+  // stalled request has no ceiling at all and can hang well past what a
+  // user will wait for before the retry/fallback logic ever kicks in.
+  REQUEST_TIMEOUT_MS: 12000,
+};
+
+// Answer evaluation sits directly in the user's "submit → see feedback"
+// path, so it gets a tighter timeout and a single retry (fail fast, fall
+// back to the static evaluator) instead of the more patient defaults used
+// for one-time, session-start question generation.
+const EVAL_LIMITS = {
+  REQUEST_TIMEOUT_MS: 9000,
+  MAX_RETRIES: 1,
+  RETRY_DELAY: 800,
+  MAX_DELAY: 3000,
 };
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -47,7 +62,10 @@ const isQuotaError = error => {
 const isTemporaryError = error =>
   [429, 500, 502, 503, 504].includes(Number(getStatus(error)));
 
-const getRetryDelay = (error, attempt) => {
+const getRetryDelay = (error, attempt, options = {}) => {
+  const baseDelay = options.retryDelay ?? LIMITS.RETRY_DELAY;
+  const maxDelay  = options.maxDelay   ?? LIMITS.MAX_DELAY;
+
   const retryInfo = error?.details?.find?.(
     detail =>
       detail?.['@type']?.includes('RetryInfo') ||
@@ -56,11 +74,16 @@ const getRetryDelay = (error, attempt) => {
 
   if (retryInfo?.retryDelay) {
     const seconds = parseFloat(retryInfo.retryDelay);
-    if (!Number.isNaN(seconds)) return Math.min(seconds * 1000, LIMITS.MAX_DELAY);
+    if (!Number.isNaN(seconds)) return Math.min(seconds * 1000, maxDelay);
   }
 
-  return Math.min(LIMITS.RETRY_DELAY * Math.pow(2, attempt), LIMITS.MAX_DELAY);
+  return Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
 };
+
+const isTimeoutError = error =>
+  error?.name === 'AbortError' ||
+  getErrorMessage(error).toLowerCase().includes('aborted') ||
+  getErrorMessage(error).toLowerCase().includes('timeout');
 
 const withRetry = async (request, options = {}) => {
   if (!process.env.GEMINI_API_KEY) {
@@ -70,6 +93,10 @@ const withRetry = async (request, options = {}) => {
   const maxRetries = Number.isInteger(options.maxRetries)
     ? options.maxRetries
     : LIMITS.MAX_RETRIES;
+
+  const timeoutMs = Number.isFinite(options.timeoutMs)
+    ? options.timeoutMs
+    : LIMITS.REQUEST_TIMEOUT_MS;
 
   let lastError = null;
 
@@ -86,6 +113,15 @@ const withRetry = async (request, options = {}) => {
       if (request.config?.maxOutputTokens) {
         generationConfig.maxOutputTokens = request.config.maxOutputTokens;
       }
+      if (request.config?.thinkingConfig) {
+        generationConfig.thinkingConfig = request.config.thinkingConfig;
+      }
+      // Hard per-attempt ceiling — without this a stalled call can hang
+      // indefinitely and the retry/fallback path never gets a chance to
+      // kick in, which is exactly the kind of wait we want to eliminate.
+      if (timeoutMs) {
+        generationConfig.abortSignal = AbortSignal.timeout(timeoutMs);
+      }
 
       const response = await ai.models.generateContent({
         model: MODEL,
@@ -100,8 +136,10 @@ const withRetry = async (request, options = {}) => {
     } catch (error) {
       lastError = error;
 
+      const timedOut = isTimeoutError(error);
+
       console.error(
-        `Gemini request failed. Attempt ${attempt + 1}/${maxRetries + 1}:`,
+        `Gemini request failed. Attempt ${attempt + 1}/${maxRetries + 1}${timedOut ? ' (timed out)' : ''}:`,
         getErrorMessage(error)
       );
 
@@ -109,10 +147,13 @@ const withRetry = async (request, options = {}) => {
         console.error('Gemini quota error — aborting retries:', getErrorMessage(error));
         throw error;
       }
-      if (!isTemporaryError(error)) throw error;
+      if (!timedOut && !isTemporaryError(error)) throw error;
       if (attempt === maxRetries) break;
 
-      const delay = getRetryDelay(error, attempt);
+      const delay = getRetryDelay(error, attempt, {
+        retryDelay: options.retryDelayMs,
+        maxDelay:   options.maxDelayMs,
+      });
       await sleep(delay);
     }
   }
@@ -864,89 +905,9 @@ Return ONLY JSON.
 
 
 
-const evaluateOpenAnswer = async ({ question, answer, topic, voiceMetrics = null }) => {
-  const questionText  = typeof question === 'string' ? question : question?.text || '';
-  const userAnswer    = String(answer || '').trim();
-  const questionTopic = topic || (typeof question === 'string' ? 'General' : question?.topic) || 'General';
- 
-  if (!userAnswer) {
-    return {
-      score: 0,
-      feedback: 'No answer was provided.',
-      good: 'No answer was provided.',
-      missing: 'The question was not answered.',
-      idealHint: 'Start with the main concept or definition asked by the question.',
-      tip: 'Answer the question directly first, then explain your reasoning.',
-      sampleAnswer: 'Start with the main definition or idea, explain it briefly, and give an example if appropriate.',
-      aiAvailable: true,
-      fallback: false,
-    };
-  }
- 
-  // ── Voice-metrics block (injected only when available) ──────────────────
-  const voiceBlock = voiceMetrics
-    ? `
-Voice delivery metrics (collected from the student's microphone — these are
-measured values, not estimates; use them as ground truth):
-- Words per minute       : ${voiceMetrics.wpm?.wpm ?? '—'} wpm  (${voiceMetrics.wpm?.label ?? '—'})
-- Pace consistency       : ${voiceMetrics.wpm?.consistency
-    ? `${voiceMetrics.wpm.consistency.rating} (${voiceMetrics.wpm.consistency.firstHalfWpm} wpm first half → ${voiceMetrics.wpm.consistency.secondHalfWpm} wpm second half)`
-    : '—'}
-- Filler word count      : ${voiceMetrics.fillerWords?.total ?? '—'} total  |  rate: ${voiceMetrics.fillerWords?.rate ?? '—'} per 100 words
-- Filler breakdown       : ${JSON.stringify(voiceMetrics.fillerWords?.breakdown ?? [])}
-- Filler positional trend: ${voiceMetrics.fillerWords?.trend ?? '—'} (front-loaded = nerves settling, back-loaded = losing structure, even = spread out)
-- Pauses                 : ${voiceMetrics.pauses
-    ? `${voiceMetrics.pauses.rating} — ${voiceMetrics.pauses.deadAirCount} dead-air gap(s) 4s+ (longest ${voiceMetrics.pauses.longestPauseSeconds}s), ${voiceMetrics.pauses.thinkingPauseCount} shorter thinking pause(s)`
-    : '—'}
-- Answer length          : ${voiceMetrics.answerLength?.wordCount ?? '—'} words  (${voiceMetrics.answerLength?.rating ?? '—'}; target ${voiceMetrics.answerLength?.min ?? '—'}–${voiceMetrics.answerLength?.max ?? '—'})
-- Vocabulary TTR         : ${voiceMetrics.vocabularyDiversity?.ttr ?? '—'}  (${voiceMetrics.vocabularyDiversity?.label ?? '—'}) — ${voiceMetrics.vocabularyDiversity?.uniqueWords ?? '—'} unique / ${voiceMetrics.vocabularyDiversity?.totalWords ?? '—'} total words
-- Sentence clarity       : avg ${voiceMetrics.sentenceClarity?.avgWordsPerSentence ?? '—'} words/sentence  (${voiceMetrics.sentenceClarity?.label ?? '—'})
-- Computed delivery score: ${voiceMetrics.deliveryScore ?? '—'} / 100  (pre-computed from pace + fillers + pauses + length — do not recompute, use it as a calibration anchor)
-- Recording length       : ${voiceMetrics.durationSeconds != null ? voiceMetrics.durationSeconds.toFixed(1) + 's' : '—'}
-
-Instructions for using these metrics:
-- Use ALL of the above as ground truth to populate toneAnalysis, vocabularyRichness, hesitationPattern, and deliveryTip.
-- toneAnalysis.formalPct / casualPct should reflect the CONTENT language style, not the WPM.
-- vocabularyRichness.uniqueRatio must match the TTR above (${voiceMetrics.vocabularyDiversity?.ttr ?? '—'}) — do not guess a different number.
-- hesitationPattern.score must be INVERSELY related to filler rate: high fillers → low score.
-- hesitationPattern.where: use the filler positional trend and pause data above (not a fresh inference from the transcript alone).
-- deliveryTip: one specific, actionable coaching sentence (max 30 words) targeting the single weakest measured metric.
-`
-    : 'No voice metrics were recorded (student typed their answer). Set deliveryTip, toneAnalysis, vocabularyRichness, and hesitationPattern all to null.';
- 
-  const prompt = `
-You are a strict but fair technical placement interviewer and speech coach.
- 
-Question:
-${questionText}
- 
-Topic:
-${questionTopic}
- 
-Student Answer:
-${userAnswer}
- 
-${voiceBlock}
- 
-────────────────────────────────────────────
-CONTENT EVALUATION (score 0–100):
- 
-Evaluate on:
-1. Correctness — are the technical claims accurate?
-2. Technical depth — does the student show real understanding?
-3. Relevance — does the answer address exactly what was asked?
-4. Clarity — is it structured and easy to follow?
-5. Completeness — are the key points covered?
-6. Practical reasoning — examples or applied thinking where appropriate.
- 
-RULES:
-- Concise but technically correct answers can score highly.
-- Penalise incorrect technical claims and question-avoidance.
-- For behavioural questions, evaluate relevance, clarity, ownership,
-  reasoning, and stated outcome.
-- Do not require examples when the question does not warrant them.
- 
-────────────────────────────────────────────
+// ── Static analysis instructions (STAR / keywords / confidence / follow-ups / voice) ──
+// Shared by evaluateOpenAnswer (single-shot) and enrichOpenAnswer (background).
+const ENRICHMENT_INSTRUCTIONS = `────────────────────────────────────────────
 STAR METHOD BREAKDOWN:
  
 Assess how well the student structured their answer using the STAR framework.
@@ -1010,7 +971,95 @@ deliveryTip:
   and the content of the answer. Max 30 words.
   If no voice metrics were recorded, set deliveryTip to null.
  
+`;
+
+// ── Voice-metrics prompt block (shared by the full and enrichment evaluators) ──
+const buildVoiceBlock = voiceMetrics =>
+  voiceMetrics
+    ? `
+Voice delivery metrics (collected from the student's microphone — these are
+measured values, not estimates; use them as ground truth):
+- Words per minute       : ${voiceMetrics.wpm?.wpm ?? '—'} wpm  (${voiceMetrics.wpm?.label ?? '—'})
+- Pace consistency       : ${voiceMetrics.wpm?.consistency
+    ? `${voiceMetrics.wpm.consistency.rating} (${voiceMetrics.wpm.consistency.firstHalfWpm} wpm first half → ${voiceMetrics.wpm.consistency.secondHalfWpm} wpm second half)`
+    : '—'}
+- Filler word count      : ${voiceMetrics.fillerWords?.total ?? '—'} total  |  rate: ${voiceMetrics.fillerWords?.rate ?? '—'} per 100 words
+- Filler breakdown       : ${JSON.stringify(voiceMetrics.fillerWords?.breakdown ?? [])}
+- Filler positional trend: ${voiceMetrics.fillerWords?.trend ?? '—'} (front-loaded = nerves settling, back-loaded = losing structure, even = spread out)
+- Pauses                 : ${voiceMetrics.pauses
+    ? `${voiceMetrics.pauses.rating} — ${voiceMetrics.pauses.deadAirCount} dead-air gap(s) 4s+ (longest ${voiceMetrics.pauses.longestPauseSeconds}s), ${voiceMetrics.pauses.thinkingPauseCount} shorter thinking pause(s)`
+    : '—'}
+- Answer length          : ${voiceMetrics.answerLength?.wordCount ?? '—'} words  (${voiceMetrics.answerLength?.rating ?? '—'}; target ${voiceMetrics.answerLength?.min ?? '—'}–${voiceMetrics.answerLength?.max ?? '—'})
+- Vocabulary TTR         : ${voiceMetrics.vocabularyDiversity?.ttr ?? '—'}  (${voiceMetrics.vocabularyDiversity?.label ?? '—'}) — ${voiceMetrics.vocabularyDiversity?.uniqueWords ?? '—'} unique / ${voiceMetrics.vocabularyDiversity?.totalWords ?? '—'} total words
+- Sentence clarity       : avg ${voiceMetrics.sentenceClarity?.avgWordsPerSentence ?? '—'} words/sentence  (${voiceMetrics.sentenceClarity?.label ?? '—'})
+- Computed delivery score: ${voiceMetrics.deliveryScore ?? '—'} / 100  (pre-computed from pace + fillers + pauses + length — do not recompute, use it as a calibration anchor)
+- Recording length       : ${voiceMetrics.durationSeconds != null ? voiceMetrics.durationSeconds.toFixed(1) + 's' : '—'}
+
+Instructions for using these metrics:
+- Use ALL of the above as ground truth to populate toneAnalysis, vocabularyRichness, hesitationPattern, and deliveryTip.
+- toneAnalysis.formalPct / casualPct should reflect the CONTENT language style, not the WPM.
+- vocabularyRichness.uniqueRatio must match the TTR above (${voiceMetrics.vocabularyDiversity?.ttr ?? '—'}) — do not guess a different number.
+- hesitationPattern.score must be INVERSELY related to filler rate: high fillers → low score.
+- hesitationPattern.where: use the filler positional trend and pause data above (not a fresh inference from the transcript alone).
+- deliveryTip: one specific, actionable coaching sentence (max 30 words) targeting the single weakest measured metric.
+`
+    : 'No voice metrics were recorded (student typed their answer). Set deliveryTip, toneAnalysis, vocabularyRichness, and hesitationPattern all to null.';
+
+const evaluateOpenAnswer = async ({ question, answer, topic, voiceMetrics = null }) => {
+  const questionText  = typeof question === 'string' ? question : question?.text || '';
+  const userAnswer    = String(answer || '').trim();
+  const questionTopic = topic || (typeof question === 'string' ? 'General' : question?.topic) || 'General';
+ 
+  if (!userAnswer) {
+    return {
+      score: 0,
+      feedback: 'No answer was provided.',
+      good: 'No answer was provided.',
+      missing: 'The question was not answered.',
+      idealHint: 'Start with the main concept or definition asked by the question.',
+      tip: 'Answer the question directly first, then explain your reasoning.',
+      sampleAnswer: 'Start with the main definition or idea, explain it briefly, and give an example if appropriate.',
+      aiAvailable: true,
+      fallback: false,
+    };
+  }
+ 
+  // ── Voice-metrics block (injected only when available) ──────────────────
+  const voiceBlock = buildVoiceBlock(voiceMetrics);
+ 
+  const prompt = `
+You are a strict but fair technical placement interviewer and speech coach.
+ 
+Question:
+${questionText}
+ 
+Topic:
+${questionTopic}
+ 
+Student Answer:
+${userAnswer}
+ 
+${voiceBlock}
+ 
 ────────────────────────────────────────────
+CONTENT EVALUATION (score 0–100):
+ 
+Evaluate on:
+1. Correctness — are the technical claims accurate?
+2. Technical depth — does the student show real understanding?
+3. Relevance — does the answer address exactly what was asked?
+4. Clarity — is it structured and easy to follow?
+5. Completeness — are the key points covered?
+6. Practical reasoning — examples or applied thinking where appropriate.
+ 
+RULES:
+- Concise but technically correct answers can score highly.
+- Penalise incorrect technical claims and question-avoidance.
+- For behavioural questions, evaluate relevance, clarity, ownership,
+  reasoning, and stated outcome.
+- Do not require examples when the question does not warrant them.
+ 
+${ENRICHMENT_INSTRUCTIONS}────────────────────────────────────────────
 Return ONLY valid JSON matching the schema below. No markdown, no extra keys.
 `;
  
@@ -1109,6 +1158,14 @@ Return ONLY valid JSON matching the schema below. No markdown, no extra keys.
         responseMimeType: 'application/json',
         responseJsonSchema: EVAL_SCHEMA,
       },
+    }, {
+      // Fail fast on the eval path — a user is actively waiting to see
+      // their feedback, so we'd rather drop to the static fallback quickly
+      // than keep them staring at a spinner through a long retry chain.
+      maxRetries:  EVAL_LIMITS.MAX_RETRIES,
+      timeoutMs:   EVAL_LIMITS.REQUEST_TIMEOUT_MS,
+      retryDelayMs: EVAL_LIMITS.RETRY_DELAY,
+      maxDelayMs:   EVAL_LIMITS.MAX_DELAY,
     });
  
     const parsed = parseJson(result.text);
@@ -1204,6 +1261,13 @@ Return ONLY JSON.
           required: ['keyIdea', 'commonMistake', 'modelAnswer'],
         },
       },
+    }, {
+      // This now runs in the background after skip has already responded
+      // to the client (see interviewController), so it no longer costs the
+      // user any wait time — but it's still bounded so a stuck request
+      // doesn't linger indefinitely on the server.
+      maxRetries: 1,
+      timeoutMs:  EVAL_LIMITS.REQUEST_TIMEOUT_MS,
     });
 
     const parsed = parseJson(result.text);
@@ -1432,9 +1496,288 @@ const generateFreeform = async (prompt, maxTokens = LIMITS.DEFAULT_TOKENS) => {
   }
 };
 
+// ═════════════════════════════════════════════════════════════════════════════
+// SPLIT EVALUATION — fast verdict now, rich analysis in the background
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// evaluateOpenAnswer() asks Gemini for ~15 fields in ONE call, so the student
+// stares at a spinner until the slowest field (sample answer, STAR, voice
+// analysis…) is written. These two functions split that work:
+//
+//   evaluateOpenAnswerFast  → score + good / missing / idealHint / tip
+//                             (small output ⇒ returns in a couple of seconds)
+//   enrichOpenAnswer        → sample answer, STAR, keywords, confidence,
+//                             follow-ups, voice analysis (runs AFTER the
+//                             response has gone out; the UI fills it in)
+//
+// evaluateOpenAnswer() itself is untouched and still powers "Retry evaluation".
+
+// Small helper: logs how long an AI call took so real numbers are available.
+const timed = async (label, fn) => {
+  const t0 = Date.now();
+  try {
+    return await fn();
+  } finally {
+    console.log(`[ai] ${label} ${Date.now() - t0}ms`);
+  }
+};
+
+// Optional, opt-in latency knob. Leave GEMINI_FAST_THINKING_BUDGET unset for
+// unchanged behaviour; set it (e.g. 0) if your model supports a thinking
+// budget and you want the fast verdict even quicker.
+const FAST_THINKING_BUDGET = (() => {
+  const raw = process.env.GEMINI_FAST_THINKING_BUDGET;
+  if (raw === undefined || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+})();
+
+const FAST_EVAL_SCHEMA = {
+  type: 'object',
+  properties: {
+    score:     { type: 'number' },
+    good:      { type: 'string' },
+    missing:   { type: 'string' },
+    idealHint: { type: 'string' },
+    tip:       { type: 'string' },
+  },
+  required: ['score', 'good', 'missing', 'idealHint', 'tip'],
+};
+
+const evaluateOpenAnswerFast = async ({ question, answer, topic }) => {
+  const questionText  = typeof question === 'string' ? question : question?.text || '';
+  const userAnswer    = String(answer || '').trim();
+  const questionTopic = topic || (typeof question === 'string' ? 'General' : question?.topic) || 'General';
+
+  // Empty answers never need the model — reuse the original instant path.
+  if (!userAnswer) return evaluateOpenAnswer({ question, answer, topic });
+
+  const prompt = `
+You are a strict but fair technical placement interviewer.
+
+Question:
+${questionText}
+
+Topic:
+${questionTopic}
+
+Student Answer:
+${userAnswer}
+
+────────────────────────────────────────────
+CONTENT EVALUATION (score 0–100):
+
+Evaluate on:
+1. Correctness — are the technical claims accurate?
+2. Technical depth — does the student show real understanding?
+3. Relevance — does the answer address exactly what was asked?
+4. Clarity — is it structured and easy to follow?
+5. Completeness — are the key points covered?
+6. Practical reasoning — examples or applied thinking where appropriate.
+
+RULES:
+- Concise but technically correct answers can score highly.
+- Penalise incorrect technical claims and question-avoidance.
+- For behavioural questions, evaluate relevance, clarity, ownership,
+  reasoning, and stated outcome.
+- Do not require examples when the question does not warrant them.
+
+────────────────────────────────────────────
+Then write four short pieces of feedback:
+- good      : what the answer did well (1–2 sentences, specific to this answer)
+- missing   : the most important gaps or errors (1–2 sentences, specific)
+- idealHint : one sentence on what a top answer would centre on, without giving the full answer away
+- tip       : one specific, actionable improvement for next time
+
+Return ONLY valid JSON matching the schema. No markdown, no extra keys.
+`;
+
+  try {
+    const result = await withRetry({
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: FAST_EVAL_SCHEMA,
+        ...(FAST_THINKING_BUDGET !== null
+          ? { thinkingConfig: { thinkingBudget: FAST_THINKING_BUDGET } }
+          : {}),
+      },
+    }, {
+      // Same reasoning as evaluateOpenAnswer: this is the primary user-facing
+      // eval path now, so fail fast and let the caller fall back rather than
+      // hold the student on a spinner through a long retry chain.
+      maxRetries:  EVAL_LIMITS.MAX_RETRIES,
+      timeoutMs:   EVAL_LIMITS.REQUEST_TIMEOUT_MS,
+      retryDelayMs: EVAL_LIMITS.RETRY_DELAY,
+      maxDelayMs:   EVAL_LIMITS.MAX_DELAY,
+    });
+
+    const parsed = parseJson(result.text);
+    let score = Number(parsed.score);
+    if (!Number.isFinite(score)) throw new Error('Gemini returned an invalid score.');
+    score = Math.max(0, Math.min(100, Math.round(score)));
+
+    return {
+      score,
+      good:      String(parsed.good      || '').trim(),
+      missing:   String(parsed.missing   || '').trim(),
+      idealHint: String(parsed.idealHint || '').trim(),
+      tip:       String(parsed.tip       || '').trim(),
+      aiAvailable: true,
+      fallback: false,
+    };
+  } catch (error) {
+    console.error('Gemini evaluateOpenAnswerFast error:', getErrorMessage(error));
+    return fallbackEval({ userAnswer });
+  }
+};
+
+const ENRICH_NOTE_SCORE = {
+  type: 'object',
+  properties: { score: { type: 'number' }, note: { type: 'string' } },
+  required: ['score', 'note'],
+};
+
+const ENRICH_SCHEMA = {
+  type: 'object',
+  properties: {
+    sampleAnswer: { type: 'string' },
+    deliveryTip:  { type: 'string' },
+    starBreakdown: {
+      type: 'object',
+      properties: {
+        S: ENRICH_NOTE_SCORE, T: ENRICH_NOTE_SCORE, A: ENRICH_NOTE_SCORE, R: ENRICH_NOTE_SCORE,
+        overall: { type: 'string' },
+      },
+      required: ['S', 'T', 'A', 'R', 'overall'],
+    },
+    followUpQuestions: { type: 'array', items: { type: 'string' } },
+    keywordCoverage: {
+      type: 'object',
+      properties: {
+        hit:    { type: 'array', items: { type: 'string' } },
+        missed: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['hit', 'missed'],
+    },
+    confidenceScore: {
+      type: 'object',
+      properties: {
+        score:      { type: 'number' },
+        label:      { type: 'string' },
+        formalPct:  { type: 'number' },
+        hedgingPct: { type: 'number' },
+        note:       { type: 'string' },
+      },
+      required: ['score', 'label', 'note'],
+    },
+    toneAnalysis: {
+      type: 'object',
+      properties: {
+        score: { type: 'number' }, label: { type: 'string' },
+        formalPct: { type: 'number' }, casualPct: { type: 'number' }, note: { type: 'string' },
+      },
+      required: ['score', 'label', 'note'],
+    },
+    vocabularyRichness: {
+      type: 'object',
+      properties: {
+        score: { type: 'number' }, label: { type: 'string' },
+        uniqueRatio: { type: 'number' }, note: { type: 'string' },
+      },
+      required: ['score', 'label', 'note'],
+    },
+    hesitationPattern: {
+      type: 'object',
+      properties: {
+        score: { type: 'number' }, pattern: { type: 'string' },
+        where: { type: 'string' }, note: { type: 'string' },
+      },
+      required: ['score', 'pattern', 'note'],
+    },
+  },
+  required: ['sampleAnswer', 'starBreakdown', 'followUpQuestions', 'keywordCoverage', 'confidenceScore'],
+};
+
+// Returns { ok: true, fields } on success, { ok: false } on any failure.
+// There is deliberately NO heuristic fallback here: the fast verdict has
+// already been shown, so a failed enrichment should simply leave the extra
+// sections out rather than show made-up analysis.
+const enrichOpenAnswer = async ({ question, answer, topic, voiceMetrics = null, fast = {} }) => {
+  const questionText  = typeof question === 'string' ? question : question?.text || '';
+  const userAnswer    = String(answer || '').trim();
+  const questionTopic = topic || (typeof question === 'string' ? 'General' : question?.topic) || 'General';
+  if (!userAnswer) return { ok: false };
+
+  const voiceBlock = buildVoiceBlock(voiceMetrics);
+
+  const prompt = `
+You are a strict but fair technical placement interviewer and speech coach.
+
+Question:
+${questionText}
+
+Topic:
+${questionTopic}
+
+Student Answer:
+${userAnswer}
+
+The content has ALREADY been scored and the student has seen this verdict.
+Stay consistent with it — do not contradict it and do not output a new score:
+- Score   : ${Number.isFinite(Number(fast.score)) ? Math.round(Number(fast.score)) : '—'} / 100
+- Good    : ${fast.good || '—'}
+- Missing : ${fast.missing || '—'}
+
+${voiceBlock}
+
+────────────────────────────────────────────
+SAMPLE ANSWER:
+
+Write a strong model answer to THIS question (about 80–140 words) that would
+score 90+, in the first person, as a candidate would say it in an interview.
+
+${ENRICHMENT_INSTRUCTIONS}────────────────────────────────────────────
+Return ONLY valid JSON matching the schema below. No markdown, no extra keys.
+`;
+
+  try {
+    const result = await withRetry({
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: ENRICH_SCHEMA,
+      },
+    });
+    const parsed = parseJson(result.text);
+
+    return {
+      ok: true,
+      fields: {
+        sampleAnswer:       String(parsed.sampleAnswer || '').trim(),
+        deliveryTip:        parsed.deliveryTip ? String(parsed.deliveryTip).trim() : null,
+        starBreakdown:      parsed.starBreakdown      || null,
+        followUpQuestions:  Array.isArray(parsed.followUpQuestions) ? parsed.followUpQuestions.filter(Boolean) : [],
+        keywordCoverage:    parsed.keywordCoverage    || null,
+        confidenceScore:    parsed.confidenceScore    || null,
+        toneAnalysis:       parsed.toneAnalysis       || null,
+        vocabularyRichness: parsed.vocabularyRichness || null,
+        hesitationPattern:  parsed.hesitationPattern  || null,
+      },
+    };
+  } catch (error) {
+    console.error('Gemini enrichOpenAnswer error:', getErrorMessage(error));
+    return { ok: false };
+  }
+};
+
+
 module.exports = {
-  generateQuestions,
-  evaluateOpenAnswer,
+  // Wrapped so every call logs its latency: `[ai] generateQuestions 4210ms`.
+  generateQuestions:      (...args) => timed('generateQuestions',      () => generateQuestions(...args)),
+  evaluateOpenAnswer:     (...args) => timed('evaluateOpenAnswer',     () => evaluateOpenAnswer(...args)),
+  evaluateOpenAnswerFast: (...args) => timed('evaluateOpenAnswerFast', () => evaluateOpenAnswerFast(...args)),
+  enrichOpenAnswer:       (...args) => timed('enrichOpenAnswer',       () => enrichOpenAnswer(...args)),
   getSkippedAnswer,
   evalObjectiveAnswer,
   evaluateAnswer,

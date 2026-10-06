@@ -32,6 +32,9 @@ const userSchema = new mongoose.Schema({
   plan:       { type: String, required: true, default: 'free', enum: ['free', 'pro', 'college'] },
   planExpiry: { type: Date },
 
+  // Pro modes this user has already used their one free trial on (e.g. ['full','mcq'])
+  proTrialsUsed: [{ type: String }],
+
   // ── Auth ──────────────────────────────────────────────────────────────────
   refreshToken: { type: String },
 

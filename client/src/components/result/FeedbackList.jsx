@@ -1,8 +1,13 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, useId } from "react";
 import PropTypes from "prop-types";
 import { retryQuestion } from '../../Services/interviewService';
 import { usePendingAnswers } from '../../hooks/usePendingAnswers';
+import usePlan from '../../hooks/usePlan';
+import useUpgrade from '../../hooks/useUpgrade';
+import LockedInsights from '../pro/LockedInsights';
+import ProBadge from '../pro/ProBadge';
 import { C, F } from "../../styles/token";
+import { Icon, scrollToId } from "./ResultNav";
 
 
 
@@ -30,9 +35,19 @@ const formatTime = (s) => {
   return `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, "0")}`;
 };
 
+// AI feedback often arrives as "1. First point. 2. Second point." - split that
+// into clean items (no numbering) so previews and lists never show a bare "1.".
+const splitPoints = (text = "") => {
+  if (!text) return [];
+  const byNum = text.split(/(?<!\d)\d+[.)]\s+/).map((x) => x.trim()).filter(Boolean);
+  if (byNum.length > 1) return byNum;
+  const bySentence = text.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
+  return bySentence.length > 1 ? bySentence : [text.trim()];
+};
+
 const toOneLine = (text, maxLen = 100) => {
   if (!text) return "";
-  const s = (text.split(/(?<=[.!?])\s+/)[0] || text).trim();
+  const s = (splitPoints(text)[0] || text).trim();
   return s.length <= maxLen ? s : `${s.slice(0, maxLen - 1).trim()}…`;
 };
 
@@ -66,6 +81,8 @@ const normalizeFeedback = (question) => {
       aiAvailable:  parsed.aiAvailable !== false,
       fallback:     parsed.fallback    === true,
       skippedPending: parsed.skippedPending === true,
+      tier:         parsed.tier || "full",
+      locked:       parsed.locked || null,
     };
   } catch { return null; }
 };
@@ -248,7 +265,7 @@ const CrossSignalInsight = ({ questions }) => {
           <div style={{ flex: 1 }}>
             <div
               style={{
-                fontFamily: F.mono, fontSize: 8, fontWeight: 700,
+                fontFamily: F.mono, fontSize: 10, fontWeight: 700,
                 color: signal.accent, letterSpacing: "0.8px", marginBottom: 4, opacity: 0.75,
               }}
             >
@@ -269,10 +286,23 @@ CrossSignalInsight.propTypes = { questions: PropTypes.array.isRequired };
 
 const FeedbackBlock = ({ label, value, color, background }) => (
   <div style={{ padding: 11, borderRadius: 10, background, border: `1px solid ${color}25` }}>
-    <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 700, color, letterSpacing: "0.5px", marginBottom: 5 }}>
+    <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color, letterSpacing: "0.5px", marginBottom: 5 }}>
       {label}
     </div>
-    <div style={{ fontSize: 11.5, lineHeight: 1.65, color: C.text }}>{value || "No additional readout."}</div>
+    {(() => {
+      const pts = splitPoints(value);
+      if (pts.length <= 1) return <div style={{ fontSize: 12, lineHeight: 1.65, color: C.text }}>{value || "No additional readout."}</div>;
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {pts.map((pt, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <span aria-hidden="true" style={{ width: 5, height: 5, borderRadius: "50%", background: color, flexShrink: 0, marginTop: 8 }} />
+              <span style={{ fontSize: 12, lineHeight: 1.6, color: C.text, flex: 1 }}>{pt}</span>
+            </div>
+          ))}
+        </div>
+      );
+    })()}
   </div>
 );
 FeedbackBlock.propTypes = {
@@ -289,7 +319,7 @@ const Pill = ({ children, color = C.blue500, background = C.blue50 }) => (
     style={{
       display: "inline-flex", alignItems: "center", borderRadius: 999,
       padding: "3px 9px", background, color,
-      fontFamily: F.mono, fontSize: 9, fontWeight: 700, border: `1px solid ${color}30`,
+      fontFamily: F.mono, fontSize: 10, fontWeight: 700, border: `1px solid ${color}30`,
     }}
   >
     {children}
@@ -352,8 +382,9 @@ PendingBanner.propTypes = {
 
 // ─── QuestionCard ─────────────────────────────────────────────────────────────
 
-const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
+const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, hasPrev, hasNext, total }) => {
   const idx       = question._index;
+  const panelId   = `res-q-panel-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const feedback  = question.aiFeedback;
   const pending   = Boolean(question._pending);
   const timedOut  = Boolean(question._timedOut);
@@ -367,6 +398,12 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
   const takeaway  = useMemo(() => getTakeaway(question), [question]);
   const hasTime   = Number(question.timeTaken) > 0;
   const canRetry  = !objective && !question.skipped && question.userAnswer?.trim() && question.id;
+  const { canUseFeature } = usePlan();
+  const { openUpgrade }   = useUpgrade();
+  const basic             = feedback?.tier === "basic";
+  // Re-evaluating is Pro — except when OUR evaluator failed, which must stay free to fix.
+  const evalFailed        = feedback?.aiAvailable === false || feedback?.fallback === true;
+  const retryAllowed      = canUseFeature("retryQuestion") || evalFailed;
 
   const badgeColor = question.skipped
     ? C.muted
@@ -382,7 +419,9 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
 
   return (
     <div
+      id={`res-q-${idx}`}
       style={{
+        scrollMarginTop: "calc(var(--res-sticky-top, 84px) + 62px)",
         border: `1px solid ${pending ? C.amber : open ? C.borderMd : C.border}`,
         borderRadius: 12, background: open ? cardAlt : C.card,
         overflow: "hidden", transition: "border-color 0.2s ease, opacity 0.3s ease",
@@ -394,6 +433,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
           type="button"
           onClick={() => onToggle(idx)}
           aria-expanded={open}
+          aria-controls={panelId}
           style={{
             flex: 1, minWidth: 0, display: "flex", alignItems: "center",
             gap: 12, padding: "12px 8px 12px 14px",
@@ -418,7 +458,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
             ) : isEval ? (
               <>
                 <span style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, lineHeight: 1 }}>{score}</span>
-                <span style={{ fontFamily: F.mono, fontSize: 7, opacity: 0.7 }}>/100</span>
+                <span style={{ fontFamily: F.mono, fontSize: 9, opacity: 0.7 }}>/100</span>
               </>
             ) : (
               <span style={{ fontSize: 12, fontWeight: 700 }}>—</span>
@@ -426,13 +466,13 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 3 }}>
-              <span style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 700, color: C.faint }}>Q{idx + 1}</span>
+              <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: C.faint }}>Q{idx + 1}</span>
               <span style={{ color: C.border }}>·</span>
               <span style={{ fontSize: 10, fontWeight: 600, color: C.sub }}>{question.topic}</span>
               {hasTime && (
                 <>
                   <span style={{ color: C.border }}>·</span>
-                  <span style={{ fontFamily: F.mono, fontSize: 9, color: C.muted }}>{formatTime(question.timeTaken)}</span>
+                  <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>{formatTime(question.timeTaken)}</span>
                 </>
               )}
               {question.skipped && <Pill color={C.amber} background={C.amberTint}>skipped</Pill>}
@@ -459,25 +499,18 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
               </div>
             )}
           </div>
-        </button>
-        <button
-          type="button"
-          onClick={() => onToggle(idx)}
-          aria-label={open ? `Collapse Q${idx + 1}` : `Expand Q${idx + 1}`}
-          style={{
-            flexShrink: 0, width: 40, border: "none", background: "transparent",
-            cursor: "pointer", display: "flex", alignItems: "center",
-            justifyContent: "center", color: C.faint,
-          }}
-        >
           <span
+            aria-hidden="true"
             style={{
-              display: "inline-block", fontSize: 11,
+              flexShrink: 0, width: 28, height: 28, borderRadius: 8, marginRight: 4,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: open ? C.blue50 : "transparent", color: open ? C.blue600 : C.faint,
+              border: `1px solid ${open ? C.blue100 : "transparent"}`,
               transform: open ? "rotate(180deg)" : "none",
-              transition: "transform 0.2s ease",
+              transition: "transform .28s cubic-bezier(.16,1,.3,1), background .15s ease, color .15s ease",
             }}
           >
-            ▾
+            <Icon name="chevron" size={15} stroke={2.6} />
           </span>
         </button>
       </div>
@@ -495,11 +528,13 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
       )}
 
       <div
+        id={panelId}
         style={{
-          maxHeight: open ? 1400 : 0, opacity: open ? 1 : 0, overflow: "hidden",
-          transition: "max-height 0.35s cubic-bezier(.16,1,.3,1), opacity 0.25s ease",
+          display: "grid", gridTemplateRows: open ? "1fr" : "0fr", opacity: open ? 1 : 0,
+          transition: "grid-template-rows 0.35s cubic-bezier(.16,1,.3,1), opacity 0.25s ease",
         }}
       >
+       <div style={{ overflow: "hidden", minHeight: 0 }} inert={!open} aria-hidden={!open}>
         <div style={{ padding: "8px 16px 18px" }}>
           <div style={{ fontSize: 13, lineHeight: 1.6, color: C.text, fontWeight: 700, marginBottom: 12 }}>
             {question.text}
@@ -513,7 +548,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
                 marginBottom: 10,
               }}
             >
-              <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 600, color: C.muted, letterSpacing: "0.5px", marginBottom: 5 }}>
+              <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, color: C.muted, letterSpacing: "0.5px", marginBottom: 5 }}>
                 your answer
               </div>
               <div style={{ fontSize: 12, lineHeight: 1.65, color: C.sub, whiteSpace: "pre-wrap" }}>
@@ -575,7 +610,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
           )}
 
           {question.skipped && !pending && !timedOut && feedback && (feedback.idealHint || feedback.tip || feedback.sampleAnswer) && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 8 }}>
               {feedback.idealHint && (
                 <FeedbackBlock label="key idea"        value={feedback.idealHint} color={C.blue500} background={C.blue50} />
               )}
@@ -584,13 +619,17 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
               )}
               {feedback.sampleAnswer && (
                 <div style={{ gridColumn: "1 / -1", padding: 11, borderRadius: 10, background: cardAlt, border: `1px solid ${C.border}` }}>
-                  <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 600, color: C.muted, marginBottom: 5 }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, color: C.muted, marginBottom: 5 }}>
                     model answer
                   </div>
                   <div style={{ fontSize: 12, lineHeight: 1.65, color: C.text, whiteSpace: "pre-wrap" }}>{feedback.sampleAnswer}</div>
                 </div>
               )}
             </div>
+          )}
+
+          {question.skipped && !pending && !timedOut && basic && feedback?.locked?.modelAnswer && (
+            <LockedInsights locked={{ modelAnswer: true }} variant="compact" />
           )}
 
           {objective && isEval && (
@@ -601,20 +640,30 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
                 justifyContent: "space-between", gap: 10, marginBottom: 10,
               }}
             >
-              <span style={{ fontFamily: F.mono, fontSize: 8.5, color: C.muted }}>result</span>
+              <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>result</span>
               <strong style={{ color: badgeColor, fontSize: 13 }}>{feedback?.correct ? "Correct" : "Incorrect"}</strong>
             </div>
           )}
 
-          {!objective && !question.skipped && isEval && feedback && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {!objective && !question.skipped && isEval && feedback && basic && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 8 }}>
+                <FeedbackBlock label="what worked"      value={feedback.good}    color={C.green} background={C.greenTint} />
+                <FeedbackBlock label="what was missing" value={feedback.missing} color={C.red}   background={C.redTint}   />
+              </div>
+              <LockedInsights locked={feedback.locked} usedVoice={false} variant="compact" />
+            </>
+          )}
+
+          {!objective && !question.skipped && isEval && feedback && !basic && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 8 }}>
               <FeedbackBlock label="what worked"      value={feedback.good}        color={C.green}   background={C.greenTint} />
               <FeedbackBlock label="what was missing" value={feedback.missing}     color={C.red}     background={C.redTint}   />
               <FeedbackBlock label="key idea"         value={feedback.idealHint}   color={C.blue500} background={C.blue50}    />
               <FeedbackBlock label="next move"        value={feedback.tip}         color={C.amber}   background={C.amberTint} />
               {feedback.sampleAnswer && (
                 <div style={{ gridColumn: "1 / -1", padding: 11, borderRadius: 10, background: cardAlt, border: `1px solid ${C.border}` }}>
-                  <div style={{ fontFamily: F.mono, fontSize: 8, fontWeight: 600, color: C.muted, marginBottom: 5 }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, color: C.muted, marginBottom: 5 }}>
                     better answer pattern
                   </div>
                   <div style={{ fontSize: 12, lineHeight: 1.65, color: C.text }}>{feedback.sampleAnswer}</div>
@@ -623,7 +672,23 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
             </div>
           )}
 
-          {canRetry && onRetry && (
+          {canRetry && onRetry && !retryAllowed && (
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => openUpgrade("retryQuestion")}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                  padding: "7px 12px 7px 14px", borderRadius: 9, border: `1px solid ${C.borderMd}`,
+                  background: C.card, color: C.sub, fontFamily: F.mono, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                }}
+              >
+                Re-evaluate this answer <ProBadge variant="pro" />
+              </button>
+            </div>
+          )}
+
+          {canRetry && onRetry && retryAllowed && (
             <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
               <button
                 type="button"
@@ -641,7 +706,26 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying }) => {
               </button>
             </div>
           )}
+
+          {onStep && total > 1 && (
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <button
+                type="button" className="res-step" onClick={() => onStep(idx, -1)} disabled={!hasPrev}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, padding: "7px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: hasPrev ? C.sub : C.faint, fontFamily: F.body, fontSize: 12, fontWeight: 700, cursor: hasPrev ? "pointer" : "not-allowed", opacity: hasPrev ? 1 : 0.5 }}
+              >
+                <Icon name="left" size={14} />Previous
+              </button>
+              <span style={{ fontFamily: F.mono, fontSize: 10.5, color: C.muted }}>{question._pos + 1} of {total}</span>
+              <button
+                type="button" className="res-step" onClick={() => onStep(idx, 1)} disabled={!hasNext}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, padding: "7px 12px", borderRadius: 10, border: "none", background: hasNext ? `linear-gradient(135deg, ${C.blue700}, ${C.blue500})` : C.cardAlt, color: hasNext ? "#fff" : C.faint, fontFamily: F.body, fontSize: 12, fontWeight: 800, cursor: hasNext ? "pointer" : "not-allowed", opacity: hasNext ? 1 : 0.5 }}
+              >
+                Next question<Icon name="right" size={14} stroke={2.6} />
+              </button>
+            </div>
+          )}
         </div>
+       </div>
       </div>
     </div>
   );
@@ -652,6 +736,10 @@ QuestionCard.propTypes = {
   onToggle: PropTypes.func.isRequired,
   onRetry:  PropTypes.func,
   retrying: PropTypes.bool,
+  onStep:   PropTypes.func,
+  hasPrev:  PropTypes.bool,
+  hasNext:  PropTypes.bool,
+  total:    PropTypes.number,
 };
 
 // ─── PropTypes ────────────────────────────────────────────────────────────────
@@ -664,12 +752,14 @@ const propTypes = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const FeedbackList = ({ questions, sessionId }) => {
+  const { openUpgrade } = useUpgrade();
   const [expanded,     setExpanded]     = useState({});
   const [activeFilter, setActiveFilter] = useState("all");
   const [search,       setSearch]       = useState("");
   const [retryingId,   setRetryingId]   = useState(null);
   const [overrides,    setOverrides]    = useState([]);
   const [bannerHidden, setBannerHidden] = useState(false);
+  const [sortBy,       setSortBy]       = useState("order");
 
   // Skipped open-ended questions are answered in the background on the server.
   // The Result page hands us a snapshot taken before that finished, so we poll
@@ -729,13 +819,41 @@ const FeedbackList = ({ questions, sessionId }) => {
           if (!hay.includes(needle)) return false;
         }
         return true;
-      });
-  }, [normalizedQuestions, activeFilter, search]);
+      })
+      .sort((a, b) => {
+        if (sortBy !== "weakest") return a._index - b._index;
+        const av = a.skipped ? -1 : (typeof a.score === "number" ? a.score : 101);
+        const bv = b.skipped ? -1 : (typeof b.score === "number" ? b.score : 101);
+        return av - bv || a._index - b._index;
+      })
+      .map((q, pos) => ({ ...q, _pos: pos }));
+  }, [normalizedQuestions, activeFilter, search, sortBy]);
 
   const toggleExpand = useCallback(
     (index) => setExpanded((prev) => ({ ...prev, [index]: !prev[index] })),
     []
   );
+
+  const allOpen = filtered.length > 0 && filtered.every((q) => expanded[q._index]);
+  const toggleAll = useCallback(() => {
+    setExpanded((prev) => {
+      const next = { ...prev };
+      filtered.forEach((q) => { next[q._index] = !allOpen; });
+      return next;
+    });
+  }, [filtered, allOpen]);
+
+  // Previous / Next inside an open card: close this one, open the neighbour,
+  // and scroll it under the sticky bar so the reader never loses their place.
+  const stepFrom = useCallback((index, dir) => {
+    const pos = filtered.findIndex((q) => q._index === index);
+    const target = filtered[pos + dir];
+    if (!target) return;
+    setExpanded((prev) => ({ ...prev, [index]: false, [target._index]: true }));
+    requestAnimationFrame(() => setTimeout(() => scrollToId(`res-q-${target._index}`, 8), 60));
+  }, [filtered]);
+
+  const clearFilters = useCallback(() => { setActiveFilter("all"); setSearch(""); }, []);
 
   const handleRetry = useCallback(async (questionId) => {
     if (!sessionId || !questionId || retryingId) return;
@@ -748,15 +866,21 @@ const FeedbackList = ({ questions, sessionId }) => {
         { id: questionId, score: clamp(Number(data?.score) || 0), aiFeedback: parsed },
       ]);
     } catch (err) {
-      console.error("Retry failed:", err);
+      // Server says Pro-only (e.g. plan expired since this page loaded): explain, don't fail silently.
+      if (err?.response?.status === 403 && err?.response?.data?.error === "plan_required") {
+        openUpgrade("retryQuestion");
+      } else {
+        console.error("Retry failed:", err);
+      }
     } finally {
       setRetryingId(null);
     }
-  }, [sessionId, retryingId]);
+  }, [sessionId, retryingId, openUpgrade]);
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", boxShadow: C.shadow }}>
-      <div style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.8px", color: C.blue500, marginBottom: 4 }}>
+      <style>{`.res-step:hover:not(:disabled){transform:translateY(-1px)}.res-step{transition:transform .12s ease}.res-tool:hover{background:${C.blue50}!important;border-color:${C.blue200}!important}`}</style>
+      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.8px", color: C.blue500, marginBottom: 4 }}>
         question-by-question review
       </div>
       <div style={{ margin: 0, fontFamily: F.display, fontSize: 15, fontWeight: 800, color: C.text, marginBottom: 4 }}>
@@ -777,6 +901,8 @@ const FeedbackList = ({ questions, sessionId }) => {
           {filters.map((f) => (
             <button
               key={f.key}
+              type="button"
+              aria-pressed={activeFilter === f.key}
               onClick={() => setActiveFilter(f.key)}
               style={{
                 border: `1px solid ${activeFilter === f.key ? C.blue500 : C.border}`,
@@ -793,6 +919,7 @@ const FeedbackList = ({ questions, sessionId }) => {
         </div>
         <input
           value={search}
+          aria-label="Search questions"
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search…"
           style={{
@@ -803,14 +930,37 @@ const FeedbackList = ({ questions, sessionId }) => {
         />
       </div>
 
+      {filtered.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <div role="group" aria-label="Sort questions" style={{ display: "inline-flex", padding: 3, borderRadius: 10, background: C.cardAlt, border: `1px solid ${C.border}` }}>
+            {[{ k: "order", l: "Interview order" }, { k: "weakest", l: "Weakest first" }].map((o) => (
+              <button
+                key={o.k} type="button" aria-pressed={sortBy === o.k} onClick={() => setSortBy(o.k)}
+                style={{ border: "none", cursor: "pointer", borderRadius: 8, padding: "6px 11px", minHeight: 30, fontFamily: F.body, fontSize: 11.5, fontWeight: 700, background: sortBy === o.k ? C.card : "transparent", color: sortBy === o.k ? C.blue600 : C.muted, boxShadow: sortBy === o.k ? "0 1px 4px rgba(0,31,107,.12)" : "none" }}
+              >
+                {o.l}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button" className="res-tool" onClick={toggleAll}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 32, padding: "6px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.blue600, fontFamily: F.mono, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+          >
+            <Icon name="chevron" size={13} stroke={2.6} style={{ transform: allOpen ? "rotate(180deg)" : "none", transition: "transform .25s ease" }} />
+            {allOpen ? "Collapse all" : "Expand all"}
+          </button>
+        </div>
+      )}
+
       {!filtered.length && (
         <div style={{ border: `1px dashed ${C.borderMd}`, borderRadius: 10, padding: 24, textAlign: "center", color: C.muted, fontSize: 11.5 }}>
-          No questions match the current filter.
+          <div>No questions match the current filter.</div>
+          <button type="button" className="res-tool" onClick={clearFilters} style={{ marginTop: 10, padding: "7px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.blue600, fontFamily: F.mono, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Clear filters</button>
         </div>
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {filtered.map((q) => (
+        {filtered.map((q, pos) => (
           <QuestionCard
             key={q._index}
             question={q}
@@ -818,6 +968,10 @@ const FeedbackList = ({ questions, sessionId }) => {
             onToggle={toggleExpand}
             onRetry={handleRetry}
             retrying={retryingId === q.id}
+            onStep={stepFrom}
+            hasPrev={pos > 0}
+            hasNext={pos < filtered.length - 1}
+            total={filtered.length}
           />
         ))}
       </div>

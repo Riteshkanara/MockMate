@@ -2,6 +2,8 @@ import { useEffect, useState, useRef, useMemo, useCallback, memo} from "react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
+import usePlan from "../hooks/usePlan";
+import CoachFree from "../components/coach/CoachFree";
 import {
   getAIFreeform,
   getDashboardAnalytics,
@@ -617,7 +619,7 @@ const loadCoachData = async () => {
 };
 
 // — Coach page
-const Coach = () => {
+const CoachPro = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const userId   = user?._id ?? user?.id ?? null;
@@ -782,6 +784,12 @@ const Coach = () => {
       </div>
     </div>
   );
+};
+
+// The Coach spends AI quota on every message, so it is Pro-only (also enforced on the server).
+const Coach = () => {
+  const { isPro } = usePlan();
+  return isPro ? <CoachPro /> : <CoachFree />;
 };
 
 export default Coach;

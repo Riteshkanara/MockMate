@@ -21,7 +21,7 @@ const { GoogleGenAI } = require('@google/genai');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 // gemini-1.5-* has been shut down by Google. Override with GEMINI_MODEL in .env.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'
 
 // Upper bounds so a hung provider can never leave the user on "transcribing..."
 const WHISPER_TIMEOUT_MS = Number(process.env.WHISPER_TIMEOUT_MS) || 15000;

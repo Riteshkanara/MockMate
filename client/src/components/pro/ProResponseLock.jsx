@@ -30,15 +30,15 @@ export default function ProResponseLock({
 
   const open = () => openUpgrade(feature);
   const veil = dark
-    ? 'linear-gradient(180deg, rgba(8,15,30,.30) 0%, rgba(8,15,30,.62) 40%, rgba(8,15,30,.86) 100%)'
-    : 'linear-gradient(180deg, rgba(255,255,255,.30) 0%, rgba(255,255,255,.66) 40%, rgba(255,255,255,.94) 100%)';
-  const mask = 'linear-gradient(180deg, transparent 0, #000 20px)'; // short ramp: 1–2 lines stay crisp, the 3rd is already unreadable
+    ? 'linear-gradient(180deg, rgba(8,15,30,.18) 0%, rgba(8,15,30,.42) 45%, rgba(8,15,30,.72) 100%)'
+    : 'linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.42) 45%, rgba(255,255,255,.86) 100%)';
+  const mask = 'linear-gradient(180deg, transparent 0, #000 28px)'; // short ramp: 1–2 lines stay crisp, the 3rd is already unreadable
   const label = `${cta}. This is an example response. Opens upgrade options.`;
 
   const veilButton = (
     <button type="button" className="prl-veil" onClick={open} aria-label={label}
       style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: clearHeight, border: 'none', padding: 0, cursor: 'pointer', background: veil,
-        backdropFilter: 'blur(10px) saturate(.85)', WebkitBackdropFilter: 'blur(10px) saturate(.85)', WebkitMaskImage: mask, maskImage: mask }} />
+        backdropFilter: 'blur(3.5px) saturate(.95)', WebkitBackdropFilter: 'blur(3.5px) saturate(.95)', WebkitMaskImage: mask, maskImage: mask }} />
   );
 
   const styles = (
@@ -51,7 +51,7 @@ export default function ProResponseLock({
       @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
         .prl-veil { background: ${dark ? 'rgba(8,15,30,.88)' : 'rgba(255,255,255,.94)'} !important; }
       }
-      @media (max-width: 560px) { .prl-card { flex-direction: column !important; align-items: stretch !important; text-align: center; } }
+      @media (max-width: 560px) { .prl-card { flex-direction: column !important; align-items: stretch !important; text-align: center; gap: 10px !important; } .prl-card > div { flex: 0 0 auto !important; text-align: center !important; } .prl-cta { width: 100%; } }
       @media (prefers-reduced-motion: reduce) { .prl-cta { transition: none !important; } }
     `}</style>
   );

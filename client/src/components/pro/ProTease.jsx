@@ -43,7 +43,7 @@ export default function ProTease({
   hint,
   tone = 'light',
   blurHeight = 150,
-  blurPx = 6,
+  blurPx = 3.2,
   tag = 'EXAMPLE',
   showBadge = true,
   style,

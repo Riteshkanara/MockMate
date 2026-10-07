@@ -85,7 +85,7 @@ export default function LockedInsights({ locked, usedVoice = false, variant = 'p
           tag={teasers?.modelAnswer || teasers?.coaching ? 'YOUR ANSWER' : 'EXAMPLE'}
           cta={count > 1 ? `Unlock all ${count} insights` : 'Unlock this insight'}
           blurHeight={86}
-          blurPx={5}
+          blurPx={3}
           showBadge
         >
           {keys.flatMap((k) => SAMPLE_INSIGHTS[k === 'delivery' && usedVoice ? 'voice' : k].rest.slice(0, 1)).map((line) => (

@@ -719,7 +719,7 @@ export default function Pricing() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [billing, setBilling] = useState('pro_yearly');
+  const [billing, setBilling] = useState(BILLING_OPTIONS.some(b => b.key === location.state?.plan) ? location.state.plan : 'pro_yearly');
   const [loading, setLoading] = useState(false);
   const [openFaq, setOpenFaq] = useState(-1);
   const [analytics, setAnalytics] = useState(null);

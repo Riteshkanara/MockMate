@@ -340,7 +340,7 @@ const LockedProBlocks = ({ locked = {}, teasers = {}, skipped = false }) => {
           {showCoach && teasers.coaching ? teasers.coaching : teasers.modelAnswer}
         </p>
       )}
-      <LockedBlock feature="detailedFeedback" cta={count > 1 ? `Unlock all ${count} insights` : "Unlock this insight"} hint="Your own version appears when you upgrade" height={showCoach && showModel ? 230 : 150} blur={5}>
+      <LockedBlock feature="detailedFeedback" cta={count > 1 ? `Unlock all ${count} insights` : "Unlock this insight"} hint="Your own version appears when you upgrade" height={showCoach && showModel ? 230 : 150} blur={3}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 8 }}>
           {showCoach && <FeedbackBlock label="key idea"  value={SAMPLE_FEEDBACK.idealHint} color={C.blue500} background={C.blue50} />}
           {showCoach && <FeedbackBlock label="next move" value={SAMPLE_FEEDBACK.tip}       color={C.amber}   background={C.amberTint} />}

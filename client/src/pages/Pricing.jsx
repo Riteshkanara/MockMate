@@ -794,12 +794,6 @@ export default function Pricing() {
       <style>{CSS}</style>
       <div className="pg-inner">
 
-        {/* status strip */}
-        <div className="pg-strip">
-          <div className="pg-strip-l"><span className="pg-live"/><span className="pg-mono">mockmate plans</span></div>
-          <span className="pg-mono r">upi · cards · netbanking · wallets</span>
-        </div>
-
         {/* ── PRICE-LOCK OBJECT ── */}
         {!alreadyPro && (
           <div className="pg-lock-wrap" aria-label="Intro pricing notice">
@@ -837,87 +831,6 @@ export default function Pricing() {
             </span>
           </div>
         )}
-
-        {/* ── SPLIT-SCREEN HERO ── */}
-        <div className="pg-hero">
-          <div className="pg-hero-mesh" aria-hidden="true"/>
-
-          {/* LEFT: pitch */}
-          <div className="pg-hero-left">
-            {showPersonalized ? (
-              <>
-                <div className="pg-eyebrow">your placement readiness</div>
-                <h1 className="pg-h1">
-                  {nextTier
-                    ? <>{pointsToNext} point{pointsToNext !== 1 ? 's' : ''} from {nextTier.label}</>
-                    : <>Top tier. Keep it sharp.</>}
-                </h1>
-                <p className="pg-lead">
-                  {nextTier
-                    ? `${sessions} session${sessions !== 1 ? 's' : ''} in and you're reading as ${currentTier.label}. Unlimited sessions, blind spot detection and the AI Coach close that gap faster.`
-                    : `Pro keeps your IRS honest — blind spots, warmup analysis, and your full history in one place.`}
-                </p>
-                <div className="pg-hlad" aria-label="Salary tier ladder">
-                  {TIERS.map((t, i) => (
-                    <div key={t.short}
-                         className={`pg-hlad-step${i < currentIdx ? ' done' : ''}${i === currentIdx ? ' cur' : ''}`}
-                         style={{ animationDelay: `${i * 80}ms` }}>
-                      <div className="pg-hlad-e">{t.emoji}</div>
-                      <div className="pg-hlad-l">{t.short}</div>
-                      <div className="pg-hlad-s">{i === 0 ? 'start' : `IRS ${t.min}+`}</div>
-                    </div>
-                  ))}
-                </div>
-                {nextTier && (
-                  <div className="pg-htrack-wrap">
-                    <div className="pg-htrack">
-                      <div className="pg-htrack-fill" style={{ width: trackFilled ? `${pct}%` : '0%' }}/>
-                    </div>
-                    <div className="pg-htrack-meta"><span>{currentTier.short}</span><span>{pct}%</span><span>{nextTier.short}</span></div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="pg-eyebrow">plans & pricing</div>
-                <h1 className="pg-h1">Every interview moves you up a salary tier — or it doesn't, and Pro tells you why.</h1>
-                <p className="pg-lead">
-                  Free gives you 3 interviews a day and a pass/fail. Pro scores every answer against real ₹LPA tiers and shows exactly what's costing you points.
-                </p>
-                <div className="pg-hlad" aria-label="Salary tier ladder">
-                  {TIERS.map((t, i) => (
-                    <div key={t.short} className="pg-hlad-step" style={{ animationDelay: `${i * 80}ms` }}>
-                      <div className="pg-hlad-e">{t.emoji}</div>
-                      <div className="pg-hlad-l">{t.short}</div>
-                      <div className="pg-hlad-s">{i === 0 ? 'start here' : `IRS ${t.min}+`}</div>
-                    </div>
-                  ))}
-                </div>
-                <p style={{ marginTop: 16, fontSize: 12.5, color: 'rgba(255,255,255,.55)' }}>
-                  Your first interview places you on this ladder — <span style={{ color: '#fff', fontWeight: 700 }}>no card required.</span>
-                </p>
-              </>
-            )}
-          </div>
-
-          {/* RIGHT: live instrument panel — always mocked Pro demo */}
-          <HeroPanel/>
-        </div>
-
-        {/* trust row */}
-        <div className="pg-trust">
-          {[
-            { e: '💳', t: 'Razorpay secured', s: 'PCI-DSS Level 1' },
-            { e: '📲', t: 'UPI shown first',  s: 'GPay · PhonePe · BHIM' },
-            { e: '🔓', t: 'No auto-renewal',  s: 'Stops at period end' },
-            { e: '🗂️', t: 'Data always kept', s: 'Nothing deleted' },
-          ].map(x => (
-            <div className="pg-trust-cell" key={x.t}>
-              <div className="pg-emo-tile" aria-hidden="true">{x.e}</div>
-              <div><div className="pg-trust-t">{x.t}</div><div className="pg-trust-s">{x.s}</div></div>
-            </div>
-          ))}
-        </div>
 
         {/* ── PLAN CARDS v7.1 ── */}
         <div className="pg-plans">
@@ -1011,6 +924,88 @@ export default function Pricing() {
             </div>
           </div>
         </div>
+
+        {/* ── SPLIT-SCREEN HERO ── */}
+        <div className="pg-hero">
+          <div className="pg-hero-mesh" aria-hidden="true"/>
+
+          {/* LEFT: pitch */}
+          <div className="pg-hero-left">
+            {showPersonalized ? (
+              <>
+                <div className="pg-eyebrow">your placement readiness</div>
+                <h1 className="pg-h1">
+                  {nextTier
+                    ? <>{pointsToNext} point{pointsToNext !== 1 ? 's' : ''} from {nextTier.label}</>
+                    : <>Top tier. Keep it sharp.</>}
+                </h1>
+                <p className="pg-lead">
+                  {nextTier
+                    ? `${sessions} session${sessions !== 1 ? 's' : ''} in and you're reading as ${currentTier.label}. Unlimited sessions, blind spot detection and the AI Coach close that gap faster.`
+                    : `Pro keeps your IRS honest — blind spots, warmup analysis, and your full history in one place.`}
+                </p>
+                <div className="pg-hlad" aria-label="Salary tier ladder">
+                  {TIERS.map((t, i) => (
+                    <div key={t.short}
+                         className={`pg-hlad-step${i < currentIdx ? ' done' : ''}${i === currentIdx ? ' cur' : ''}`}
+                         style={{ animationDelay: `${i * 80}ms` }}>
+                      <div className="pg-hlad-e">{t.emoji}</div>
+                      <div className="pg-hlad-l">{t.short}</div>
+                      <div className="pg-hlad-s">{i === 0 ? 'start' : `IRS ${t.min}+`}</div>
+                    </div>
+                  ))}
+                </div>
+                {nextTier && (
+                  <div className="pg-htrack-wrap">
+                    <div className="pg-htrack">
+                      <div className="pg-htrack-fill" style={{ width: trackFilled ? `${pct}%` : '0%' }}/>
+                    </div>
+                    <div className="pg-htrack-meta"><span>{currentTier.short}</span><span>{pct}%</span><span>{nextTier.short}</span></div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="pg-eyebrow">plans & pricing</div>
+                <h1 className="pg-h1">Every interview moves you up a salary tier — or it doesn't, and Pro tells you why.</h1>
+                <p className="pg-lead">
+                  Free gives you 3 interviews a day and a pass/fail. Pro scores every answer against real ₹LPA tiers and shows exactly what's costing you points.
+                </p>
+                <div className="pg-hlad" aria-label="Salary tier ladder">
+                  {TIERS.map((t, i) => (
+                    <div key={t.short} className="pg-hlad-step" style={{ animationDelay: `${i * 80}ms` }}>
+                      <div className="pg-hlad-e">{t.emoji}</div>
+                      <div className="pg-hlad-l">{t.short}</div>
+                      <div className="pg-hlad-s">{i === 0 ? 'start here' : `IRS ${t.min}+`}</div>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ marginTop: 16, fontSize: 12.5, color: 'rgba(255,255,255,.55)' }}>
+                  Your first interview places you on this ladder — <span style={{ color: '#fff', fontWeight: 700 }}>no card required.</span>
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* RIGHT: live instrument panel — always mocked Pro demo */}
+          <HeroPanel/>
+        </div>
+
+        {/* trust row */}
+        <div className="pg-trust">
+          {[
+            { e: '💳', t: 'Razorpay secured', s: 'PCI-DSS Level 1' },
+            { e: '📲', t: 'UPI shown first',  s: 'GPay · PhonePe · BHIM' },
+            { e: '🔓', t: 'No auto-renewal',  s: 'Stops at period end' },
+            { e: '🗂️', t: 'Data always kept', s: 'Nothing deleted' },
+          ].map(x => (
+            <div className="pg-trust-cell" key={x.t}>
+              <div className="pg-emo-tile" aria-hidden="true">{x.e}</div>
+              <div><div className="pg-trust-t">{x.t}</div><div className="pg-trust-s">{x.s}</div></div>
+            </div>
+          ))}
+        </div>
+
         
         {/* how it works */}
         <div className="pg-sec">

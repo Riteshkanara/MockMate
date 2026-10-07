@@ -17,7 +17,7 @@ import ProBadge from './ProBadge';
 import Icon from '../interview/icons';
 import { PreviewContext } from './PreviewContext';
 
-export default function ProLiveDemo({ feature, name, cta, hint, children }) {
+export default function ProLiveDemo({ feature, name, cta, hint, showBar = true, children }) {
   const { openUpgrade } = useUpgrade();
   return (
     <section aria-label={`${name}: live demo with example data`}>
@@ -35,6 +35,7 @@ export default function ProLiveDemo({ feature, name, cta, hint, children }) {
         @media (prefers-reduced-motion: reduce) { .pld-dot, .pld-cta { animation: none !important; transition: none !important; } }
       `}</style>
 
+      {showBar && (
       <div className="pld-bar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 10px 9px 16px', borderRadius: 16,
         background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', border: `1px solid ${C.brand100}`, boxShadow: '0 10px 28px rgba(15,35,95,.14)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -52,6 +53,7 @@ export default function ProLiveDemo({ feature, name, cta, hint, children }) {
           <Icon name="bolt" size={14} stroke={2.4} /><span>{cta}</span>
         </button>
       </div>
+      )}
 
       <div className="pld-body">
         <PreviewContext.Provider value>{children}</PreviewContext.Provider>
@@ -62,5 +64,5 @@ export default function ProLiveDemo({ feature, name, cta, hint, children }) {
 
 ProLiveDemo.propTypes = {
   feature: PropTypes.string.isRequired, name: PropTypes.string.isRequired, cta: PropTypes.string.isRequired,
-  hint: PropTypes.string, children: PropTypes.node.isRequired,
+  hint: PropTypes.string, showBar: PropTypes.bool, children: PropTypes.node.isRequired,
 };

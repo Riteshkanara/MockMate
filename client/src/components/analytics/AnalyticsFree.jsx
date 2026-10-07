@@ -24,26 +24,12 @@ const DAY_MS = 86400000;
 
 const scoreColor = (s) => (s >= 80 ? C.success : s >= 60 ? C.brand500 : s >= 40 ? C.warning : C.danger);
 
-const fmtTime = (sec) => {
-  const s = Math.round(Number(sec) || 0);
-  if (s <= 0) return '—';
-  return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
-};
-
 const Card = ({ children, style }) => (
   <section style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: '18px 20px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', ...style }}>{children}</section>
 );
 
 const Eyebrow = ({ children, color = C.brand600 }) => (
   <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '.12em', color, marginBottom: 6, textTransform: 'uppercase' }}>{children}</div>
-);
-
-const Stat = ({ label, value, sub }) => (
-  <Card style={{ padding: '14px 16px' }}>
-    <Eyebrow color={C.textMuted}>{label}</Eyebrow>
-    <div style={{ fontFamily: F.display, fontSize: 26, fontWeight: 900, color: C.text, letterSpacing: '-.5px', lineHeight: 1.1 }}>{value}</div>
-    {sub && <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 4 }}>{sub}</div>}
-  </Card>
 );
 
 // ── 7-day trend: plain SVG so it has zero chart-library surprises ─────────────
@@ -174,28 +160,77 @@ export default function AnalyticsFree({ initialData = null, preview = null }) {
   return (
     <div style={page}>
       <div style={wrap}>
-        {header}
+        <section aria-label="Free versus Pro Analytics" style={{ margin: '0 0 18px' }}>
+          <style>{`
+            .pa-wrap { display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.6fr); gap:clamp(18px,3vw,34px); align-items:start; padding:clamp(18px,3vw,30px); border-radius:24px; background:#fff; border:1px solid ${C.border}; box-shadow:0 16px 40px -24px rgba(26,110,255,.28);
+              background-image:radial-gradient(60% 70% at 0% 0%, rgba(26,110,255,.07) 0%, transparent 60%); }
+            .pa-h { margin:0; font-family:${F.display}; font-size:clamp(22px,2.8vw,30px); font-weight:900; letter-spacing:-.6px; line-height:1.15; color:${C.text}; }
+            .pa-h em { font-style:normal; background:linear-gradient(100deg,${C.brand500},${C.accent400}); -webkit-background-clip:text; background-clip:text; color:transparent; }
+            .pa-p { margin:12px 0 0; font-size:14px; line-height:1.7; color:${C.textSub}; }
+            .pa-cta { position:relative; overflow:hidden; display:inline-flex; align-items:center; gap:9px; height:48px; padding:0 24px; border:none; border-radius:14px; cursor:pointer; background:linear-gradient(135deg,${C.brand500},${C.brand600}); color:#fff; font-family:${F.display}; font-size:14.5px; font-weight:800; box-shadow:0 12px 26px -8px rgba(26,110,255,.55), inset 0 1px 0 rgba(255,255,255,.25); transition:transform .18s ease, box-shadow .18s ease; }
+            .pa-cta::after { content:""; position:absolute; inset:0; background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.35) 50%,transparent 65%); transform:translateX(-120%); transition:transform .6s ease; }
+            .pa-cta:hover { transform:translateY(-2px); box-shadow:0 18px 32px -8px rgba(26,110,255,.6), inset 0 1px 0 rgba(255,255,255,.25); }
+            .pa-cta:hover::after { transform:translateX(120%); }
+            .pa-cta .ar { transition:transform .2s ease; } .pa-cta:hover .ar { transform:translateX(4px); }
+            .pa-link { height:48px; padding:0 14px; border:none; background:transparent; cursor:pointer; border-radius:12px; color:${C.textSub}; font-family:${F.display}; font-size:13.5px; font-weight:700; transition:background .15s ease, color .15s ease; }
+            .pa-link:hover { background:${C.brand50}; color:${C.brand700}; }
+            .pa-cta:focus-visible,.pa-link:focus-visible { outline:2.5px solid ${C.brand500}; outline-offset:3px; }
+            .pa-table { border:1px solid ${C.border}; border-radius:18px; overflow:hidden; background:${C.surfaceAlt}; }
+            .pa-row { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,.8fr) minmax(0,1fr); gap:14px; align-items:center; padding:14px 16px; background:#fff; transition:background .18s ease; }
+            .pa-row + .pa-row { border-top:1px solid ${C.border}; }
+            .pa-row:not(.pa-head):hover { background:${C.brand50}; }
+            .pa-head { padding:10px 16px; background:${C.surfaceAlt}; font-family:${F.mono}; font-size:10px; font-weight:800; letter-spacing:.12em; color:${C.textMuted}; }
+            .pa-feat { display:flex; gap:12px; align-items:center; min-width:0; }
+            .pa-ic { flex:none; width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:18px; background:${C.brand50}; border:1px solid ${C.brand100}; }
+            .pa-free { font-size:12.5px; color:${C.textMuted}; display:flex; gap:6px; align-items:center; }
+            .pa-free::before { content:"–"; color:${C.textFaint}; font-weight:800; }
+            .pa-pro { font-size:12.5px; font-weight:700; color:${C.brand700}; display:flex; gap:7px; align-items:center; }
+            .pa-pro::before { content:"✓"; flex:none; width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:${C.brand500}; color:#fff; font-size:10px; font-weight:900; }
+            @media (max-width:860px) { .pa-wrap { grid-template-columns:1fr; } }
+            @media (max-width:560px) { .pa-row { grid-template-columns:1fr; gap:8px; } .pa-head { display:none; } }
+            @media (prefers-reduced-motion:reduce) { .pa-cta,.pa-cta::after,.pa-cta .ar,.pa-row { transition:none !important; } }
+          `}</style>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 14 }}>
-          <Stat label="Interviews" value={view.total} sub="all time" />
-          <Stat label="Average score" value={`${view.avg}`} sub="out of 100" />
-          <Stat label="Best score" value={`${view.best}`} sub="your personal best" />
-          <Stat label="Avg time / question" value={fmtTime(view.avgTime)} />
-        </div>
+          <div className="pa-wrap">
+            <div>
+              <Eyebrow>Free vs Pro</Eyebrow>
+              <h1 className="pa-h">Free shows your score. <em>Pro shows why it is stuck.</em></h1>
+              <p className="pa-p">Your free page tells you where you stand. Pro opens up what is holding the number back, and what to do about it before your next interview.</p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 22 }}>
+                <button type="button" className="pa-cta" onClick={() => openUpgrade('fullAnalytics')}>⚡ Unlock Pro Analytics <span className="ar" aria-hidden="true">→</span></button>
+                <button type="button" className="pa-link" onClick={() => navigate('/pricing')}>Compare plans</button>
+              </div>
+              <div style={{ marginTop: 14, fontSize: 12, color: C.textMuted, lineHeight: 1.7 }}>
+                One-time payment · No auto-renewal<br />Your past sessions unlock instantly
+              </div>
+            </div>
 
-        <div style={{ margin: '14px 0 6px' }}>
-          <Eyebrow>Unlock with Pro</Eyebrow>
-          <div style={{ fontFamily: F.display, fontSize: 'clamp(18px, 2.4vw, 22px)', fontWeight: 900, color: C.text, letterSpacing: '-0.3px' }}>
-            Try the full Pro Analytics page right now
+            <div className="pa-table" role="table" aria-label="What each plan includes">
+              <div className="pa-row pa-head" role="row"><span role="columnheader">WHAT YOU GET</span><span role="columnheader">FREE</span><span role="columnheader">PRO</span></div>
+              {[
+                { ic: '🧩', t: 'Full IRS breakdown', d: 'Six dimensions, each with its own trend', free: 'One overall number', pro: 'Where every point comes from' },
+                { ic: '🎯', t: 'Blind spots', d: 'Habits that quietly cost you marks', free: 'Your last 7 days', pro: 'Patterns across every session' },
+                { ic: '🛡️', t: 'AI War Room', d: 'Rehearse a company\u2019s toughest follow-ups', free: 'Not included', pro: 'Company-specific drills' },
+                { ic: '🪜', t: 'Salary-tier roadmap', d: 'The exact gap to your next ₹LPA tier', free: 'Pass or fail', pro: 'Tier, gap and next steps' },
+              ].map((r) => (
+                <div className="pa-row" role="row" key={r.t}>
+                  <div className="pa-feat" role="cell">
+                    <span className="pa-ic" aria-hidden="true">{r.ic}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: F.display, fontSize: 14.5, fontWeight: 800, color: C.text }}>{r.t}</div>
+                      <div style={{ fontSize: 12.5, color: C.textSub, lineHeight: 1.45, marginTop: 1 }}>{r.d}</div>
+                    </div>
+                  </div>
+                  <div className="pa-free" role="cell">{r.free}</div>
+                  <div className="pa-pro" role="cell">{r.pro}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          <p style={{ margin: '6px 0 0', fontSize: 12.5, color: C.textMuted, lineHeight: 1.6 }}>
-            Every section below is the real page, filled with example data. Hover the charts, open a dimension, press Generate.
-            Only the AI responses are locked: you see how they start and how they are written.
-          </p>
-        </div>
+        </section>
 
         <div style={{ marginTop: 14 }}>
-          <ProLiveDemo feature="fullAnalytics" name="Analytics" cta="Unlock my Analytics" hint="Explore freely. AI responses (like the War Room) are examples.">
+          <ProLiveDemo feature="fullAnalytics" name="Analytics" showBar={false} cta="Unlock my Analytics" hint="Explore freely. AI responses (like the War Room) are examples.">
             {preview}
           </ProLiveDemo>
         </div>

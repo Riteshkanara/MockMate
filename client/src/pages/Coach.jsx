@@ -13,7 +13,6 @@ import {
   getLastSessionBreakdown,
   getBlindSpots,
 } from '../Services/interviewService';
-import PencilLoader from "../components/PencilLoader";
 import {
   C, F,
   COMPANIES, DIM_META, TIER_META,
@@ -28,6 +27,8 @@ import {
 import { TodayCard, WeeklyPlan }  from "../components/coach/CoachInsights";
 import { WeaknessRadar }          from "../components/coach/WeaknessRadar";
 import { SessionBreakdown }       from "../components/coach/SessionBreakdown";
+import { CoachLoader }            from "../components/PageLoaders";
+import { usePageLoader }          from "../hooks/useLoaderGate";
 
 // — CommandHeader
 const HEADER_STATS = (irs, tier, totalSessions, lastScore, slope) => {
@@ -653,6 +654,7 @@ const CoachPro = () => {
   const [breakdownData,  setBreakdownData]  = useState(preview ? SAMPLE_LAST_SESSION : null);
   const [blindSpotsData, setBlindSpotsData] = useState(preview ? SAMPLE_BLIND_SPOTS.blindSpots : null);
   const [loading, setLoading] = useState(!preview);
+  const showLoader = usePageLoader(loading);
   const [error, setError]     = useState("");
   const fetchedForUser = useRef(undefined);
 
@@ -693,12 +695,8 @@ const CoachPro = () => {
     };
   }, [analyticsData]);
 
-  if (loading) return (
-    <div style={{ height: "calc(100vh - 100px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bg, gap: 20 }}>
-      <PencilLoader />
-      <p style={{ color: C.sub, fontSize: 13, fontFamily: "'Inter', sans-serif", margin: 0 }}>Loading your placement command center…</p>
-    </div>
-  );
+  if (showLoader) return <CoachLoader />;
+  if (loading)    return null;
 
   if (error) return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>

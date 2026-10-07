@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { getInterviewHistory } from '../Services/interviewService';
 import HistoryLockedStrip from '../components/pro/HistoryLockedStrip';
 import { C, F } from '../styles/token';
+import { HistoryLoader } from '../components/PageLoaders';
+import { usePageLoader } from '../hooks/useLoaderGate';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // History — Blueprint Blue edition
@@ -229,6 +231,7 @@ const History = () => {
   const [olderCount, setOlderCount] = useState(0);
   const [windowDays, setWindowDays] = useState(null);
   const [loading, setLoading] = useState(true);
+  const showLoader = usePageLoader(loading);
   const [filter, setFilter]   = useState('all');
   const [sort, setSort]       = useState('recent');
   const [error, setError]     = useState('');
@@ -276,7 +279,8 @@ const History = () => {
   const stats       = useMemo(() => buildStats(history),       [history]);
   const topicSparks = useMemo(() => buildTopicSparks(history), [history]);
 
-  if (loading) return <HistorySkeleton />;
+  if (showLoader) return <HistoryLoader />;
+  if (loading)    return null;
 
   return (
     <div style={S.page}>
@@ -449,53 +453,6 @@ const History = () => {
     </div>
   );
 };
-
-// — Skeleton
-
-const HistorySkeleton = () => (
-  <div style={S.page}>
-    <style>{`
-      @keyframes hshimmer {
-        0%   { background-position: -200px 0; }
-        100% { background-position:  200px 0; }
-      }
-      .h-skel {
-        background: linear-gradient(90deg, ${C.border} 25%, #EEF3FF 37%, ${C.border} 63%);
-        background-size: 400px 100%;
-        animation: hshimmer 1.4s ease infinite;
-      }
-    `}</style>
-    <div style={S.container}>
-      <div style={{ marginBottom: 30 }}>
-        <div className="h-skel" style={{ width: 270, height: 38, borderRadius: 8, marginBottom: 12 }} />
-        <div className="h-skel" style={{ width: 520, maxWidth: '80%', height: 15, borderRadius: 6 }} />
-      </div>
-      <div style={S.statsGrid}>
-        {[1, 2, 3].map(i => (
-          <div key={i} style={{ ...S.statCard, display: 'flex' }}>
-            <div className="h-skel" style={{ width: 52, height: 52, borderRadius: 14 }} />
-            <div style={{ flex: 1 }}>
-              <div className="h-skel" style={{ width: 70, height: 10, borderRadius: 5, marginBottom: 8 }} />
-              <div className="h-skel" style={{ width: 45, height: 22, borderRadius: 6 }} />
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[1, 2, 3].map(i => (
-          <div key={i} style={{ height: 92, padding: 18, display: 'flex', alignItems: 'center', gap: 14, background: C.card, border: `1px solid ${C.border}`, borderRadius: 18 }}>
-            <div className="h-skel" style={{ width: 48, height: 48, borderRadius: 13 }} />
-            <div style={{ flex: 1 }}>
-              <div className="h-skel" style={{ width: 100, height: 10, borderRadius: 5, marginBottom: 8 }} />
-              <div className="h-skel" style={{ width: 190, height: 14, borderRadius: 6 }} />
-            </div>
-            <div className="h-skel" style={{ width: 56, height: 56, borderRadius: '50%' }} />
-          </div>
-        ))}
-      </div>
-    </div>
-  </div>
-);
 
 // — Global CSS (extracted to avoid re-defining per render)
 

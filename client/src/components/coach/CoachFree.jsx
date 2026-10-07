@@ -6,6 +6,7 @@ import { C, F } from '../../styles/token';
 import useUpgrade from '../../hooks/useUpgrade';
 import ProBadge from '../pro/ProBadge';
 import ProLiveDemo from '../pro/ProLiveDemo';
+import { CoachLoader } from '../PageLoaders';
 
 /**
  * CoachFree: the AI Coach page for free users.
@@ -28,6 +29,7 @@ export default function CoachFree({ preview = null }) {
   const { openUpgrade } = useUpgrade();
   const [weakest, setWeakest] = useState(null);
   const [sessions, setSessions] = useState(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +41,7 @@ export default function CoachFree({ preview = null }) {
         setWeakest(t || null);
         setSessions(Number(d?.totalSessions ?? d?.totalInterviews) || 0);
       } catch { /* the page works fine without personal lines */ }
+      finally { if (!cancelled) setReady(true); }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -48,6 +51,8 @@ export default function CoachFree({ preview = null }) {
     : sessions === 0
       ? 'Finish one interview and the Coach has something real to work with.'
       : null;
+
+  if (!ready) return <CoachLoader bg={C.bg} />;
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, padding: '24px 20px 72px', fontFamily: F.body }}>

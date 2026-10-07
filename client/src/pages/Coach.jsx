@@ -13,7 +13,7 @@ import {
   getLastSessionBreakdown,
   getBlindSpots,
 } from '../Services/interviewService';
-import PencilLoader from "../components/PencilLoader";
+import { CoachLoader } from "../components/PageLoaders";
 import {
   C, F,
   COMPANIES, DIM_META, TIER_META,
@@ -693,12 +693,8 @@ const CoachPro = () => {
     };
   }, [analyticsData]);
 
-  if (loading) return (
-    <div style={{ height: "calc(100vh - 100px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bg, gap: 20 }}>
-      <PencilLoader />
-      <p style={{ color: C.sub, fontSize: 13, fontFamily: "'Inter', sans-serif", margin: 0 }}>Loading your placement command center…</p>
-    </div>
-  );
+  if (loading) return <CoachLoader bg={C.bg} color={C.sub} />;
+
 
   if (error) return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>

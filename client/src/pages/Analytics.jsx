@@ -15,7 +15,7 @@ import { useNavigate } from "react-router-dom";
 import usePlan from "../hooks/usePlan";
 import AnalyticsFree from "../components/analytics/AnalyticsFree";
 import WarRoomSection from "../components/WarRoom";
-import BookLoader from "../components/BookLoader";
+import { AnalyticsLoader } from "../components/PageLoaders";
 import {
   getAIFreeform,
   getDashboardAnalytics,
@@ -807,15 +807,8 @@ const AnalyticsPro = () => {
     { label: "EVIDENCE CONFIDENCE", val: irsMaturity != null ? `${Math.round(irsMaturity * 100)}%` : "—", color: C.text },
   ];
 
-  if (loading) return (
-    <div style={{ height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', background: '#F0F4FF', gap: 16 }}>
-      <BookLoader />
-      <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted, letterSpacing: '1.2px' }}>
-        COMPUTING YOUR IRS...
-      </div>
-    </div>
-  );
+  if (loading) return <AnalyticsLoader />;
+
 
   if (error) return (
     <div style={S.page}>

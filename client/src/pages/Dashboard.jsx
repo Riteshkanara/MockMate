@@ -7,7 +7,7 @@ import usePlan from '../hooks/usePlan';
 import useUpgrade from '../hooks/useUpgrade';
 import PlanStrip from '../components/pro/PlanStrip';
 import { getDashboardAnalytics, startInterview, fixBadges } from '../Services/interviewService';
-import PageLoader from '../components/PageLoader';
+import { DashboardLoader } from '../components/PageLoaders';
 import Button from '../components/Button';
 import { C, F } from '../styles/token';
 import BadgeShowcase, { EXTENDED_BADGE_CATALOGUE } from '../components/BadgeShowcase';
@@ -473,7 +473,7 @@ const Dashboard = () => {
     return locked.sort((a, b) => (b.progress || 0) - (a.progress || 0))[0] || null;
   }, [badges]);
 
-  if (loading)   return <PageLoader />;
+  if (loading)   return <DashboardLoader bg={C.bg} />;
   if (loadError) return <LoadError onRetry={handleRetry} retrying={retrying} />;
 
   return (

@@ -11,6 +11,7 @@ import S from '../components/leaderboard/styles';
 import RivalCard from '../components/leaderboard/RivalCard';
 import PodiumBlock from '../components/leaderboard/PodiumBlock';
 import RankRing from '../components/leaderboard/RankRing';
+import { LeaderboardLoader } from '../components/PageLoaders';
 
 // ─── Dimension → practice topic bridge ──────────────────────────────────────
 const DIMENSION_TO_TOPIC = {
@@ -549,25 +550,7 @@ const Leaderboard = () => {
   const fieldOnStreak = rawData.filter((e) => (Number(e.streak) || 0) >= 2).length;
 
   // ─── Loading state ─────────────────────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <div style={S.page}>
-        <style>{`
-          @keyframes lbShimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
-          .lb-sk { background: linear-gradient(90deg, ${C.line} 25%, #fff 37%, ${C.line} 63%); background-size: 400px 100%; animation: lbShimmer 1.4s ease infinite; }
-        `}</style>
-        <div style={S.container}>
-          <div className="lb-sk" style={{ width: 240, height: 34, borderRadius: 10, marginBottom: 20 }} />
-          <div className="lb-sk" style={{ borderRadius: 22, height: 200, marginBottom: 16 }} />
-          <div className="lb-sk" style={{ borderRadius: 18, height: 64, marginBottom: 16 }} />
-          <div className="lb-sk" style={{ borderRadius: 20, height: 320, marginBottom: 16 }} />
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="lb-sk" style={{ borderRadius: 14, height: 68, marginBottom: 10, opacity: 1 - i * 0.14 }} />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <LeaderboardLoader bg={C.paper} />;
 
   // ─── Error state ───────────────────────────────────────────────────────────
   if (loadError) {

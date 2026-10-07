@@ -13,7 +13,6 @@ import {
   getLastSessionBreakdown,
   getBlindSpots,
 } from '../Services/interviewService';
-import { CoachLoader } from "../components/PageLoaders";
 import {
   C, F,
   COMPANIES, DIM_META, TIER_META,
@@ -28,6 +27,8 @@ import {
 import { TodayCard, WeeklyPlan }  from "../components/coach/CoachInsights";
 import { WeaknessRadar }          from "../components/coach/WeaknessRadar";
 import { SessionBreakdown }       from "../components/coach/SessionBreakdown";
+import { CoachLoader }            from "../components/PageLoaders";
+import { usePageLoader }          from "../hooks/useLoaderGate";
 
 // — CommandHeader
 const HEADER_STATS = (irs, tier, totalSessions, lastScore, slope) => {
@@ -653,6 +654,7 @@ const CoachPro = () => {
   const [breakdownData,  setBreakdownData]  = useState(preview ? SAMPLE_LAST_SESSION : null);
   const [blindSpotsData, setBlindSpotsData] = useState(preview ? SAMPLE_BLIND_SPOTS.blindSpots : null);
   const [loading, setLoading] = useState(!preview);
+  const showLoader = usePageLoader(loading);
   const [error, setError]     = useState("");
   const fetchedForUser = useRef(undefined);
 
@@ -693,8 +695,8 @@ const CoachPro = () => {
     };
   }, [analyticsData]);
 
-  if (loading) return <CoachLoader bg={C.bg} color={C.sub} />;
-
+  if (showLoader) return <CoachLoader />;
+  if (loading)    return null;
 
   if (error) return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>

@@ -5,6 +5,7 @@ import { getInterviewHistory } from '../Services/interviewService';
 import HistoryLockedStrip from '../components/pro/HistoryLockedStrip';
 import { C, F } from '../styles/token';
 import { HistoryLoader } from '../components/PageLoaders';
+import { usePageLoader } from '../hooks/useLoaderGate';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // History — Blueprint Blue edition
@@ -230,6 +231,7 @@ const History = () => {
   const [olderCount, setOlderCount] = useState(0);
   const [windowDays, setWindowDays] = useState(null);
   const [loading, setLoading] = useState(true);
+  const showLoader = usePageLoader(loading);
   const [filter, setFilter]   = useState('all');
   const [sort, setSort]       = useState('recent');
   const [error, setError]     = useState('');
@@ -277,7 +279,8 @@ const History = () => {
   const stats       = useMemo(() => buildStats(history),       [history]);
   const topicSparks = useMemo(() => buildTopicSparks(history), [history]);
 
-  if (loading) return <HistoryLoader />;
+  if (showLoader) return <HistoryLoader />;
+  if (loading)    return null;
 
   return (
     <div style={S.page}>
@@ -450,7 +453,6 @@ const History = () => {
     </div>
   );
 };
-
 
 // — Global CSS (extracted to avoid re-defining per render)
 

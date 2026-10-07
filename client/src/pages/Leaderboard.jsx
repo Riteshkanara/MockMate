@@ -12,6 +12,7 @@ import RivalCard from '../components/leaderboard/RivalCard';
 import PodiumBlock from '../components/leaderboard/PodiumBlock';
 import RankRing from '../components/leaderboard/RankRing';
 import { LeaderboardLoader } from '../components/PageLoaders';
+import { usePageLoader } from '../hooks/useLoaderGate';
 
 // ─── Dimension → practice topic bridge ──────────────────────────────────────
 const DIMENSION_TO_TOPIC = {
@@ -377,6 +378,7 @@ const Leaderboard = () => {
 
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const showLoader = usePageLoader(isLoading);
   const [loadError, setLoadError] = useState(null);
   const [mounted, setMounted] = useState(false);
   const [podiumMounted, setPodiumMounted] = useState(false);
@@ -550,7 +552,8 @@ const Leaderboard = () => {
   const fieldOnStreak = rawData.filter((e) => (Number(e.streak) || 0) >= 2).length;
 
   // ─── Loading state ─────────────────────────────────────────────────────────
-  if (isLoading) return <LeaderboardLoader bg={C.paper} />;
+  if (showLoader) return <LeaderboardLoader />;
+  if (isLoading)  return null;
 
   // ─── Error state ───────────────────────────────────────────────────────────
   if (loadError) {

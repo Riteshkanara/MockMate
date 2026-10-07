@@ -91,6 +91,9 @@ export const purgeOtherUsersCache = (userId) => {
   } catch { /* non-fatal */ }
 };
 
+// Pro demo only: a short, believable "thinking" pause before an example response appears.
+export const demoDelay = (ms = 1300) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const cacheAgeMinutes = (ts) => Math.round((Date.now() - ts) / 60000);
 
 export const trendSlope = (vals) => {

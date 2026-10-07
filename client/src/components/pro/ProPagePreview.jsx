@@ -18,7 +18,7 @@ import ProBadge from './ProBadge';
 import Icon from '../interview/icons';
 import { PreviewContext } from './PreviewContext';
 
-export default function ProPagePreview({ feature, name, cta, bullets = [], maxHeight = 1500, blur = 3.5, children }) {
+export default function ProPagePreview({ feature, name, cta, bullets = [], maxHeight = 1500, blur = 1.6, children }) {
   const { openUpgrade } = useUpgrade();
   const open = () => openUpgrade(feature);
 
@@ -29,7 +29,7 @@ export default function ProPagePreview({ feature, name, cta, bullets = [], maxHe
         .pp-cta:active { transform: scale(.985); }
         .pp-cta:focus-visible, .pp-surface:focus-visible, .pp-link:focus-visible { outline: 2.5px solid ${C.brand500}; outline-offset: 3px; }
         .pp-link:hover { background: ${C.brand50} !important; }
-        @media (max-width: 560px) { .pp-card { flex-direction: column !important; align-items: stretch !important; text-align: center; } .pp-card-copy { text-align: center !important; } }
+        @media (max-width: 560px) { .pp-card { flex-direction: column !important; align-items: stretch !important; text-align: center; } .pp-card-copy { text-align: center !important; flex: 0 0 auto !important; } .pp-cta { width: 100%; } }
         @media (prefers-reduced-motion: reduce) { .pp-cta { transition: none !important; } }
       `}</style>
 
@@ -52,13 +52,13 @@ export default function ProPagePreview({ feature, name, cta, bullets = [], maxHe
 
       {/* The real page, locked */}
       <div style={{ position: 'relative', maxHeight, overflow: 'clip' }}>
-        <div aria-hidden="true" inert style={{ filter: `blur(${blur}px) saturate(.96)`, WebkitFilter: `blur(${blur}px) saturate(.96)`, pointerEvents: 'none', userSelect: 'none', transform: 'translateZ(0)' }}>
+        <div aria-hidden="true" inert style={{ filter: `blur(${blur}px) saturate(1)`, WebkitFilter: `blur(${blur}px) saturate(1)`, pointerEvents: 'none', userSelect: 'none', transform: 'translateZ(0)' }}>
           <PreviewContext.Provider value>{children}</PreviewContext.Provider>
         </div>
 
         {/* whole surface opens the upgrade dialog */}
         <button type="button" className="pp-surface" onClick={open} aria-label={`${cta}. This is a Pro feature. Opens upgrade options.`}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', padding: 0, cursor: 'pointer', background: 'linear-gradient(180deg, rgba(255,255,255,0) 55%, rgba(255,255,255,.55) 80%, #fff 100%)' }} />
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', padding: 0, cursor: 'pointer', background: 'linear-gradient(180deg, rgba(255,255,255,0) 60%, rgba(255,255,255,.4) 82%, rgba(255,255,255,.92) 100%)' }} />
 
         {/* floating card that follows the reader */}
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>

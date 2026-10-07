@@ -5,7 +5,7 @@ import { getDashboardAnalytics } from '../../Services/interviewService';
 import { C, F } from '../../styles/token';
 import useUpgrade from '../../hooks/useUpgrade';
 import ProBadge from '../pro/ProBadge';
-import ProPagePreview from '../pro/ProPagePreview';
+import ProLiveDemo from '../pro/ProLiveDemo';
 
 /**
  * AnalyticsFree — the Analytics page for free users.
@@ -183,6 +183,30 @@ export default function AnalyticsFree({ initialData = null, preview = null }) {
           <Stat label="Avg time / question" value={fmtTime(view.avgTime)} />
         </div>
 
+        <div style={{ margin: '14px 0 6px' }}>
+          <Eyebrow>Unlock with Pro</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 'clamp(18px, 2.4vw, 22px)', fontWeight: 900, color: C.text, letterSpacing: '-0.3px' }}>
+            Try the full Pro Analytics page right now
+          </div>
+          <p style={{ margin: '6px 0 0', fontSize: 12.5, color: C.textMuted, lineHeight: 1.6 }}>
+            Every section below is the real page, filled with example data. Hover the charts, open a dimension, press Generate.
+            Only the AI responses are locked: you see how they start and how they are written.
+          </p>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <ProLiveDemo feature="fullAnalytics" name="Analytics" cta="Unlock my Analytics" hint="Explore freely. AI responses (like the War Room) are examples.">
+            {preview}
+          </ProLiveDemo>
+        </div>
+
+        <div style={{ margin: '30px 0 12px' }}>
+          <Eyebrow>Your free snapshot</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 'clamp(18px, 2.4vw, 22px)', fontWeight: 900, color: C.text, letterSpacing: '-0.3px' }}>
+            Your real progress, from your own sessions
+          </div>
+        </div>
+
         {/* readiness headline: show the number, sell the "how" */}
         <Card style={{ marginBottom: 14, background: `linear-gradient(135deg, ${C.brand50}, #fff 70%)`, borderColor: C.brand100 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
@@ -268,22 +292,6 @@ export default function AnalyticsFree({ initialData = null, preview = null }) {
               </button>
             )}
           </Card>
-        </div>
-
-        <div style={{ margin: '26px 0 6px' }}>
-          <Eyebrow>Unlock with Pro</Eyebrow>
-          <div style={{ fontFamily: F.display, fontSize: 'clamp(18px, 2.4vw, 22px)', fontWeight: 900, color: C.text, letterSpacing: '-0.3px' }}>
-            The parts of your analytics that show you how to improve
-          </div>
-          <p style={{ margin: '6px 0 0', fontSize: 12.5, color: C.textMuted }}>
-            Below is the exact Pro page, shown with example data. Yours is built from your own sessions.
-          </p>
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          <ProPagePreview feature="fullAnalytics" name="Analytics" cta="Unlock my Analytics" maxHeight={1700} bullets={['Skill DNA', 'Blind spots', 'Salary-tier roadmap', 'Full history']}>
-            {preview}
-          </ProPagePreview>
         </div>
 
         <section style={{ marginTop: 22, borderRadius: 22, padding: 'clamp(20px, 3.6vw, 30px)', background: 'linear-gradient(135deg, #0A3FCC 0%, #1A6EFF 60%, #0891B2 130%)', color: '#fff', boxShadow: '0 16px 36px rgba(10,63,204,.26)' }}>

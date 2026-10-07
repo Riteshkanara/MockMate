@@ -5,7 +5,8 @@ import useAuth from "../hooks/useAuth";
 import usePlan from "../hooks/usePlan";
 import CoachFree from "../components/coach/CoachFree";
 import { useIsPreview } from "../components/pro/PreviewContext";
-import { SAMPLE_PRO_ANALYTICS, SAMPLE_LAST_SESSION, SAMPLE_BLIND_SPOTS } from "../components/pro/previewData";
+import { SAMPLE_PRO_ANALYTICS, SAMPLE_LAST_SESSION, SAMPLE_BLIND_SPOTS, SAMPLE_CHAT_REPLIES, SAMPLE_CHAT_DEFAULT, sampleCompanyVerdict } from "../components/pro/previewData";
+import ProResponseLock from "../components/pro/ProResponseLock";
 import {
   getAIFreeform,
   getDashboardAnalytics,
@@ -17,7 +18,7 @@ import {
   C, F,
   COMPANIES, DIM_META, TIER_META,
   buildCacheKeys, purgeOtherUsersCache,
-  readCache, writeCache, trendSlope, scoreColor,
+  readCache, writeCache, demoDelay, trendSlope, scoreColor,
   SectionErrorBoundary,
   Spin, Eyebrow, CacheTag,
   DarkCard, LightCard,
@@ -218,6 +219,7 @@ const CompanyReadiness = memo(({ analyticsData, cacheKeys }) => {
   const [loading, setLoading]   = useState(false);
   const [cacheTs, setCacheTs]   = useState(null);
   const inFlight = useRef(false);
+  const isPreview = useIsPreview();
 
   const dimProfile = useMemo(() => {
     const apiProfile = analyticsData?.dimensionProfile ?? [];
@@ -247,17 +249,20 @@ const CompanyReadiness = memo(({ analyticsData, cacheKeys }) => {
     const overTarget   = gaps.filter((g) => g.gap <= 0);
     const readinessPct = Math.round((gaps.reduce((acc, g) => acc + Math.min(1, g.userScore / Math.max(g.required, 1)), 0) / gaps.length) * 100);
     try {
-      const text    = await getAIFreeform(buildCompanyPrompt(company, gaps, readinessPct), 350);
+      // Pro demo: example verdict, no server call. Real Pro users hit the AI as before.
+      const text    = isPreview
+        ? (await demoDelay(), sampleCompanyVerdict(company, readinessPct, criticalGaps))
+        : await getAIFreeform(buildCompanyPrompt(company, gaps, readinessPct), 350);
       const payload = { gaps, criticalGaps, overTarget, readinessPct, verdict: text };
       const now     = Date.now();
       writeCache(cacheKeys.company(company.id), { result: payload, ts: now });
-      setResult(payload); setCacheTs(now);
+      setResult(payload); setCacheTs(isPreview ? null : now);
     } catch {
       setResult({ gaps, criticalGaps, overTarget, readinessPct, verdict: null });
     } finally {
       setLoading(false); inFlight.current = false;
     }
-  }, [buildGaps, cacheKeys]);
+  }, [buildGaps, cacheKeys, isPreview]);
 
   const verdictLevel = (pct) =>
     pct >= 85 ? { label: "READY",      color: C.green,  bg: `${C.green}18`  } :
@@ -339,6 +344,7 @@ const CompanyReadiness = memo(({ analyticsData, cacheKeys }) => {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {result.verdict && (
+                  <ProResponseLock feature="aiCoach" dark cta="Unlock my verdicts" clearHeight={92}>
                   <div style={{ padding: "22px 22px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderLeft: `4px solid ${C.cyan400}`, animation: "coachFadeUp 0.4s cubic-bezier(.16,1,.3,1) both" }}>
                     <div style={{ fontFamily: F.mono, fontSize: 10, color: C.cyan400, letterSpacing: "1.2px", marginBottom: 16, fontWeight: 800 }}>⚡ COACH'S VERDICT</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -365,6 +371,7 @@ const CompanyReadiness = memo(({ analyticsData, cacheKeys }) => {
                       })}
                     </div>
                   </div>
+                  </ProResponseLock>
                 )}
                 {result.criticalGaps.length > 0 && (
                   <div style={{ padding: "16px 18px", borderRadius: 14, background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.18)" }}>
@@ -447,7 +454,14 @@ HOW TO RESPOND:
 - If the question is vague, give the most useful answer for their specific data profile and then ask one clarifying question at the end if needed
 - Never start your response with "I" — start with the most important information`;
 
+// In the Pro demo a coach reply is an example: first lines readable, the rest blurred.
+const BubbleLock = ({ active, children }) => (active
+  ? <ProResponseLock feature="aiCoach" variant="inline" dark cta="Unlock the AI Coach" clearHeight={48}>{children}</ProResponseLock>
+  : children);
+BubbleLock.propTypes = { active: PropTypes.bool, children: PropTypes.node };
+
 const CoachChat = memo(({ analyticsData, breakdownData, blindSpots, userId }) => {
+  const isPreview = useIsPreview();
   const [messages, setMessages]         = useState([]);
   const [input, setInput]               = useState("");
   const [loading, setLoading]           = useState(false);
@@ -501,9 +515,15 @@ const CoachChat = memo(({ analyticsData, breakdownData, blindSpots, userId }) =>
     setInput(""); setLoading(true);
     const history = messages.slice(-6).map((m) => `${m.role === "coach" ? "coach" : "Student"}: ${m.text}`).join("\n");
     try {
-      const responseText = await getAIFreeform(buildChatPrompt(coachContext, history, text), 400);
+      let responseText;
+      if (isPreview) { // Pro demo: example reply, no server call
+        await demoDelay(1400);
+        responseText = SAMPLE_CHAT_REPLIES[text] ?? SAMPLE_CHAT_DEFAULT;
+      } else {
+        responseText = await getAIFreeform(buildChatPrompt(coachContext, history, text), 400);
+      }
       shouldScroll.current = true;
-      setMessages((prev) => [...prev, { role: "coach", text: responseText || "Let me check your data and get back to you on that.", time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) }]);
+      setMessages((prev) => [...prev, { role: "coach", text: responseText || "Let me check your data and get back to you on that.", locked: isPreview, time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) }]);
     } catch {
       shouldScroll.current = true;
       setMessages((prev) => [...prev, { role: "coach", text: "Network issue — try again in a moment.", time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) }]);
@@ -511,7 +531,7 @@ const CoachChat = memo(({ analyticsData, breakdownData, blindSpots, userId }) =>
       setLoading(false); inFlight.current = false;
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [input, loading, messages, coachContext]);
+  }, [input, loading, messages, coachContext, isPreview]);
 
   const canSend       = !loading && !cooldown && input.trim();
   const charCount     = input.length;
@@ -546,9 +566,11 @@ const CoachChat = memo(({ analyticsData, breakdownData, blindSpots, userId }) =>
                 </div>
               )}
               <div style={{ maxWidth: "82%", padding: isCoach ? "14px 18px" : "11px 15px", borderRadius: isCoach ? "3px 14px 14px 14px" : "14px 3px 14px 14px", background: isCoach ? "rgba(255,255,255,0.07)" : `linear-gradient(135deg, ${C.blue600}, ${C.blue500})`, border: isCoach ? "1px solid rgba(255,255,255,0.09)" : "none", borderLeft: isCoach ? `3px solid ${C.cyan400}30` : undefined, boxShadow: isCoach ? "none" : "0 4px 14px rgba(26,110,255,0.3)" }}>
+                <BubbleLock active={isCoach && !!msg.locked}>
                 <p style={{ margin: 0, fontSize: isCoach ? 15 : 14, fontWeight: isCoach ? 470 : 500, lineHeight: 1.82, color: isCoach ? "rgba(255,255,255,0.92)" : "#fff", fontFamily: F.body, letterSpacing: isCoach ? "-0.15px" : "0" }}>
                   {isCoach ? <HighlightedText text={msg.text} dark /> : msg.text}
                 </p>
+                </BubbleLock>
                 <div style={{ marginTop: 6, textAlign: isCoach ? "left" : "right", fontFamily: F.mono, fontSize: 8, color: isCoach ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.35)" }}>{msg.time}</div>
               </div>
             </div>

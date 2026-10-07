@@ -5,13 +5,14 @@ import { getDashboardAnalytics } from '../../Services/interviewService';
 import { C, F } from '../../styles/token';
 import useUpgrade from '../../hooks/useUpgrade';
 import ProBadge from '../pro/ProBadge';
-import ProPagePreview from '../pro/ProPagePreview';
+import ProLiveDemo from '../pro/ProLiveDemo';
 
 /**
  * CoachFree: the AI Coach page for free users.
- * It shows the REAL Pro layout, section by section, with example content blurred behind a
- * lock and only the first line readable. The Coach spends AI quota on every message, so the
- * real Coach stays Pro-only (enforced on the server); nothing here is real Pro output.
+ * It shows the REAL Coach page, fully visible and clickable, filled with example data. The
+ * Coach spends AI quota on every message, so pressing a button inside the demo shows an EXAMPLE
+ * response (first lines readable, the rest blurred). The real Coach stays Pro-only (enforced on
+ * the server); nothing here is real Pro output and the demo never calls the server.
  */
 const BENEFITS = [
   'Today\'s focus, chosen from your weakest area',
@@ -76,9 +77,9 @@ export default function CoachFree({ preview = null }) {
         </section>
 
         <div style={{ marginTop: 18 }}>
-          <ProPagePreview feature="aiCoach" name="AI Coach" cta="Unlock my AI Coach" maxHeight={2100} bullets={["Today's focus", '7-day plan', 'Company readiness', 'Coach chat']}>
+          <ProLiveDemo feature="aiCoach" name="AI Coach" cta="Unlock my AI Coach" hint="Press Get Today's Plan, pick a company or ask a question to see a reply.">
             {preview}
-          </ProPagePreview>
+          </ProLiveDemo>
         </div>
 
         <section style={{ marginTop: 28, borderRadius: 22, padding: 'clamp(20px, 3.6vw, 32px)', background: '#fff', border: `1px solid ${C.border}`, boxShadow: '0 14px 34px rgba(15,35,95,.08)' }}>

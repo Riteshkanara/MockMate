@@ -66,7 +66,7 @@ function UnlockBar({ names, voiceHot }) {
     <section aria-label="What Pro adds to this answer" style={{ borderRadius: 18, padding: '16px 18px', background: `linear-gradient(135deg, ${C.brand50}, #fff 70%)`, border: `1px solid ${C.brand100}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
         <div>
-          <div style={{ fontFamily: F.mono, fontSize: 10.5, fontWeight: 800, letterSpacing: '.12em', color: C.brand600, marginBottom: 3 }}>
+          <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 800, letterSpacing: '.12em', color: C.brand600, marginBottom: 3 }}>
             {names.length} MORE INSIGHT{names.length > 1 ? 'S' : ''} ON THIS ANSWER
           </div>
           <div style={{ fontFamily: F.display, fontSize: 16.5, fontWeight: 800, color: C.text, letterSpacing: '-0.2px' }}>
@@ -99,7 +99,7 @@ UnlockBar.propTypes = { names: PropTypes.arrayOf(PropTypes.string).isRequired, v
 // ═══════════════════════════════════════════════════════════════════════════════
 function NextBar({ onNext, isLoading, isLast, showKeys }) {
   return (
-    <div style={{ position: 'sticky', bottom: 12, zIndex: 4, marginTop: 4 }}>
+    <div style={{ position: 'sticky', bottom: 'calc(12px + env(safe-area-inset-bottom, 0px))', zIndex: 4, marginTop: 4 }}>
       <button
         type="button"
         className="fb-next"

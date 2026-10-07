@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useEffect, memo } from "react";
 import PropTypes from "prop-types";
 import { getAIFreeform } from '../../Services/interviewService';
+import { useIsPreview } from '../pro/PreviewContext';
+import ProResponseLock from '../pro/ProResponseLock';
 import {
   C, F,
-  readCache, writeCache,
+  readCache, writeCache, demoDelay,
   scoreColor,
   parseDebriefSections,
   Eyebrow, CacheTagLight,
@@ -111,19 +113,26 @@ export const SessionBreakdown = memo(({ breakdownData, analyticsData, cacheKeys 
   const [done, setDone]       = useState(false);
   const [cacheTs, setCacheTs] = useState(null);
   const inFlight = useRef(false);
+  const isPreview = useIsPreview();
 
    useEffect(() => {
+    if (isPreview) return; // demo starts idle: the example debrief appears only after the button is pressed
     const cached = readCache(cacheKeys.debrief);
     Promise.resolve().then(() => {
       if (cached?.debrief) { setDebrief(cached.debrief); setDone(true); setCacheTs(cached.ts); }
       else { setDebrief(null); setDone(false); setCacheTs(null); }
     });
-  }, [cacheKeys.debrief]);
+  }, [cacheKeys.debrief, isPreview]);
 
   const generate = useCallback(async () => {
     if (!breakdownData?.questions?.length || inFlight.current) return;
     inFlight.current = true;
     setLoading(true); setDone(false); setDebrief(null); setCacheTs(null);
+    if (isPreview) { // Pro demo: example response, no server call
+      await demoDelay(1500);
+      setDebrief(readCache(cacheKeys.debrief)?.debrief ?? null); setLoading(false); setDone(true); inFlight.current = false;
+      return;
+    }
     try {
       const text     = await getAIFreeform(buildDebriefPrompt(breakdownData, analyticsData), 600);
       const sections = parseDebriefSections(text, DEBRIEF_ACCENTS);
@@ -136,7 +145,7 @@ export const SessionBreakdown = memo(({ breakdownData, analyticsData, cacheKeys 
     } finally {
       setLoading(false); setDone(true); inFlight.current = false;
     }
-  }, [breakdownData, analyticsData, cacheKeys.debrief]);
+  }, [breakdownData, analyticsData, cacheKeys.debrief, isPreview]);
 
   if (!breakdownData?.questions?.length) return null;
 
@@ -195,7 +204,7 @@ export const SessionBreakdown = memo(({ breakdownData, analyticsData, cacheKeys 
       )}
 
       {done && debrief && (
-        debrief.sections ? (
+        <ProResponseLock feature="aiCoach" cta="Unlock my debrief" clearHeight={108}>{debrief.sections ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14 }}>
             {debrief.sections.map((s, i) => {
               const cfg = DEBRIEF_SECTION_CONFIG[s.heading] || { icon: "•", desc: "" };
@@ -221,7 +230,7 @@ export const SessionBreakdown = memo(({ breakdownData, analyticsData, cacheKeys 
           </div>
         ) : (
           <p style={{ margin: 0, fontSize: 15, fontWeight: 520, color: C.sub, lineHeight: 1.82, fontFamily: F.body }}>{debrief.raw}</p>
-        )
+        )}</ProResponseLock>
       )}
     </LightCard>
   );

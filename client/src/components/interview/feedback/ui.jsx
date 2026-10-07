@@ -50,8 +50,10 @@ export const PANEL_CSS = `
   .fb-in, .fb-bar, .fb-glow, .fb-shimmer { animation:none !important; }
   .fb-tab, .fb-chip, .fb-btn, .fb-next, .fb-lock-cta { transition:none !important; }
 }
-@media (max-width:480px) {
+@media (max-width:640px) {
   .fb-twocol { grid-template-columns:1fr !important; }
+}
+@media (max-width:480px) {
   .fb-hero-top { flex-direction:column !important; align-items:flex-start !important; }
 }
 `;

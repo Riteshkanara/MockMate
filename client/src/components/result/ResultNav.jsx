@@ -62,11 +62,12 @@ export const scrollToId = (id, extra = 10) => {
 };
 
 // ── sticky nav ───────────────────────────────────────────────────────────────
-export const ResultNav = ({ items, onPractice, practiceLabel = "Practice again" }) => {
+export const ResultNav = ({ items, onPractice, practiceLabel = "Practice again", practiceShort = "Again" }) => {
   const barRef = useRef(null);
   const scrollerRef = useRef(null);
   const [active, setActive] = useState(items[0]?.id);
   const [progress, setProgress] = useState(0);
+  const [edges, setEdges] = useState({ start: true, end: false }); // which side of the chip row has more to scroll to
   const key = items.map((i) => i.id).join("|");
 
   useEffect(() => {
@@ -98,6 +99,17 @@ export const ResultNav = ({ items, onPractice, practiceLabel = "Practice again" 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  // soft fades on the chip row so it is obvious there is more to scroll to (phones)
+  useEffect(() => {
+    const box = scrollerRef.current;
+    if (!box) return undefined;
+    const check = () => setEdges({ start: box.scrollLeft <= 2, end: box.scrollLeft + box.clientWidth >= box.scrollWidth - 2 });
+    check();
+    box.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    return () => { box.removeEventListener("scroll", check); window.removeEventListener("resize", check); };
+  }, [key]);
+
   // keep the active chip visible on narrow screens
   useEffect(() => {
     const box = scrollerRef.current;
@@ -120,7 +132,16 @@ export const ResultNav = ({ items, onPractice, practiceLabel = "Practice again" 
         boxShadow: "0 6px 20px rgba(0,31,107,.07)",
       }}
     >
-      <div ref={scrollerRef} className="res-nav-scroll" style={{ flex: 1, minWidth: 0, display: "flex", gap: 6, overflowX: "auto", position: "relative" }}>
+      <div
+        ref={scrollerRef} className="res-nav-scroll"
+        style={{
+          flex: 1, minWidth: 0, display: "flex", gap: 6, overflowX: "auto", position: "relative",
+          ...(edges.start && edges.end ? null : (() => {
+            const m = `linear-gradient(90deg, ${edges.start ? "#000" : "transparent"} 0, #000 22px, #000 calc(100% - 22px), ${edges.end ? "#000" : "transparent"} 100%)`;
+            return { WebkitMaskImage: m, maskImage: m };
+          })()),
+        }}
+      >
         {items.map((it) => {
           const on = it.id === active;
           return (
@@ -154,6 +175,7 @@ export const ResultNav = ({ items, onPractice, practiceLabel = "Practice again" 
           }}
         >
           <span className="res-go-label">{practiceLabel}</span>
+          <span className="res-go-short" aria-hidden="true">{practiceShort}</span>
           <Icon name="right" size={15} stroke={2.6} />
         </button>
       )}
@@ -168,6 +190,7 @@ ResultNav.propTypes = {
   items: PropTypes.arrayOf(PropTypes.shape({ id: PropTypes.string.isRequired, label: PropTypes.string.isRequired })).isRequired,
   onPractice: PropTypes.func,
   practiceLabel: PropTypes.string,
+  practiceShort: PropTypes.string,
 };
 
 // ── floating back-to-top ─────────────────────────────────────────────────────
@@ -208,5 +231,7 @@ export const RESULT_NAV_CSS = `
 .res-go svg{transition:transform .2s cubic-bezier(.16,1,.3,1)}
 .res-go:hover svg{transform:translateX(3px)}
 .res-top:hover{background:${C.blue50}!important}
-@media (max-width:520px){.res-go-label{display:none}.res-go{padding:8px 11px!important}}
+.res-go-short{display:none}
+@media (max-width:520px){.res-go-label{display:none}.res-go-short{display:inline}.res-go{padding:8px 11px!important;gap:5px!important}}
+@media (pointer:coarse){.res-chip{min-height:40px!important}.res-go{min-height:40px!important}}
 `;

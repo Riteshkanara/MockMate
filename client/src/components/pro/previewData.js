@@ -240,3 +240,35 @@ export const COACH_PREVIEW_CACHE = {
     },
   },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Example AI responses for buttons inside the Pro demo. Shown through ProResponseLock
+// (first lines readable, the rest blurred). Never a real answer, never a server call.
+// The numbers match SAMPLE_PRO_ANALYTICS so the demo tells one consistent story.
+// ─────────────────────────────────────────────────────────────────────────────
+export const SAMPLE_CHAT_REPLIES = {
+  'Why is my IRS stuck?':
+    'IRS 58 is stuck because two dimensions are dragging the composite: System Design at 41 and Behavioral at 49. Your Technical score of 72 is already above par, so more of the same practice will not move the number. Do two topic-mode System Design sessions this week and expect about 4 to 6 IRS points.',
+  'Which company should I target first?':
+    'Target a service company round first. Your readiness there is 86%, against 78% for product and 69% for startups. Use those offers as a safety net, then aim at product once System Design crosses 55. Run one timed mock for the product round on Friday to see the real gap.',
+  "What's my biggest weakness right now?":
+    'System Design at 41/100, and it is not close. It carries 10% of IRS weight, but it is the exact topic that separates the ₹6–12 LPA and ₹12–20 LPA tiers. Your last four design answers all skipped the trade-off. Fix that one habit first.',
+  'How long until I reach the next tier?':
+    'About 6 sessions. You need 7 more IRS points for ₹12–20 LPA, and your trend adds roughly 1.3 points per session. Put 4 of those 6 on System Design and Behavioral and the timeline drops to 4 or 5 sessions.',
+  'Full sessions or topic sessions?':
+    'Topic sessions for the next two weeks. Your full-session average is held down by two weak dimensions, and full sessions only spend 1 or 2 questions on each. Do 15 questions on System Design, then one full session on Sunday to check the gain.',
+  'Am I improving fast enough?':
+    'Yes, but unevenly. Your score trend is +2.1 per session over the last 12, which is good. The risk is that all of the gain is in Technical. Without a rise in Behavioral and System Design you will plateau around 65.',
+};
+export const SAMPLE_CHAT_DEFAULT =
+  'Based on your numbers, the fastest gain is System Design: it sits at 41 and every point there lifts your IRS more than anything else you could practise. Do one scaling question out loud today, say the trade-off first, then give one number. Re-check your score after three sessions.';
+
+// A short example verdict for the Company Readiness checker, built from the sample gaps.
+export const sampleCompanyVerdict = (company, readinessPct, criticalGaps) => {
+  const worst = criticalGaps[0];
+  const second = criticalGaps[1];
+  if (!worst) {
+    return `You are ready for ${company.label}: ${readinessPct}% readiness and every dimension meets the bar.\n\nThe one thing to protect is consistency. Run one timed mock a week so a bad session does not cost you the round.`;
+  }
+  return `At ${readinessPct}% readiness you are ${readinessPct >= 85 ? 'ready' : readinessPct >= 65 ? 'close' : 'not there yet'} for ${company.label}. The biggest gap is ${worst.label}, ${worst.gap} points short${second ? `, followed by ${second.label} at ${second.gap} short` : ''}.\n\nClose ${worst.label} first: two focused topic sessions a week for about three weeks. Then take a full timed mock for ${company.label} before you apply.`;
+};

@@ -45,7 +45,7 @@ LockedBlock.propTypes = { feature: PropTypes.string.isRequired, cta: PropTypes.s
 export function LockedSection({ id, feature, icon, hue, title, sub, teaser, cta, hint, height, children }) {
   return (
     <section id={id} className="fb-scroll" style={{ ...card, padding: '16px 18px' }}>
-      <SectionHead icon={icon} hue={hue} title={title} sub={sub} right={<><span style={{ fontFamily: F.mono, fontSize: 9.5, fontWeight: 800, letterSpacing: '.1em', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 6, padding: '3px 6px' }}>EXAMPLE</span><ProBadge variant="pro" /></>} />
+      <SectionHead icon={icon} hue={hue} title={title} sub={sub} right={<><span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 800, letterSpacing: '.1em', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 6, padding: '3px 6px' }}>EXAMPLE</span><ProBadge variant="pro" /></>} />
       {teaser && (
         <p style={{ margin: '0 0 10px', fontSize: 14.5, lineHeight: 1.65, color: C.text, fontWeight: 600 }}>
           {teaser}

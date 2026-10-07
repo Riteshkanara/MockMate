@@ -73,7 +73,7 @@ const IRSRow = ({ label, pct, score, visible, delay }) => {
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
       <div style={{ width: 168, flexShrink: 0 }}>
         <div style={{ fontSize: 11.5, fontWeight: 700, color: C.text }}>{label}</div>
-        <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, marginTop: 1 }}>{pct}% weight</div>
+        <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted, marginTop: 1 }}>{pct}% weight</div>
       </div>
       <div style={{ flex: 1, height: 9, borderRadius: 5, background: C.surfaceAlt, overflow: "hidden" }}>
         <div style={{ height: "100%", borderRadius: 5, background: col, width: visible ? `${score}%` : "0%", transition: `width .9s cubic-bezier(.16,1,.3,1) ${delay}ms` }} />
@@ -98,9 +98,9 @@ const PaceBar = ({ seconds }) => {
         <div style={{ position: "absolute", left: `${pct}%`, top: -3, bottom: -3, width: 3, borderRadius: 999, background: col, boxShadow: `0 0 6px ${col}90`, transform: "translateX(-50%)" }} />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-        <span style={{ fontFamily: F.mono, fontSize: 7.5, color: C.faint }}>fast</span>
-        <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: col }}>{read}</span>
-        <span style={{ fontFamily: F.mono, fontSize: 7.5, color: C.faint }}>slow</span>
+        <span style={{ fontFamily: F.mono, fontSize: 11, color: C.faint }}>fast</span>
+        <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, color: col }}>{read}</span>
+        <span style={{ fontFamily: F.mono, fontSize: 11, color: C.faint }}>slow</span>
       </div>
     </div>
   );
@@ -114,7 +114,7 @@ const Card = ({ children, style = {} }) => (
 Card.propTypes = { children: PropTypes.node.isRequired, style: PropTypes.object };
 
 const Eyebrow = ({ children }) => (
-  <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".8px", color: C.blue500, textTransform: "lowercase", marginBottom: 5 }}>{children}</div>
+  <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: ".8px", color: C.blue500, textTransform: "lowercase", marginBottom: 5 }}>{children}</div>
 );
 Eyebrow.propTypes = { children: PropTypes.node.isRequired };
 
@@ -163,17 +163,17 @@ const ScoreSummary = ({ topicAverages, topicStatus, averageTime, totalScore }) =
         {/* card footer */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
           <div>
-            <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, marginBottom: 3, textTransform: "uppercase" }}>strongest</div>
+            <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted, marginBottom: 3, textTransform: "uppercase" }}>strongest</div>
             <div style={{ fontSize: 11.5, fontWeight: 700, color: C.green, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{best?.topic || "—"}</div>
-            <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>{best ? `${best.avg}/100` : ""}</div>
+            <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>{best ? `${best.avg}/100` : ""}</div>
           </div>
           <div>
-            <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, marginBottom: 3, textTransform: "uppercase" }}>focus area</div>
+            <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted, marginBottom: 3, textTransform: "uppercase" }}>focus area</div>
             <div style={{ fontSize: 11.5, fontWeight: 700, color: C.amber, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{worst?.topic || "—"}</div>
-            <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>{worst ? `${worst.avg}/100` : ""}</div>
+            <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>{worst ? `${worst.avg}/100` : ""}</div>
           </div>
           <div>
-            <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, marginBottom: 3, textTransform: "uppercase" }}>avg pace</div>
+            <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted, marginBottom: 3, textTransform: "uppercase" }}>avg pace</div>
             <PaceBar seconds={averageTime} />
           </div>
         </div>

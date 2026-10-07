@@ -39,7 +39,7 @@ const ResultActions = ({ nextStepText, weakestTopic, navigate, score = 0 }) => {
       <div style={{ flex: 1 }}>
         <div
           style={{
-            fontFamily: F.mono, fontSize: 10, fontWeight: 800,
+            fontFamily: F.mono, fontSize: 11, fontWeight: 800,
             letterSpacing: "1.2px", color: grade.accent, marginBottom: 4,
           }}
         >

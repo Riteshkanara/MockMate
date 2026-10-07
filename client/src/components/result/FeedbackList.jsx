@@ -267,7 +267,7 @@ const CrossSignalInsight = ({ questions }) => {
           <div style={{ flex: 1 }}>
             <div
               style={{
-                fontFamily: F.mono, fontSize: 10, fontWeight: 700,
+                fontFamily: F.mono, fontSize: 11, fontWeight: 700,
                 color: signal.accent, letterSpacing: "0.8px", marginBottom: 4, opacity: 0.75,
               }}
             >
@@ -288,7 +288,7 @@ CrossSignalInsight.propTypes = { questions: PropTypes.array.isRequired };
 
 const FeedbackBlock = ({ label, value, color, background }) => (
   <div style={{ padding: 11, borderRadius: 10, background, border: `1px solid ${color}25` }}>
-    <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color, letterSpacing: "0.5px", marginBottom: 5 }}>
+    <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, color, letterSpacing: "0.5px", marginBottom: 5 }}>
       {label}
     </div>
     {(() => {
@@ -327,11 +327,11 @@ const LockedProBlocks = ({ locked = {}, teasers = {}, skipped = false }) => {
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-        <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", color: C.brand600 }}>
+        <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: C.brand600 }}>
           {count} MORE INSIGHT{count > 1 ? "S" : ""} ON THIS ANSWER
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: C.muted, border: `1px solid ${C.border}`, borderRadius: 5, padding: "2px 5px" }}>EXAMPLE</span>
+          <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", color: C.muted, border: `1px solid ${C.border}`, borderRadius: 5, padding: "2px 5px" }}>EXAMPLE</span>
           <ProBadge variant="pro" />
         </span>
       </div>
@@ -346,7 +346,7 @@ const LockedProBlocks = ({ locked = {}, teasers = {}, skipped = false }) => {
           {showCoach && <FeedbackBlock label="next move" value={SAMPLE_FEEDBACK.tip}       color={C.amber}   background={C.amberTint} />}
           {showModel && (
             <div style={{ gridColumn: "1 / -1", padding: 11, borderRadius: 10, background: cardAlt, border: `1px solid ${C.border}` }}>
-              <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, color: C.muted, marginBottom: 5 }}>better answer pattern</div>
+              <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 5 }}>better answer pattern</div>
               <div style={{ fontSize: 12, lineHeight: 1.65, color: C.text }}>{SAMPLE_FEEDBACK.sampleAnswer}</div>
             </div>
           )}
@@ -366,7 +366,7 @@ const Pill = ({ children, color = C.blue500, background = C.blue50 }) => (
     style={{
       display: "inline-flex", alignItems: "center", borderRadius: 999,
       padding: "3px 9px", background, color,
-      fontFamily: F.mono, fontSize: 10, fontWeight: 700, border: `1px solid ${color}30`,
+      fontFamily: F.mono, fontSize: 11, fontWeight: 700, border: `1px solid ${color}30`,
     }}
   >
     {children}
@@ -505,7 +505,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
             ) : isEval ? (
               <>
                 <span style={{ fontFamily: F.display, fontSize: 14, fontWeight: 800, lineHeight: 1 }}>{score}</span>
-                <span style={{ fontFamily: F.mono, fontSize: 9, opacity: 0.7 }}>/100</span>
+                <span style={{ fontFamily: F.mono, fontSize: 11, opacity: 0.7 }}>/100</span>
               </>
             ) : (
               <span style={{ fontSize: 12, fontWeight: 700 }}>—</span>
@@ -513,13 +513,13 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 3 }}>
-              <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: C.faint }}>Q{idx + 1}</span>
+              <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, color: C.faint }}>Q{idx + 1}</span>
               <span style={{ color: C.border }}>·</span>
-              <span style={{ fontSize: 10, fontWeight: 600, color: C.sub }}>{question.topic}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: C.sub }}>{question.topic}</span>
               {hasTime && (
                 <>
                   <span style={{ color: C.border }}>·</span>
-                  <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>{formatTime(question.timeTaken)}</span>
+                  <span style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>{formatTime(question.timeTaken)}</span>
                 </>
               )}
               {question.skipped && <Pill color={C.amber} background={C.amberTint}>skipped</Pill>}
@@ -595,7 +595,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
                 marginBottom: 10,
               }}
             >
-              <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, color: C.muted, letterSpacing: "0.5px", marginBottom: 5 }}>
+              <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 600, color: C.muted, letterSpacing: "0.5px", marginBottom: 5 }}>
                 your answer
               </div>
               <div style={{ fontSize: 12, lineHeight: 1.65, color: C.sub, whiteSpace: "pre-wrap" }}>
@@ -649,7 +649,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
               style={{
                 padding: "8px 12px", borderRadius: 10, marginBottom: 10,
                 background: cardAlt, border: `1px solid ${C.border}`,
-                color: C.muted, fontSize: 10.5, lineHeight: 1.5,
+                color: C.muted, fontSize: 11, lineHeight: 1.5,
               }}
             >
               AI was unavailable, so this is generic guidance rather than a model answer written for this question.
@@ -666,7 +666,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
               )}
               {feedback.sampleAnswer && (
                 <div style={{ gridColumn: "1 / -1", padding: 11, borderRadius: 10, background: cardAlt, border: `1px solid ${C.border}` }}>
-                  <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, color: C.muted, marginBottom: 5 }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 5 }}>
                     model answer
                   </div>
                   <div style={{ fontSize: 12, lineHeight: 1.65, color: C.text, whiteSpace: "pre-wrap" }}>{feedback.sampleAnswer}</div>
@@ -687,7 +687,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
                 justifyContent: "space-between", gap: 10, marginBottom: 10,
               }}
             >
-              <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>result</span>
+              <span style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>result</span>
               <strong style={{ color: badgeColor, fontSize: 13 }}>{feedback?.correct ? "Correct" : "Incorrect"}</strong>
             </div>
           )}
@@ -710,7 +710,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
               <FeedbackBlock label="next move"        value={feedback.tip}         color={C.amber}   background={C.amberTint} />
               {feedback.sampleAnswer && (
                 <div style={{ gridColumn: "1 / -1", padding: 11, borderRadius: 10, background: cardAlt, border: `1px solid ${C.border}` }}>
-                  <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, color: C.muted, marginBottom: 5 }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 5 }}>
                     better answer pattern
                   </div>
                   <div style={{ fontSize: 12, lineHeight: 1.65, color: C.text }}>{feedback.sampleAnswer}</div>
@@ -727,7 +727,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 8,
                   padding: "7px 12px 7px 14px", borderRadius: 9, border: `1px solid ${C.borderMd}`,
-                  background: C.card, color: C.sub, fontFamily: F.mono, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                  background: C.card, color: C.sub, fontFamily: F.mono, fontSize: 11, fontWeight: 600, cursor: "pointer",
                 }}
               >
                 Re-evaluate this answer <ProBadge variant="pro" />
@@ -745,7 +745,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
                   padding: "7px 14px", borderRadius: 9, border: `1px solid ${C.borderMd}`,
                   background: retrying ? cardAlt : C.card,
                   color: retrying ? C.muted : C.blue500,
-                  fontFamily: F.mono, fontSize: 10, fontWeight: 600,
+                  fontFamily: F.mono, fontSize: 11, fontWeight: 600,
                   cursor: retrying ? "not-allowed" : "pointer",
                 }}
               >
@@ -762,7 +762,7 @@ const QuestionCard = ({ question, open, onToggle, onRetry, retrying, onStep, has
               >
                 <Icon name="left" size={14} />Previous
               </button>
-              <span style={{ fontFamily: F.mono, fontSize: 10.5, color: C.muted }}>{question._pos + 1} of {total}</span>
+              <span style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>{question._pos + 1} of {total}</span>
               <button
                 type="button" className="res-step" onClick={() => onStep(idx, 1)} disabled={!hasNext}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, padding: "7px 12px", borderRadius: 10, border: "none", background: hasNext ? `linear-gradient(135deg, ${C.blue700}, ${C.blue500})` : C.cardAlt, color: hasNext ? "#fff" : C.faint, fontFamily: F.body, fontSize: 12, fontWeight: 800, cursor: hasNext ? "pointer" : "not-allowed", opacity: hasNext ? 1 : 0.5 }}
@@ -927,7 +927,7 @@ const FeedbackList = ({ questions, sessionId }) => {
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", boxShadow: C.shadow }}>
       <style>{`.res-step:hover:not(:disabled){transform:translateY(-1px)}.res-step{transition:transform .12s ease}.res-tool:hover{background:${C.blue50}!important;border-color:${C.blue200}!important}`}</style>
-      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.8px", color: C.blue500, marginBottom: 4 }}>
+      <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: "0.8px", color: C.blue500, marginBottom: 4 }}>
         question-by-question review
       </div>
       <div style={{ margin: 0, fontFamily: F.display, fontSize: 15, fontWeight: 800, color: C.text, marginBottom: 4 }}>
@@ -956,7 +956,7 @@ const FeedbackList = ({ questions, sessionId }) => {
                 background: activeFilter === f.key ? C.blue500 : C.card,
                 color: activeFilter === f.key ? "#fff" : C.sub,
                 borderRadius: 999, padding: "5px 11px",
-                fontFamily: F.body, fontSize: 10.5, fontWeight: 600,
+                fontFamily: F.body, fontSize: 11, fontWeight: 600,
                 cursor: "pointer", transition: "all 0.15s ease",
               }}
             >

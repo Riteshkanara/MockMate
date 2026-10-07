@@ -30,6 +30,8 @@ const PERKS = {
   download:  { icon: 'download', label: 'Download your scorecard as a PNG' },
   history:   { icon: 'clock',    label: 'Your full history, not just the last 7 days' },
 };
+// Single source for the intro price shown in this modal (the Pricing page owns the real plans).
+const INTRO_PRICE = '₹149';
 const DEFAULT_PERK_ORDER = ['volume', 'modes', 'feedback', 'analytics', 'coach'];
 
 const modeCopy = (title, body) => ({ eyebrow: 'PRO MODE', title, body, perks: ['modes', 'feedback', 'volume', 'analytics', 'coach'] });
@@ -124,17 +126,16 @@ const MODAL_CSS = `
     overflow: hidden;
     animation: umSheetIn .26s cubic-bezier(.22,1,.36,1);
     font-family: ${F.body};
-    max-height: min(780px, calc(100vh - 32px));
-    max-height: min(780px, calc(100dvh - 32px));
+    max-height: min(820px, calc(100vh - 24px));
+    max-height: min(820px, calc(100dvh - 24px));
     display: flex;
     flex-direction: column;
   }
 
   .um-mesh {
     position: relative; overflow: hidden;
-    padding: 22px 26px 18px;
+    padding: 22px 56px 18px 26px;
     border-bottom: 1px solid ${C.border};
-    flex-shrink: 0;
   }
   .um-mesh::before {
     content: '';
@@ -149,11 +150,11 @@ const MODAL_CSS = `
   .um-mesh-inner { position: relative; z-index: 1; }
 
   .um-close {
-    position: absolute; top: 14px; right: 14px;
-    width: 30px; height: 30px; border-radius: 9px;
+    position: absolute; top: 12px; right: 12px;
+    width: 36px; height: 36px; border-radius: 11px;
     display: flex; align-items: center; justify-content: center;
     border: 1px solid ${C.border}; background: rgba(255,255,255,.9);
-    color: ${C.textMuted}; cursor: pointer; z-index: 2;
+    color: ${C.textMuted}; cursor: pointer; z-index: 3;
     transition: background .14s ease, color .14s ease, border-color .14s ease;
   }
   .um-close:hover { background: ${C.dangerTint}; color: ${C.danger}; border-color: rgba(220,38,38,.2); }
@@ -175,8 +176,9 @@ const MODAL_CSS = `
   .um-subtitle b { color: ${C.text}; }
 
   .um-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: 0; }
-  .um-scroll { padding: 16px 26px 6px; overflow-y: auto; min-height: 0; flex: 1 1 auto; overscroll-behavior: contain; }
-  .um-foot { flex: 0 0 auto; padding: 12px 26px 16px; border-top: 1px solid ${C.border}; background: rgba(255,255,255,.98); }
+  .um-scroll { overflow-y: auto; min-height: 0; flex: 1 1 auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .um-pad { padding: 16px 26px 10px; }
+  .um-foot { flex: 0 0 auto; padding: 12px 26px calc(16px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid ${C.border}; background: rgba(255,255,255,.98); box-shadow: 0 -10px 18px -12px rgba(0,31,107,.16); }
 
   .um-perks { list-style: none; padding: 0; margin: 0 0 16px; display: flex; flex-direction: column; gap: 2px; }
   .um-perk {
@@ -253,10 +255,14 @@ const MODAL_CSS = `
   }
 
   @media (max-width: 480px) {
-    .um-mesh { padding: 20px 20px 16px; }
-    .um-scroll { padding: 14px 20px 4px; }
-    .um-foot { padding: 10px 20px 14px; }
+    .um-backdrop { align-items: flex-end; padding: 0; }
+    .um-sheet { max-width: none; border-radius: 22px 22px 0 0; border-bottom: none; max-height: calc(100vh - 12px); max-height: calc(100dvh - 12px); animation-name: umSheetUp; }
+    .um-mesh { padding: 20px 56px 16px 20px; }
+    .um-pad { padding: 14px 20px 8px; }
+    .um-foot { padding: 10px 20px calc(14px + env(safe-area-inset-bottom, 0px)); }
+    .um-cta { padding: 16px 0; }
   }
+  @keyframes umSheetUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
 
   @media (prefers-reduced-motion: reduce) {
     .um-backdrop, .um-sheet, .um-mesh::before, .um-perk, .um-cta-sheen { animation: none !important; }
@@ -327,12 +333,14 @@ export default function UpgradeModal({ open, onClose, feature, trialUsed, resets
       <style>{MODAL_CSS}</style>
       <div className="um-backdrop" role="dialog" aria-modal="true" aria-labelledby="um-title" onClick={handleBackdropClick}>
         <div className="um-sheet" ref={sheetRef} tabIndex={-1}>
+          <button className="um-close" onClick={onClose} aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
+          <div className="um-body">
+            <div className="um-scroll">
           <div className="um-mesh">
-            <button className="um-close" onClick={onClose} aria-label="Close">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-                <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-              </svg>
-            </button>
             <div className="um-mesh-inner">
               <div className="um-badge-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -345,8 +353,7 @@ export default function UpgradeModal({ open, onClose, feature, trialUsed, resets
             </div>
           </div>
 
-          <div className="um-body">
-            <div className="um-scroll">
+            <div className="um-pad">
             <p className="um-section-label">INCLUDED WITH PRO</p>
             <ul className="um-perks">
               {copy.perks.map((id, i) => {
@@ -362,7 +369,7 @@ export default function UpgradeModal({ open, onClose, feature, trialUsed, resets
             </ul>
 
             <div className="um-price-row">
-              <span className="um-price-amount">₹149</span>
+              <span className="um-price-amount">{INTRO_PRICE}</span>
               <span className="um-price-period">first month, then ₹199</span>
               <span className="um-price-tag">Intro price</span>
             </div>
@@ -371,11 +378,12 @@ export default function UpgradeModal({ open, onClose, feature, trialUsed, resets
               <span><b>₹1,499</b> for a year</span>
             </div>
             </div>
+            </div>
 
             <div className="um-foot">
             <button className="um-cta" onClick={handleUpgrade}>
               <span className="um-cta-sheen" />
-              {isLimit ? 'Go unlimited with Pro' : 'See Pro plans'}
+              {isLimit ? 'Go unlimited with Pro' : `See Pro plans · from ${INTRO_PRICE}`}
             </button>
             <button className="um-ghost" onClick={onClose}>
               {isLimit && resetsAt ? `Not now · free interviews reset in ${timeUntil(resetsAt)}` : 'Maybe later'}

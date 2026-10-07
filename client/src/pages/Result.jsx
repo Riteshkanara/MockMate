@@ -83,7 +83,7 @@ const Card = ({ children, style = {} }) => (
 Card.propTypes = { children: PropTypes.node.isRequired, style: PropTypes.object };
 
 const Eyebrow = ({ children }) => (
-  <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".8px", color: C.blue500, textTransform: "lowercase", marginBottom: 5 }}>{children}</div>
+  <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: ".8px", color: C.blue500, textTransform: "lowercase", marginBottom: 5 }}>{children}</div>
 );
 Eyebrow.propTypes = { children: PropTypes.node.isRequired };
 
@@ -144,7 +144,7 @@ const MiniRing = ({ value, max, color }) => {
         transform="rotate(-90 20 20)"
         style={{ transition: "stroke-dasharray .9s cubic-bezier(.16,1,.3,1)" }}
       />
-      <text x={20} y={20} textAnchor="middle" dominantBaseline="middle" style={{ fontFamily: F.display, fontSize: 10, fontWeight: 900, fill: color }}>{value}</text>
+      <text x={20} y={20} textAnchor="middle" dominantBaseline="middle" style={{ fontFamily: F.display, fontSize: 11, fontWeight: 900, fill: color }}>{value}</text>
     </svg>
   );
 };
@@ -170,7 +170,7 @@ const MiniSparkline = ({ points, color }) => {
 MiniSparkline.propTypes = { points: PropTypes.array.isRequired, color: PropTypes.string.isRequired };
 
 const RailBadge = ({ children, color, bg, border }) => (
-  <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 999, fontFamily: F.mono, fontSize: 10, fontWeight: 800, color, background: bg, border: `1px solid ${border}`, marginTop: 5 }}>{children}</span>
+  <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 999, fontFamily: F.mono, fontSize: 11, fontWeight: 800, color, background: bg, border: `1px solid ${border}`, marginTop: 5 }}>{children}</span>
 );
 RailBadge.propTypes = { children: PropTypes.node.isRequired, color: PropTypes.string.isRequired, bg: PropTypes.string.isRequired, border: PropTypes.string.isRequired };
 
@@ -190,33 +190,33 @@ const StatRail = ({ result, scoreHistory }) => {
   const cells = [
     // 1. answered
     <div key="ans">
-      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>answered</div>
+      <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>answered</div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <MiniRing value={answeredQuestions} max={totalQuestions || 1} color={C.blue500} />
         <div>
-          <div style={{ fontFamily: F.display, fontSize: 22, fontWeight: 900, color: C.text, lineHeight: 1 }}>{answeredQuestions}<span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, fontWeight: 400 }}>/{totalQuestions}</span></div>
-          <div style={{ marginTop: 5, fontSize: 10.5, color: C.muted }}>answered</div>
+          <div style={{ fontFamily: F.display, fontSize: 22, fontWeight: 900, color: C.text, lineHeight: 1 }}>{answeredQuestions}<span style={{ fontFamily: F.mono, fontSize: 11, color: C.muted, fontWeight: 400 }}>/{totalQuestions}</span></div>
+          <div style={{ marginTop: 5, fontSize: 11, color: C.muted }}>answered</div>
           {skippedQuestions > 0 && <RailBadge color={C.amber} bg={C.amberTint} border={`${C.amber}25`}>{skippedQuestions} skipped</RailBadge>}
         </div>
       </div>
     </div>,
     // 2. performance
     <div key="perf">
-      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>performance</div>
+      <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>performance</div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <MiniRing value={strongAnswers} max={answeredQuestions || 1} color={C.green} />
         <div>
           <div style={{ fontFamily: F.display, fontSize: 22, fontWeight: 900, color: C.green, lineHeight: 1 }}>{strongAnswers}</div>
-          <div style={{ marginTop: 5, fontSize: 10.5, color: C.muted }}>scored 80+</div>
+          <div style={{ marginTop: 5, fontSize: 11, color: C.muted }}>scored 80+</div>
           {weakAnswers > 0 && <RailBadge color={C.red} bg={C.redTint} border={`${C.red}25`}>{weakAnswers} below 60</RailBadge>}
         </div>
       </div>
     </div>,
     // 3. pace
     <div key="pace">
-      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>avg pace</div>
+      <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>avg pace</div>
       <div style={{ fontFamily: F.display, fontSize: 22, fontWeight: 900, color: paceColor, lineHeight: 1 }}>{averageTime > 0 ? fmt(averageTime) : "—"}</div>
-      <div style={{ marginTop: 5, fontSize: 10.5, color: C.muted, marginBottom: 10 }}>per question</div>
+      <div style={{ marginTop: 5, fontSize: 11, color: C.muted, marginBottom: 10 }}>per question</div>
       {averageTime > 0 && (
         <>
           <div style={{ position: "relative", height: 3, borderRadius: 999, background: C.border }}>
@@ -224,20 +224,20 @@ const StatRail = ({ result, scoreHistory }) => {
             <div style={{ position: "absolute", left: `${pacePos}%`, top: -3, bottom: -3, width: 3, borderRadius: 999, background: paceColor, boxShadow: `0 0 6px ${paceColor}90`, transform: "translateX(-50%)" }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-            <span style={{ fontFamily: F.mono, fontSize: 7.5, color: C.faint }}>fast</span>
-            <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: paceColor }}>{paceLabel}</span>
-            <span style={{ fontFamily: F.mono, fontSize: 7.5, color: C.faint }}>slow</span>
+            <span style={{ fontFamily: F.mono, fontSize: 11, color: C.faint }}>fast</span>
+            <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, color: paceColor }}>{paceLabel}</span>
+            <span style={{ fontFamily: F.mono, fontSize: 11, color: C.faint }}>slow</span>
           </div>
         </>
       )}
     </div>,
     // 4. score + sparkline
     <div key="score">
-      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>this session</div>
+      <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: ".5px", color: C.muted, textTransform: "uppercase", marginBottom: 8 }}>this session</div>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 5 }}>
         <div>
           <div style={{ fontFamily: F.display, fontSize: 22, fontWeight: 900, color: scoreColor(score), lineHeight: 1 }}>{clamp(score)}</div>
-          <div style={{ marginTop: 5, fontSize: 10.5, color: C.muted }}>score</div>
+          <div style={{ marginTop: 5, fontSize: 11, color: C.muted }}>score</div>
         </div>
         {trendDelta !== null && (
           <RailBadge color={trendDelta >= 0 ? C.green : C.red} bg={trendDelta >= 0 ? C.greenTint : C.redTint} border={`${trendDelta >= 0 ? C.green : C.red}25`}>
@@ -246,7 +246,7 @@ const StatRail = ({ result, scoreHistory }) => {
         )}
       </div>
       <MiniSparkline points={spark} color={scoreColor(score)} />
-      {spark.length >= 2 && <div style={{ fontFamily: F.mono, fontSize: 10, color: C.faint, marginTop: 4 }}>last {spark.length} sessions</div>}
+      {spark.length >= 2 && <div style={{ fontFamily: F.mono, fontSize: 11, color: C.faint, marginTop: 4 }}>last {spark.length} sessions</div>}
     </div>,
   ];
 
@@ -259,7 +259,7 @@ const StatRail = ({ result, scoreHistory }) => {
       ))}
       <style>{`
         .sr-cell:hover{background:${C.surfaceAlt}!important}
-        @media(max-width:900px){.sr-rail{grid-template-columns:repeat(2,1fr)!important}.sr-cell:nth-child(2){border-right:none!important}.sr-cell:nth-child(3){border-top:1px solid ${C.border}}}
+        @media(max-width:900px){.sr-rail{grid-template-columns:repeat(2,1fr)!important}.sr-cell:nth-child(2){border-right:none!important}.sr-cell:nth-child(3),.sr-cell:nth-child(4){border-top:1px solid ${C.border}}}
         @media(max-width:480px){.sr-rail{grid-template-columns:1fr!important}.sr-cell{border-right:none!important;border-bottom:1px solid ${C.border}}.sr-cell:last-child{border-bottom:none!important}}
       `}</style>
     </div>
@@ -275,7 +275,7 @@ const NextStep = ({ text, weakestTopic, navigate, score }) => {
       <div style={{ display: "flex", alignItems: "center", gap: 14, flex: "1 1 240px", minWidth: 0 }}>
         <div style={{ width: 40, height: 40, borderRadius: 11, background: `linear-gradient(135deg,${C.blue500},${C.cyan500})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, boxShadow: `0 6px 18px rgba(26,110,255,.28)`, flexShrink: 0 }}><Icon name="right" size={18} stroke={2.6} /></div>
         <div>
-          <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: "1.2px", color: C.blue600, marginBottom: 4 }}>what to do next</div>
+          <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 800, letterSpacing: "1.2px", color: C.blue600, marginBottom: 4 }}>what to do next</div>
           <div style={{ fontFamily: F.display, fontSize: 15, fontWeight: 900, color: C.text, marginBottom: 4 }}>
             {weakestTopic ? <>Drill <span style={{ color: C.blue500 }}>{weakestTopic.topic}</span> next</> : (score >= 80 ? "Raise the difficulty" : "Start your next rep")}
           </div>
@@ -304,14 +304,14 @@ const BadgeBridge = ({ streak, newBadges, navigate }) => {
           <span style={{ fontSize: 16 }}>◆</span>
           <div>
             <div style={{ fontFamily: F.display, fontSize: 13, fontWeight: 900, color: C.text }}>{streak.current} day streak</div>
-            <div style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>consistency compounds</div>
+            <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>consistency compounds</div>
           </div>
         </div>
       )}
       {badges.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, flexWrap: "wrap" }}>
-          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>earned</span>
-          {badges.map((b, i) => <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, background: C.violetTint, border: `1px solid ${C.violet}45`, color: C.violet, fontFamily: F.mono, fontSize: 10, fontWeight: 700 }}>★ {b}</span>)}
+          <span style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>earned</span>
+          {badges.map((b, i) => <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, background: C.violetTint, border: `1px solid ${C.violet}45`, color: C.violet, fontFamily: F.mono, fontSize: 11, fontWeight: 700 }}>★ {b}</span>)}
         </div>
       )}
       <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexShrink: 0 }}>
@@ -331,7 +331,7 @@ const DNARow = ({ score, label, sub, visible, delay }) => {
     <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
       <div style={{ width: 80, textAlign: "right", paddingRight: 12, flexShrink: 0 }}>
         <div style={{ fontFamily: F.display, fontSize: 14, fontWeight: 900, lineHeight: 1, color: col }}>{score}</div>
-        <div style={{ fontFamily: F.mono, fontSize: 7.5, color: C.muted, marginTop: 1 }}>/100</div>
+        <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted, marginTop: 1 }}>/100</div>
       </div>
       <div style={{ flex: 1, position: "relative", height: 26, borderRadius: 4, background: "rgba(26,110,255,.06)", border: "1px solid rgba(26,110,255,.12)", overflow: "hidden" }}>
         <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1.5, background: "rgba(26,110,255,.22)", transform: "translateX(-50%)" }} />
@@ -339,8 +339,8 @@ const DNARow = ({ score, label, sub, visible, delay }) => {
         <div style={{ position: "absolute", left: "50%", top: 3, bottom: 3, borderRadius: "0 3px 3px 0", background: `linear-gradient(90deg,${col}60,${col}22)`, width: visible ? `${pct * 50}%` : "0%", transition: `width .9s cubic-bezier(.16,1,.3,1) ${delay}ms` }} />
       </div>
       <div style={{ width: 80, paddingLeft: 12, flexShrink: 0 }}>
-        <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>{label}</div>
-        <div style={{ fontFamily: F.mono, fontSize: 7.5, color: C.muted, marginTop: 1 }}>{sub}</div>
+        <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>{label}</div>
+        <div style={{ fontFamily: F.mono, fontSize: 11, color: C.muted, marginTop: 1 }}>{sub}</div>
       </div>
     </div>
   );
@@ -407,8 +407,8 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
       {/* tab bar */}
       <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, background: C.surfaceAlt }}>
         {TAB_DEFS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "12px 8px", border: "none", borderBottom: `2px solid ${tab === t.id ? C.blue500 : "transparent"}`, background: tab === t.id ? C.card : "transparent", color: tab === t.id ? C.blue500 : C.muted, cursor: "pointer", fontFamily: F.mono, fontSize: 10.5, fontWeight: tab === t.id ? 700 : 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, transition: "all .15s ease" }}>
-            <span style={{ fontSize: 10 }}>{t.icon}</span>{t.label}
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "12px 8px", border: "none", borderBottom: `2px solid ${tab === t.id ? C.blue500 : "transparent"}`, background: tab === t.id ? C.card : "transparent", color: tab === t.id ? C.blue500 : C.muted, cursor: "pointer", fontFamily: F.mono, fontSize: 11, fontWeight: tab === t.id ? 700 : 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, transition: "all .15s ease" }}>
+            <span style={{ fontSize: 11 }}>{t.icon}</span>{t.label}
           </button>
         ))}
       </div>
@@ -417,7 +417,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
         {/* OVERVIEW — DNA fingerprint */}
         {tab === "overview" && (
           <>
-            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>session fingerprint</div>
+            <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>session fingerprint</div>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>4-axis read from how you answered — not just what you scored.</div>
             <div style={{ padding: "16px 14px", borderRadius: 12, background: C.card, border: `1px solid ${C.border}` }}>
               {dna.map((a, i) => <DNARow key={a.label} score={a.score} label={a.label} sub={a.sub} visible={vis} delay={i * 120} />)}
@@ -429,7 +429,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
         {/* PACE */}
         {tab === "pace" && (
           <>
-            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>pace vs score</div>
+            <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>pace vs score</div>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>How your response time correlated with answer quality.</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               {questions.filter(q => !q.skipped && typeof q.aiFeedback?.score === "number" && Number(q.timeTaken) > 0).map((q, i) => {
@@ -438,9 +438,9 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
                 const col = s >= 80 ? C.green : s >= 60 ? C.blue500 : s >= 40 ? C.amber : C.red;
                 return (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderRadius: 9, background: C.card, border: `1px solid ${C.border}` }}>
-                    <span style={{ fontFamily: F.mono, fontSize: 10, color: C.faint, flexShrink: 0 }}>Q{(q.index ?? i) + 1}</span>
+                    <span style={{ fontFamily: F.mono, fontSize: 11, color: C.faint, flexShrink: 0 }}>Q{(q.index ?? i) + 1}</span>
                     <span style={{ fontSize: 11, color: C.sub, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.topic}</span>
-                    <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted, flexShrink: 0 }}>{fmt(t)}</span>
+                    <span style={{ fontFamily: F.mono, fontSize: 11, color: C.muted, flexShrink: 0 }}>{fmt(t)}</span>
                     <span style={{ fontFamily: F.display, fontSize: 13, fontWeight: 800, color: col, flexShrink: 0 }}>{s}</span>
                   </div>
                 );
@@ -452,7 +452,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
         {/* PATTERNS */}
         {tab === "patterns" && (
           <>
-            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>recurring gaps</div>
+            <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>recurring gaps</div>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Topics or concepts that appeared in multiple weak answers.</div>
             {(() => {
               const weak = questions.filter(q => !q.skipped && typeof q.aiFeedback?.score === "number" && q.aiFeedback.score < 60);
@@ -475,7 +475,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
         {/* PROGRESS */}
         {tab === "progress" && (
           <>
-            <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>score curve</div>
+            <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: ".7px", color: C.blue500, marginBottom: 3 }}>score curve</div>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Answer-by-answer progression this session.</div>
             {(() => {
               const pts = questions.filter(q => !q.skipped && typeof q.aiFeedback?.score === "number").map(q => q.aiFeedback.score);
@@ -492,7 +492,7 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
                   <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: drift >= 0 ? C.greenTint : C.redTint, border: `1px solid ${drift >= 0 ? C.green : C.red}30` }}>
                       <span style={{ fontFamily: F.display, fontSize: 12, fontWeight: 900, color: drift >= 0 ? C.green : C.red }}>{drift >= 0 ? "+" : ""}{drift} pts</span>
-                      <span style={{ fontFamily: F.mono, fontSize: 10, color: C.sub }}>drift</span>
+                      <span style={{ fontFamily: F.mono, fontSize: 11, color: C.sub }}>drift</span>
                     </span>
                   </div>
                   <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", minWidth: 300 }}>
@@ -524,14 +524,14 @@ const MissionReport = ({ result, totalScore, normalizedQuestions }) => {
         <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(circle,rgba(255,255,255,.06) 1px,transparent 1px)", backgroundSize: "20px 20px", opacity: .5, pointerEvents: "none" }} />
         <div style={{ position: "absolute", top: -80, right: -60, width: 240, height: 240, borderRadius: "50%", background: "radial-gradient(circle,rgba(0,194,232,.22),transparent 68%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", zIndex: 1 }}>
-          <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: "1.2px", color: "#00C8F0", textTransform: "uppercase", marginBottom: 4 }}>mission report · where you stand overall</div>
+          <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: "1.2px", color: "#00C8F0", textTransform: "uppercase", marginBottom: 4 }}>mission report · where you stand overall</div>
           <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 900, color: "#fff", marginBottom: 3 }}>
             {totalScore}/100 · <span style={{ color: g.accent }}>{g.g} — {g.desc}</span>
           </div>
-          <div style={{ fontFamily: F.mono, fontSize: 10, color: "rgba(255,255,255,.4)", marginBottom: 12 }}>skill fingerprint · rank · archetype · tier progress · shareable card</div>
+          <div style={{ fontFamily: F.mono, fontSize: 11, color: "rgba(255,255,255,.4)", marginBottom: 12 }}>skill fingerprint · rank · archetype · tier progress · shareable card</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 10px", background: "rgba(5,150,105,.18)", color: "#79F2B2", border: "1px solid rgba(5,150,105,.3)" }}>{result.strongAnswers} strong</span>
-            <span style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 10px", background: "rgba(220,38,38,.18)", color: "#fca5a5", border: "1px solid rgba(220,38,38,.3)" }}>{result.weakAnswers} to fix</span>
+            <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "3px 10px", background: "rgba(5,150,105,.18)", color: "#79F2B2", border: "1px solid rgba(5,150,105,.3)" }}>{result.strongAnswers} strong</span>
+            <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "3px 10px", background: "rgba(220,38,38,.18)", color: "#fca5a5", border: "1px solid rgba(220,38,38,.3)" }}>{result.weakAnswers} to fix</span>
           </div>
         </div>
       </div>
@@ -723,12 +723,12 @@ const Result = () => {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", marginBottom: 14, borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, boxShadow: C.shadow }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, animation: "resLive 2.4s ease-in-out infinite", display: "inline-block" }} />
-              <span style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: ".4px", color: C.muted }}>mockmate · post-interview debrief</span>
+              <span style={{ fontFamily: F.mono, fontSize: 11, letterSpacing: ".4px", color: C.muted }}>mockmate · post-interview debrief</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {sessionId && <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>session {idRef.current}</span>}
+              {sessionId && <span style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>session {idRef.current}</span>}
               <span style={{ color: C.borderMd }}>·</span>
-              <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>{new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).toLowerCase()}</span>
+              <span style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>{new Date(result?.completedAt || result?.createdAt || Date.now()).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).toLowerCase()}</span>
             </div>
           </div>
         </AnimSec>
@@ -738,6 +738,7 @@ const Result = () => {
           items={NAV_ITEMS}
           onPractice={() => navigate("/interview")}
           practiceLabel={weakestTopic ? "Practice again" : "New interview"}
+          practiceShort={weakestTopic ? "Again" : "New"}
         />
 
         {/* 2. hero */}
@@ -814,8 +815,8 @@ const Result = () => {
 
         {/* 10. footer */}
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, padding: "16px 4px 0", opacity: .35 }}>
-          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>mockmate result page · v15</span>
-          <span style={{ fontFamily: F.mono, fontSize: 10, color: C.muted }}>scores normalized 0–100 · computed post-session</span>
+          <span style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>mockmate · result report</span>
+          <span style={{ fontFamily: F.mono, fontSize: 11, color: C.muted }}>scores normalized 0–100 · computed post-session</span>
         </div>
       </div>
     </div>

@@ -1,10 +1,12 @@
 import { useState, useRef, useCallback, useEffect, useMemo, memo } from "react";
 import PropTypes from "prop-types";
 import { getAIFreeform } from '../../Services/interviewService';
+import { useIsPreview } from '../pro/PreviewContext';
+import ProResponseLock from '../pro/ProResponseLock';
 import {
   C, F,
   DIM_META,
-  readCache, writeCache,
+  readCache, writeCache, demoDelay,
   scoreColor,
   parseSections, parseWeeklySections,
   Eyebrow, CacheTag, CacheTagLight,
@@ -100,19 +102,26 @@ export const TodayCard = memo(({ analyticsData, breakdownData, blindSpots, navig
   const [done, setDone]           = useState(false);
   const [cacheTs, setCacheTs]     = useState(null);
   const inFlight = useRef(false);
+  const isPreview = useIsPreview();
 
   useEffect(() => {
+    if (isPreview) return; // demo starts idle: the example plan appears only after the button is pressed
     const cached = readCache(cacheKeys.today);
     Promise.resolve().then(() => {
       if (cached) { setTodayPlan(cached.text); setDone(true); setCacheTs(cached.ts); }
       else { setTodayPlan(""); setDone(false); setCacheTs(null); }
     });
-  }, [cacheKeys.today]);
+  }, [cacheKeys.today, isPreview]);
 
   const generate = useCallback(async () => {
     if (!analyticsData || inFlight.current) return;
     inFlight.current = true;
     setLoading(true); setDone(false); setTodayPlan(""); setCacheTs(null);
+    if (isPreview) { // Pro demo: example response, no server call
+      await demoDelay();
+      setTodayPlan(readCache(cacheKeys.today)?.text ?? ""); setLoading(false); setDone(true); inFlight.current = false;
+      return;
+    }
     const prompt = buildTodayPrompt({
       irs:      analyticsData.irs ?? 0,
       tier:     analyticsData.currentTier ?? "₹3–6 LPA",
@@ -133,7 +142,7 @@ export const TodayCard = memo(({ analyticsData, breakdownData, blindSpots, navig
     } finally {
       setLoading(false); setDone(true); inFlight.current = false;
     }
-  }, [analyticsData, breakdownData, blindSpots, cacheKeys.today]);
+  }, [analyticsData, breakdownData, blindSpots, cacheKeys.today, isPreview]);
 
   const topWeakDim = useMemo(() =>
     [...(analyticsData?.dimensionProfile ?? [])].sort((a, b) => (a.score ?? 0) - (b.score ?? 0))[0],
@@ -166,12 +175,14 @@ export const TodayCard = memo(({ analyticsData, breakdownData, blindSpots, navig
       )}
 
       {done && todayPlan && (
+        <ProResponseLock feature="aiCoach" dark cta="Unlock my daily plan" clearHeight={96}>
         <div style={{ borderRadius: 16, background: "rgba(0,200,240,0.06)", border: "1px solid rgba(0,200,240,0.16)", overflow: "hidden", boxShadow: "0 4px 24px rgba(0,200,240,0.06)" }}>
           <div style={{ height: 3, background: `linear-gradient(90deg, ${C.cyan400}, ${C.blue500}44)` }} />
           <div style={{ padding: "22px 22px" }}>
             <SentenceBreaker text={todayPlan} dark beats={TODAY_BEATS} />
           </div>
         </div>
+        </ProResponseLock>
       )}
 
       {topWeakDim && (
@@ -269,19 +280,26 @@ export const WeeklyPlan = memo(({ analyticsData, navigate, cacheKeys }) => {
   const [done, setDone]       = useState(false);
   const [cacheTs, setCacheTs] = useState(null);
   const inFlight = useRef(false);
+  const isPreview = useIsPreview();
 
   useEffect(() => {
+    if (isPreview) return; // demo starts idle: the example plan appears only after the button is pressed
     const cached = readCache(cacheKeys.weekly);
     Promise.resolve().then(() => {
       if (cached?.plan) { setPlan(cached.plan); setDone(true); setCacheTs(cached.ts); }
       else { setPlan(null); setDone(false); setCacheTs(null); }
     });
-  }, [cacheKeys.weekly]);
+  }, [cacheKeys.weekly, isPreview]);
 
   const generate = useCallback(async () => {
     if (!analyticsData || inFlight.current) return;
     inFlight.current = true;
     setLoading(true); setDone(false); setPlan(null); setCacheTs(null);
+    if (isPreview) { // Pro demo: example response, no server call
+      await demoDelay(1500);
+      setPlan(readCache(cacheKeys.weekly)?.plan ?? null); setLoading(false); setDone(true); inFlight.current = false;
+      return;
+    }
     try {
       const text   = await getAIFreeform(buildWeeklyPrompt(analyticsData), 500);
       let sections = parseWeeklySections(text, DAY_ACCENTS);
@@ -295,7 +313,7 @@ export const WeeklyPlan = memo(({ analyticsData, navigate, cacheKeys }) => {
     } finally {
       setLoading(false); setDone(true); inFlight.current = false;
     }
-  }, [analyticsData, cacheKeys.weekly]);
+  }, [analyticsData, cacheKeys.weekly, isPreview]);
 
   const LOADING_STEPS = ["Scanning dimension gaps…", "Computing priority order…", "Drafting daily targets…", "Finalizing your schedule…"];
 
@@ -325,6 +343,7 @@ export const WeeklyPlan = memo(({ analyticsData, navigate, cacheKeys }) => {
       )}
 
       {done && plan && (
+        <ProResponseLock feature="aiCoach" cta="Unlock my 7-day plan" clearHeight={104}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
           {plan.map((section, i) => {
             const cfg = DAY_CONFIG[section.heading] || { badge: "FOCUS", badgeBg: `${C.blue500}18`, badgeColor: C.blue500 };
@@ -348,6 +367,7 @@ export const WeeklyPlan = memo(({ analyticsData, navigate, cacheKeys }) => {
             );
           })}
         </div>
+        </ProResponseLock>
       )}
 
       {done && (

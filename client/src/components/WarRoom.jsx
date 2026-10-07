@@ -1,5 +1,7 @@
 import PropTypes from 'prop-types';
 import { useState } from "react";
+import { useIsPreview } from './pro/PreviewContext';
+import ProResponseLock from './pro/ProResponseLock';
 
 // ─── Design tokens — same MockMate blue palette ──────────────────────────────
 const W = {
@@ -57,6 +59,7 @@ const WarRoomSection = ({
   strongest = { label: "Communication", score: 84 },
   getAIFreeform,
 }) => {
+  const isPreview = useIsPreview();
   const [boardSections, setBoardSections] = useState([]);
   const [boardRaw,      setBoardRaw]      = useState("");
   const [, setBoardDone] = useState(false);
@@ -209,10 +212,12 @@ GROWTH EDGE
 Under 200 words. Reference real numbers in every observation.`;
 
     try {
-      const fn = getAIFreeform || (async (p) => {
+      // Example answers built from the data on screen. Used as the offline fallback, and as the
+      // ONLY source inside the Pro demo, where no server call is ever made.
+      const demoFn = async (p) => {
         return p.includes('HONEST VERDICT')
           ? `HONEST VERDICT
-At IRS ${irs}/100 you're in the ₹${topTier?.label} band but sitting right at the floor, not the ceiling. That means you'll get shortlisted, but you'll lose to candidates with one more strong dimension.
+At IRS ${irs}/100 you're in the ${topTier?.label} band but sitting right at the floor, not the ceiling. That means you'll get shortlisted, but you'll lose to candidates with one more strong dimension.
 
 THE REAL PROBLEM
 ${weakest?.label} at ${weakest?.score}/100 is dragging your composite down by roughly 8 IRS points. Every company above service-tier now asks at least one ${weakest?.label} question — skipping it in practice means failing it in the room.
@@ -248,7 +253,9 @@ PROOF POINTS
 
 GROWTH EDGE
 Closing the ${weakest?.label} gap from ${weakest?.score} to 60+ would move your IRS by an estimated 6-9 points — more than any other single action available to you right now.`;
-      });
+      };
+      if (isPreview) await new Promise((resolve) => setTimeout(resolve, 1700));
+      const fn = isPreview ? demoFn : (getAIFreeform || demoFn);
 
       const [boardResult, dnaResult] = await Promise.allSettled([
         fn(boardPrompt, 1000),
@@ -539,6 +546,7 @@ Closing the ${weakest?.label} gap from ${weakest?.score} to 60+ would move your 
 
           {/* ── RESULTS ────────────────────────────────────────────────────── */}
           {done && (
+            <ProResponseLock feature="fullAnalytics" dark cta="Unlock my War Room" clearHeight={118}>
             <div className="wr-two-col" style={{ display:'grid', gridTemplateColumns: totalSessions >= 10 ? '1fr 1fr' : '1fr' }}>
 
               {/* LEFT: PLACEMENT COACH */}
@@ -624,6 +632,7 @@ Closing the ${weakest?.label} gap from ${weakest?.score} to 60+ would move your 
                 </div>
               )}
             </div>
+            </ProResponseLock>
           )}
 
           {/* ── FOOTER ─────────────────────────────────────────────────────── */}

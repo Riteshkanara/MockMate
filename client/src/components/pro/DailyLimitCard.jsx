@@ -26,7 +26,7 @@ export default function DailyLimitCard({ daily, onUpgrade }) {
       type="button"
       onClick={() => navigate(to)}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 13px',
+        display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 40, padding: '0 14px',
         borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface,
         color: C.textSub, fontFamily: F.body, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
       }}
@@ -45,7 +45,8 @@ export default function DailyLimitCard({ daily, onUpgrade }) {
         background: `linear-gradient(135deg, ${C.brand50}, #fff 70%)`,
       }}
     >
-      <div style={{ minWidth: 220, flex: '1 1 320px' }}>
+      <style>{`@media (max-width: 560px) { .dlc-up { width: 100%; } }`}</style>
+      <div style={{ minWidth: 0, flex: '1 1 320px' }}>
         <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: C.brand600, marginBottom: 6 }}>
           TODAY&apos;S PRACTICE COMPLETE · {daily.used}/{daily.limit}
         </div>
@@ -63,9 +64,10 @@ export default function DailyLimitCard({ daily, onUpgrade }) {
 
       <button
         type="button"
+        className="dlc-up"
         onClick={onUpgrade}
         style={{
-          height: 44, padding: '0 20px', borderRadius: 12, border: 'none', cursor: 'pointer',
+          minHeight: 46, padding: '0 20px', borderRadius: 12, border: 'none', cursor: 'pointer',
           background: `linear-gradient(135deg, ${C.brand500}, ${C.brand700})`, color: '#fff',
           fontFamily: F.display, fontSize: 14, fontWeight: 700,
           boxShadow: '0 6px 20px rgba(26,110,255,0.28)',

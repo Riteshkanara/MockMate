@@ -18,6 +18,7 @@ import ActivityHeatmap    from '../components/dashboard/ActivityHeatmap';
 import WeeklyChallenges   from '../components/dashboard/WeeklyChallenges';
 import MomentumBoard      from '../components/dashboard/MomentumBoard';
 import ShareCard          from '../components/dashboard/ShareCard';
+import ChallengeBanner    from '../components/share/ChallengeBanner';
 import TierProgressLadder from '../components/dashboard/TierProgressLadder';
 import HeroSparkline      from '../components/dashboard/HeroSparkline';
 import AICoachDrawer      from '../components/dashboard/AICoachDrawer';
@@ -494,6 +495,8 @@ const Dashboard = () => {
       <div style={S.container}>
 
         <PlanStrip />
+
+        <ChallengeBanner context="dashboard" />
 
         <AnimatedSection delay={0}>
           <div style={S.strip} className="mm-strip">

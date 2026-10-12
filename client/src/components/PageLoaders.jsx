@@ -6,7 +6,7 @@ import PropTypes from 'prop-types';
  * (nothing builds up from empty), and only has gentle idle motion on top, so even a
  * 0.5 s appearance reads clearly:
  *   Leaderboard  full podium + crown, shine sweeps across the bars
- *   Dashboard    score gauge at 87 with an orbiting dot, stat cards shimmer
+ *   Dashboard    IRS gauge (counts up), tier ladder, activity heatmap, drawing trend line
  *   Analytics    complete trend chart, scanner sweeps across it
  *   History      full timeline with session cards, shimmering text lines
  *   Coach        the original shimmer card
@@ -66,25 +66,57 @@ const CSS = `
 @keyframes mmpl-crown{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-4px) rotate(4deg)}}
 @keyframes mmpl-twinkle{0%,100%{opacity:.25;scale:.6}50%{opacity:1;scale:1.1}}
 
-/* ── Dashboard: gauge already filled, stat cards already in place ──── */
-.mmpl-dash{display:flex;flex-direction:column;align-items:center;gap:22px}
-.mmpl-gauge{position:relative;width:112px;height:112px}
-.mmpl-gauge svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
-.mmpl-gauge .t{fill:none;stroke:#e1e9fa;stroke-width:6}
-.mmpl-gauge .f{fill:none;stroke:url(#mmplGauge);stroke-width:6;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:.13;animation:mmpl-ring 2.4s ease-in-out infinite}
-.mmpl-gauge .orb{position:absolute;inset:-9px;border-radius:50%;animation:mmpl-spin 4s linear infinite}
-.mmpl-gauge .orb::before{content:"";position:absolute;top:0;left:50%;width:7px;height:7px;margin-left:-3.5px;border-radius:50%;background:#00C8F0;box-shadow:0 0 12px 2px rgba(0,200,240,.55)}
-.mmpl-gauge .num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Inter',system-ui,sans-serif;font-size:30px;font-weight:800;color:#0A1628;letter-spacing:-1px}
-.mmpl-gauge .num::after{content:"87"}
-.mmpl-mini{display:flex;gap:10px}
-.mmpl-mini div{position:relative;overflow:hidden;width:78px;height:46px;border-radius:12px;background:#fff;border:1px solid #dde5f7;padding:9px 10px;box-sizing:border-box;box-shadow:0 8px 18px -12px rgba(26,60,140,.3);animation:mmpl-float 2.6s ease-in-out infinite}
-.mmpl-mini div::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(26,110,255,.10) 50%,transparent 65%);animation:mmpl-shimmer 1.6s linear infinite}
-.mmpl-mini div:nth-child(2),.mmpl-mini div:nth-child(2)::after{animation-delay:.2s}
-.mmpl-mini div:nth-child(3),.mmpl-mini div:nth-child(3)::after{animation-delay:.4s}
-.mmpl-mini span{display:block;height:5px;border-radius:3px;background:#e2e9f8}
-.mmpl-mini span+span{width:58%;margin-top:7px;background:#b7d0ff}
-.mmpl-mini div:first-child span+span{background:linear-gradient(90deg,#FFB86B,#FF8A3D)}
-@keyframes mmpl-ring{0%,100%{opacity:1}50%{opacity:.7}}
+/* ── Dashboard: "IRS boot" — gauge, tier ladder, heatmap and trend all drawn from frame one ── */
+@property --mmn{syntax:"<integer>";inherits:false;initial-value:87}
+.mmpl-dash{display:flex;flex-direction:column;align-items:center;gap:20px;width:min(320px,86vw)}
+.mmpl-gauge{position:relative;width:148px;height:148px;filter:drop-shadow(0 18px 30px rgba(26,110,255,.22))}
+.mmpl-gauge .glass{position:absolute;inset:14px;border-radius:50%;background:radial-gradient(circle at 30% 25%,#fff,#eaf1ff 70%);box-shadow:inset 0 0 0 1px #dbe6fb,0 10px 24px -12px rgba(26,60,140,.35)}
+.mmpl-gauge svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
+.mmpl-gauge .t{fill:none;stroke:#dfe8fa;stroke-width:7}
+.mmpl-gauge .f{fill:none;stroke:url(#mmplGauge);stroke-width:7;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:.16;animation:mmpl-breathe 2.6s ease-in-out infinite;filter:drop-shadow(0 0 6px rgba(0,200,240,.5))}
+.mmpl-gauge .ticks{fill:none;stroke:#b9cdf3;stroke-width:3;stroke-dasharray:.5 2.3;opacity:.8}
+.mmpl-gauge .sweep{position:absolute;inset:6px;border-radius:50%;background:conic-gradient(from 0deg,rgba(0,200,240,0) 0deg,rgba(0,200,240,0) 280deg,rgba(0,200,240,.28) 350deg,rgba(26,110,255,.0) 360deg);-webkit-mask:radial-gradient(circle,transparent 58%,#000 60%,#000 72%,transparent 74%);mask:radial-gradient(circle,transparent 58%,#000 60%,#000 72%,transparent 74%);animation:mmpl-spin 2.4s linear infinite}
+.mmpl-gauge .orb{position:absolute;inset:-8px;border-radius:50%;animation:mmpl-spin 5s linear infinite}
+.mmpl-gauge .orb::before{content:"";position:absolute;top:0;left:50%;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:#00C8F0;box-shadow:0 0 14px 3px rgba(0,200,240,.6)}
+.mmpl-gauge .num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Inter',system-ui,sans-serif;color:#0A1628}
+.mmpl-gauge .num b{font-size:38px;font-weight:800;letter-spacing:-2px;line-height:1;font-variant-numeric:tabular-nums;animation:mmpl-count 3.2s ease-out infinite;counter-reset:n var(--mmn)}
+.mmpl-gauge .num b::after{content:counter(n)}
+.mmpl-gauge .num small{margin-top:4px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.5px;font-weight:700;letter-spacing:1.6px;color:#7A8BAF}
+@keyframes mmpl-count{0%{--mmn:0}70%,100%{--mmn:87}}
+@keyframes mmpl-breathe{0%,100%{stroke-dashoffset:.16}50%{stroke-dashoffset:.12}}
+
+.mmpl-chip{position:absolute;display:flex;align-items:center;gap:5px;padding:5px 10px 5px 7px;border-radius:99px;background:#fff;border:1px solid #dbe6fb;box-shadow:0 10px 20px -12px rgba(26,60,140,.45);font-family:'Inter',system-ui,sans-serif;font-size:11.5px;font-weight:800;color:#0A1628;white-space:nowrap;animation:mmpl-float 3s ease-in-out infinite}
+.mmpl-chip i{font-style:normal;font-size:13px}
+.mmpl-chip.a{left:-62px;top:20px}
+.mmpl-chip.b{right:-66px;top:72px;animation-delay:-1.2s}
+.mmpl-chip.c{left:-40px;bottom:2px;animation-delay:-2.1s}
+
+.mmpl-ladder{position:relative;width:100%;padding:0 4px}
+.mmpl-ladder .rail{position:relative;height:6px;border-radius:99px;background:#e1e9fa}
+.mmpl-ladder .fill{position:absolute;inset:0 auto 0 0;width:58%;border-radius:99px;background:linear-gradient(90deg,#1A6EFF,#00C8F0);overflow:hidden}
+.mmpl-ladder .fill::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.7) 50%,transparent 70%);animation:mmpl-shimmer 1.6s linear infinite}
+.mmpl-ladder .you{position:absolute;left:58%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#fff;border:3px solid #1A6EFF;box-shadow:0 0 0 5px rgba(26,110,255,.16);animation:mmpl-pulse 1.8s ease-out infinite}
+.mmpl-ladder .stops{display:flex;justify-content:space-between;margin-top:9px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.5px;font-weight:700;color:#8a9ac0;letter-spacing:.3px}
+.mmpl-ladder .stops span:nth-child(-n+2){color:#1A6EFF}
+@keyframes mmpl-pulse{0%{box-shadow:0 0 0 0 rgba(26,110,255,.38)}100%{box-shadow:0 0 0 12px rgba(26,110,255,0)}}
+
+.mmpl-bento{display:grid;grid-template-columns:1.25fr 1fr;gap:10px;width:100%}
+.mmpl-card{position:relative;overflow:hidden;border-radius:14px;background:#fff;border:1px solid #dde5f7;padding:10px 11px;box-shadow:0 12px 24px -16px rgba(26,60,140,.4)}
+.mmpl-card::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 38%,rgba(26,110,255,.07) 50%,transparent 62%);animation:mmpl-shimmer 2.2s linear infinite}
+.mmpl-card h6{margin:0 0 7px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8.5px;font-weight:700;letter-spacing:1.3px;color:#8a9ac0}
+.mmpl-heat{display:grid;grid-template-columns:repeat(10,1fr);gap:3px}
+.mmpl-heat i{aspect-ratio:1;border-radius:3px;background:#1A6EFF;opacity:var(--o);animation:mmpl-cell 2.4s ease-in-out infinite;animation-delay:calc(var(--d)*.11s)}
+@keyframes mmpl-cell{0%,100%{transform:scale(1)}50%{transform:scale(.72);filter:brightness(1.25)}}
+.mmpl-trend svg{display:block;width:100%;height:38px;overflow:visible}
+.mmpl-trend .l{fill:none;stroke:#1A6EFF;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:0;animation:mmpl-draw 3s ease-in-out infinite}
+.mmpl-trend .a{fill:url(#mmplTrend)}
+.mmpl-trend .d{fill:#fff;stroke:#00C8F0;stroke-width:2.2;animation:mmpl-pulse 1.8s ease-out infinite}
+@keyframes mmpl-draw{0%{stroke-dashoffset:1}55%,100%{stroke-dashoffset:0}}
+
+.mmpl-prog{width:100%;display:flex;flex-direction:column;gap:8px;align-items:center}
+.mmpl-prog .bar{position:relative;width:100%;height:4px;border-radius:99px;background:#e1e9fa;overflow:hidden}
+.mmpl-prog .bar::before{content:"";position:absolute;top:0;bottom:0;width:38%;border-radius:99px;background:linear-gradient(90deg,#1A6EFF,#00C8F0);animation:mmpl-slide 1.5s cubic-bezier(.65,0,.35,1) infinite}
+@keyframes mmpl-slide{0%{left:-40%}100%{left:102%}}
 @keyframes mmpl-spin{to{transform:rotate(360deg)}}
 
 /* ── Analytics: complete chart, scanner sweeps across ──────────────── */
@@ -196,25 +228,58 @@ export const LeaderboardLoader = ({ label, bg = '#F0F4FF' }) => (
 );
 LeaderboardLoader.propTypes = { label: PropTypes.string, bg: PropTypes.string };
 
+const HEAT = Array.from({ length: 30 }, (_, i) => ({ o: [0.1, 0.22, 0.38, 0.58, 0.85][(i * 7 + (i % 4) * 3) % 5], d: (i % 10) + Math.floor(i / 10) }));
+
 export const DashboardLoader = ({ label, bg = '#F0F4FF', fixed = false }) => (
   <Stage messages={label ? [label] : MSG.dash} bg={bg} color={MUTED} fixed={fixed}>
     <div className="mmpl-dash" aria-hidden="true">
       <div className="mmpl-gauge">
         <div className="orb" />
-        <svg viewBox="0 0 112 112">
+        <div className="glass" />
+        <div className="sweep" />
+        <svg viewBox="0 0 148 148">
           <defs>
             <linearGradient id="mmplGauge" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0%" stopColor="#1A6EFF" /><stop offset="100%" stopColor="#00C8F0" />
             </linearGradient>
           </defs>
-          <circle className="t" cx="56" cy="56" r="49" />
-          <circle className="f" pathLength="1" cx="56" cy="56" r="49" />
+          <circle className="ticks" pathLength="100" cx="74" cy="74" r="68" />
+          <circle className="t" cx="74" cy="74" r="58" />
+          <circle className="f" pathLength="1" cx="74" cy="74" r="58" />
         </svg>
-        <div className="num" />
+        <div className="num"><b /><small>IRS</small></div>
+        <span className="mmpl-chip a"><i>🔥</i>Streak</span>
+        <span className="mmpl-chip b"><i>🏆</i>Badges</span>
+        <span className="mmpl-chip c"><i>🎯</i>Rank</span>
       </div>
-      <div className="mmpl-mini">
-        {[0, 1, 2].map((i) => <div key={i}><span /><span /></div>)}
+
+      <div className="mmpl-ladder">
+        <div className="rail"><div className="fill" /><span className="you" /></div>
+        <div className="stops"><span>₹3–6</span><span>₹6–12</span><span>₹12–20</span><span>₹20+</span></div>
       </div>
+
+      <div className="mmpl-bento">
+        <div className="mmpl-card">
+          <h6>ACTIVITY</h6>
+          <div className="mmpl-heat">
+            {HEAT.map((c, i) => <i key={i} style={{ '--o': c.o, '--d': c.d }} />)}
+          </div>
+        </div>
+        <div className="mmpl-card mmpl-trend">
+          <h6>TREND</h6>
+          <svg viewBox="0 0 100 38" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="mmplTrend" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#1A6EFF" stopOpacity=".22" /><stop offset="100%" stopColor="#1A6EFF" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path className="a" d="M2 32 L22 26 L42 29 L62 17 L82 20 L98 6 L98 38 L2 38 Z" />
+            <path className="l" pathLength="1" d="M2 32 L22 26 L42 29 L62 17 L82 20 L98 6" />
+          </svg>
+        </div>
+      </div>
+
+      <div className="mmpl-prog"><div className="bar" /></div>
     </div>
   </Stage>
 );

@@ -63,13 +63,13 @@ function UnlockBar({ names, voiceHot }) {
   const { openUpgrade } = useUpgrade();
   if (!names.length) return null;
   return (
-    <section aria-label="What Pro adds to this answer" style={{ borderRadius: 18, padding: '16px 18px', background: `linear-gradient(135deg, ${C.brand50}, #fff 70%)`, border: `1px solid ${C.brand100}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <section aria-label="What Pro adds to this answer" style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, padding: '18px 18px 16px', color: '#fff', background: `radial-gradient(110% 90% at 100% 0%, rgba(0,200,240,.34), rgba(0,200,240,0) 55%), linear-gradient(140deg, ${C.brand900} 0%, ${C.blue800} 35%, ${C.brand600} 100%)`, boxShadow: '0 16px 36px rgba(0,31,107,.24), inset 0 1px 0 rgba(255,255,255,.14)', display: 'flex', flexDirection: 'column', gap: 13 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
         <div>
-          <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 800, letterSpacing: '.12em', color: C.brand600, marginBottom: 3 }}>
+          <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 800, letterSpacing: '.12em', color: '#7FE3FF', marginBottom: 4 }}>
             {names.length} MORE INSIGHT{names.length > 1 ? 'S' : ''} ON THIS ANSWER
           </div>
-          <div style={{ fontFamily: F.display, fontSize: 16.5, fontWeight: 800, color: C.text, letterSpacing: '-0.2px' }}>
+          <div style={{ fontFamily: F.display, fontSize: 18, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
             {voiceHot ? 'Your voice report is ready' : 'See exactly how to score higher'}
           </div>
         </div>
@@ -77,16 +77,16 @@ function UnlockBar({ names, voiceHot }) {
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {names.map((n) => (
-          <span key={n} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 99, background: '#fff', border: `1px solid ${C.brand100}`, color: C.brand700, fontSize: 13, fontWeight: 700 }}>
+          <span key={n} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 99, background: 'rgba(255,255,255,.13)', border: '1px solid rgba(255,255,255,.26)', color: '#fff', fontSize: 13, fontWeight: 700 }}>
             <Icon name="lock" size={11} stroke={2.4} />{n}
           </span>
         ))}
       </div>
       <button type="button" className="fb-next" onClick={() => openUpgrade(voiceHot ? 'voiceEvaluation' : 'detailedFeedback')}
-        style={{ minHeight: 48, border: 'none', borderRadius: 13, cursor: 'pointer', background: `linear-gradient(135deg, ${C.brand500}, ${C.brand700})`, color: '#fff', fontFamily: F.display, fontSize: 15, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 8px 20px rgba(26,110,255,.28)', transition: 'transform .14s ease, filter .14s ease' }}>
+        style={{ minHeight: 48, border: 'none', borderRadius: 13, cursor: 'pointer', background: '#fff', color: C.brand700, fontFamily: F.display, fontSize: 15, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 10px 24px rgba(0,20,80,.35)', transition: 'transform .14s ease, filter .14s ease' }}>
         <Icon name="bolt" size={16} stroke={2.4} />Unlock the full report
       </button>
-      <p style={{ margin: 0, textAlign: 'center', fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>
+      <p style={{ margin: 0, textAlign: 'center', fontSize: 12.5, color: 'rgba(255,255,255,.72)', lineHeight: 1.5 }}>
         Blurred sections show an example, not your analysis. Your own appears the moment you upgrade, including past sessions.
       </p>
     </section>

@@ -12,6 +12,7 @@ const {
   trendSlope,
 } = require('../utils/scoringModel');
 const { evaluateBadges } = require('../utils/badgeEngine');
+const { renderProfileCard, themeFor } = require('../services/ogImage');
 
 const ARCHETYPES = [
   { id: 'inconsistentGenius', label: 'Inconsistent Genius' },
@@ -44,25 +45,54 @@ const pickHeroBadge = (badges) => {
   })[0];
 };
 
-const getGlobalStanding = async (userId) => {
+const norm = (v) => String(v || '').trim().toLowerCase();
+
+// WHY: one aggregation feeds every "where do I stand" number on the share
+// card (overall, college, state). College/state are matched case-insensitively
+// because both are free-text / onboarding values.
+const getGlobalStanding = async (userId, user = {}) => {
   const rows = await Session.aggregate([
     { $match: { status: 'completed' } },
     { $addFields: { resolvedUser: { $ifNull: ['$user', '$userId'] } } },
     { $match: { resolvedUser: { $ne: null } } },
     { $group: { _id: '$resolvedUser', avgScore: { $avg: '$averageScore' } } },
+    { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
+    { $unwind: '$u' },
+    { $project: { avgScore: 1, college: '$u.college', state: '$u.state' } },
     { $sort: { avgScore: -1 } },
   ]);
 
-  const totalCandidates = rows.length;
+  const empty = {
+    rank: null, totalCandidates: rows.length, percentile: null, beatCount: 0,
+    collegeRank: null, collegeTotal: 0, stateRank: null, stateTotal: 0,
+  };
   const rankIndex = rows.findIndex((r) => r._id.toString() === userId.toString());
-  if (rankIndex === -1 || totalCandidates === 0) {
-    return { rank: null, totalCandidates, percentile: null };
-  }
+  if (rankIndex === -1 || rows.length === 0) return empty;
+
+  const totalCandidates = rows.length;
   const rank = rankIndex + 1;
   const percentile = totalCandidates > 1
     ? Math.round(((totalCandidates - rank) / (totalCandidates - 1)) * 100)
     : 100;
-  return { rank, totalCandidates, percentile };
+
+  const within = (key) => {
+    const mine = norm(user[key]);
+    if (!mine) return { rank: null, total: 0 };
+    const group = rows.filter((r) => norm(r[key]) === mine);
+    const idx = group.findIndex((r) => r._id.toString() === userId.toString());
+    return { rank: idx >= 0 ? idx + 1 : null, total: group.length };
+  };
+  const col = within('college');
+  const st  = within('state');
+
+  return {
+    rank, totalCandidates, percentile,
+    // WHY: standard "Top X%" = rank / total (rank 1 of 15 → Top 7%), never inflated to Top 1%.
+    topPercent: Math.max(1, Math.ceil((rank / totalCandidates) * 100)),
+    beatCount: totalCandidates - rank,
+    collegeRank: col.rank, collegeTotal: col.total,
+    stateRank: st.rank, stateTotal: st.total,
+  };
 };
 
 exports.getGlobalStanding = getGlobalStanding;
@@ -169,7 +199,7 @@ const buildProfileReport = async (user) => {
   const weakestDim   = [...activeDims].sort((a, b) => a.score - b.score)[0] || null;
   const badges       = evaluateBadges({ user, sessions });
   const heroBadge    = pickHeroBadge(badges);
-  const standing     = await getGlobalStanding(user._id);
+  const standing     = await getGlobalStanding(user._id, user);
 
   return {
     name:                     user.name,
@@ -194,6 +224,17 @@ const buildProfileReport = async (user) => {
     rank:                     standing.rank,
     totalCandidates:          standing.totalCandidates,
     percentile:               standing.percentile,
+    topPercent:               standing.topPercent ?? null,
+    beatCount:                standing.beatCount,
+    collegeRank:              standing.collegeRank,
+    collegeTotal:             standing.collegeTotal,
+    stateName:                user.state || null,
+    stateRank:                standing.stateRank,
+    stateTotal:               standing.stateTotal,
+    streak:                   { current: user.streak?.current || 0, longest: user.streak?.longest || 0 },
+    badgesUnlocked:           badges.filter((b) => b.unlocked).length,
+    badgesTotal:              badges.length,
+    bestScoreEver:            bestScore,
   };
 };
 
@@ -248,5 +289,129 @@ exports.getMyProfile = async (req, res) => {
   } catch (error) {
     console.error('Get my profile error:', error);
     res.status(500).json({ error: 'Failed to load profile' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Link-preview support (WhatsApp / LinkedIn / X / Telegram)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OG_TTL_MS = 5 * 60 * 1000;
+const OG_MAX_ENTRIES = 200;
+const ogCache = new Map(); // slug -> { buf, exp }
+
+const clientUrl = () => (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '');
+const apiUrl = (req) => {
+  if (process.env.API_URL) return process.env.API_URL.replace(/\/$/, '');
+  const proto = String(req.get('x-forwarded-proto') || req.protocol).split(',')[0];
+  return `${proto}://${req.get('host')}`;
+};
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const validSlug = (slug) => typeof slug === 'string' && /^[A-Za-z0-9_-]{4,40}$/.test(slug);
+
+// GET /profile/:slug/og.png — the 1200×630 preview image
+exports.getProfileOgImage = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    if (!validSlug(slug)) return res.status(404).end();
+
+    const hit = ogCache.get(slug);
+    let buf = hit && hit.exp > Date.now() ? hit.buf : null;
+
+    if (!buf) {
+      const user = await User.findOne({ shareSlug: slug }).lean();
+      if (!user) return res.status(404).end();
+      const report = await buildProfileReport(user);
+      if (!report.hasData) return res.status(404).end();
+      buf = await renderProfileCard(report, clientUrl());
+      if (ogCache.size >= OG_MAX_ENTRIES) ogCache.delete(ogCache.keys().next().value);
+      ogCache.set(slug, { buf, exp: Date.now() + OG_TTL_MS });
+    }
+
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=300, s-maxage=300',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    });
+    return res.send(buf);
+  } catch (error) {
+    console.error('OG image error:', error);
+    return res.status(500).end();
+  }
+};
+
+// GET /profile/:slug/share — tiny HTML page with Open Graph tags for crawlers.
+// Real browsers are bounced straight to the SPA profile page.
+exports.getProfileSharePage = async (req, res) => {
+  const { slug } = req.params;
+  const target = validSlug(slug) ? `${clientUrl()}/p/${slug}` : clientUrl();
+  try {
+    let title = 'MockMate — AI mock interviews that rank you';
+    let desc = 'Take a free AI mock interview, get your readiness score and see how you rank.';
+    let image = '';
+
+    if (validSlug(slug)) {
+      const user = await User.findOne({ shareSlug: slug }).lean();
+      if (user) {
+        const r = await buildProfileReport(user);
+        if (r.hasData) {
+          const irs = Math.round(r.irs ?? r.averageScore ?? 0);
+          const theme = themeFor(r.tier);
+          const level = theme.level.charAt(0) + theme.level.slice(1).toLowerCase();
+          const bits = [];
+          if (r.topPercent != null && r.totalCandidates >= 10) bits.push(`Top ${r.topPercent}%`);
+          else if (r.rank != null) bits.push(`Ranked #${r.rank} of ${r.totalCandidates}`);
+          if (r.collegeRank != null && r.college) bits.push(`#${r.collegeRank} at ${r.college}`);
+          if (r.stateRank != null && r.stateName) bits.push(`#${r.stateRank} in ${r.stateName}`);
+          title = `${r.name} reached ${level} level on MockMate — ${irs}/100`;
+          desc = `${bits.length ? `${bits.join(' · ')}. ` : ''}Think you can beat ${irs}? Take the free AI mock interview.`;
+          image = `${apiUrl(req)}/profile/${slug}/og.png`;
+        }
+      }
+    }
+
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="MockMate">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="${esc(target)}">
+${image ? `<meta property="og:image" content="${esc(image)}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${esc(image)}">` : '<meta name="twitter:card" content="summary">'}
+<meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(desc)}">
+<meta http-equiv="refresh" content="0;url=${esc(target)}">
+</head><body><script>location.replace(${JSON.stringify(target)});</script>
+<p><a href="${esc(target)}">Open ${esc(title)}</a></p></body></html>`;
+
+    res.set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+    return res.send(html);
+  } catch (error) {
+    console.error('Share page error:', error);
+    return res.redirect(302, target);
+  }
+};
+
+// PATCH /profile/state — lets existing users add the state that unlocks state rank
+const VALID_STATES = ['Andhra Pradesh','Assam','Bihar','Chandigarh','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jammu & Kashmir','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Odisha','Punjab','Rajasthan','Tamil Nadu','Telangana','Uttar Pradesh','Uttarakhand','West Bengal','Other'];
+
+exports.updateMyState = async (req, res) => {
+  try {
+    const { state } = req.body || {};
+    if (typeof state !== 'string' || !VALID_STATES.includes(state)) {
+      return res.status(400).json({ error: 'Invalid state' });
+    }
+    await User.findByIdAndUpdate(req.user._id, { state });
+    ogCache.clear();
+    return res.json({ state });
+  } catch (error) {
+    console.error('Update state error:', error);
+    return res.status(500).json({ error: 'Failed to update state' });
   }
 };

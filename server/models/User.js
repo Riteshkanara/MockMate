@@ -9,6 +9,7 @@ const userSchema = new mongoose.Schema({
   // ── Onboarding — academic context ────────────────────────────────────────
   college:  { type: String, index: true },   // indexed for leaderboard queries
   branch:   { type: String },
+  state:    { type: String, trim: true, index: true },   // e.g. 'Gujarat' — powers state-level rank on the share card
   semester: { type: Number, min: 1, max: 8 },
   cgpa:     { type: Number, min: 0, max: 10 },
 

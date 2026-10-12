@@ -24,3 +24,8 @@ export const getMyProfile = async () => {
   const response = await AuthAPI.get("/me");
   return response.data;
 };
+
+export const setMyState = async (state) => {
+  const response = await AuthAPI.patch("/state", { state });
+  return response.data;
+};

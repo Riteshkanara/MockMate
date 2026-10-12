@@ -10,7 +10,7 @@ exports.saveOnboarding = async (req, res) => {
 
     const {
       // Academic context
-      college, branch, semester, cgpa,
+      college, branch, semester, cgpa, state,
       // Goals
       primaryGoal, targetRole, packageTarget, placementTimeline,
       targetCompanies, weakAreas,
@@ -82,6 +82,7 @@ exports.saveOnboarding = async (req, res) => {
         college:  String(college).trim(),
         branch:   String(branch).trim(),
         semester: parsedSemester,
+        ...(typeof state === 'string' && state.trim() && { state: state.trim().slice(0, 60) }),
         ...(parsedCgpa !== null && { cgpa: parsedCgpa }),
 
         // Goals

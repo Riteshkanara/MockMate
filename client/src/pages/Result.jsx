@@ -5,6 +5,7 @@ import { toPng } from "html-to-image";
 import toast from "react-hot-toast";
 import { ResultHeroV2 }  from "./ResultHeroV2";
 import ScoreCard          from "../components/ScoreCard";
+import ChallengeBanner    from "../components/share/ChallengeBanner";
 import ScoreSummary       from "../components/result/ScoreSummary";
 import FeedbackList       from "../components/result/FeedbackList";
 import { BackToTop, Icon } from "../components/result/ResultNav";
@@ -379,42 +380,31 @@ const TabbedAnalytics = ({ questions, totalScore, scoreHistory }) => {
 };
 TabbedAnalytics.propTypes = { questions: PropTypes.array.isRequired, totalScore: PropTypes.number.isRequired, scoreHistory: PropTypes.array.isRequired };
 
-// ─── Mission Report (promoted ScoreCard — always visible, no accordion) ────────
-const MissionReport = ({ result, totalScore, normalizedQuestions }) => {
-  const g = grade(totalScore);
+// ─── Mission Report: the shareable player card, framed in the app's own language ─
+const MissionReport = ({ result, totalScore }) => {
+  const { strongAnswers = 0, weakAnswers = 0 } = result || {};
   return (
-    <div style={{ borderRadius: 18, overflow: "hidden", boxShadow: `0 16px 56px rgba(0,31,107,.20)`, border: `1px solid rgba(26,110,255,.22)`, marginBottom: 12 }}>
-      {/* navy header */}
-      <div style={{ position: "relative", overflow: "hidden", padding: "20px 24px 18px", background: "linear-gradient(150deg,#060E20 0%,#0A1A38 50%,#0C2242 100%)" }}>
-        <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(circle,rgba(255,255,255,.06) 1px,transparent 1px)", backgroundSize: "20px 20px", opacity: .5, pointerEvents: "none" }} />
-        <div style={{ position: "absolute", top: -80, right: -60, width: 240, height: 240, borderRadius: "50%", background: "radial-gradient(circle,rgba(0,194,232,.22),transparent 68%)", pointerEvents: "none" }} />
-        <div style={{ position: "relative", zIndex: 1 }}>
-          <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, letterSpacing: "1.2px", color: "#00C8F0", textTransform: "uppercase", marginBottom: 4 }}>mission report · where you stand overall</div>
-          <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 900, color: "#fff", marginBottom: 3 }}>
-            {totalScore}/100 · <span style={{ color: g.accent }}>{g.g} — {g.desc}</span>
-          </div>
-          <div style={{ fontFamily: F.mono, fontSize: 11, color: "rgba(255,255,255,.4)", marginBottom: 12 }}>skill fingerprint · rank · archetype · tier progress · shareable card</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "3px 10px", background: "rgba(5,150,105,.18)", color: "#79F2B2", border: "1px solid rgba(5,150,105,.3)" }}>{result.strongAnswers} strong</span>
-            <span style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "3px 10px", background: "rgba(220,38,38,.18)", color: "#fca5a5", border: "1px solid rgba(220,38,38,.3)" }}>{result.weakAnswers} to fix</span>
-          </div>
-        </div>
-      </div>
-      {/* ScoreCard body */}
-      <div style={{ background: C.card, padding: "20px 24px" }}>
-        <ScoreCard totalScore={totalScore} questions={normalizedQuestions} />
-      </div>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: "22px 20px 24px", boxShadow: "0 6px 28px rgba(26,110,255,0.10)" }}>
+      <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 700, letterSpacing: "1.3px", color: C.brand600, textTransform: "uppercase", marginBottom: 6 }}>mission report · your player card</div>
+      <h2 style={{ margin: "0 0 6px", fontFamily: F.display, fontSize: 22, fontWeight: 900, letterSpacing: "-0.4px", color: C.text }}>Show everyone where you stand</h2>
+      <p style={{ margin: "0 0 18px", fontSize: 13.5, lineHeight: 1.6, color: C.muted }}>
+        Your level, rank and skill fingerprint — share it and challenge your friends to beat you.
+        {(strongAnswers + weakAnswers) > 0 && <> This session: <strong style={{ color: C.text }}>{strongAnswers} strong</strong> · <strong style={{ color: C.text }}>{weakAnswers} to fix</strong>.</>}
+      </p>
+      <ErrBound>
+        <ScoreCard totalScore={totalScore} />
+      </ErrBound>
     </div>
   );
 };
-MissionReport.propTypes = { result: PropTypes.object.isRequired, totalScore: PropTypes.number.isRequired, normalizedQuestions: PropTypes.array.isRequired };
+MissionReport.propTypes = { result: PropTypes.object.isRequired, totalScore: PropTypes.number.isRequired };
 
 // ─── hidden share card (for html-to-image) ────────────────────────────────────
 const ShareCard = ({ result, cardRef }) => {
   const { score, totalQuestions, answeredQuestions, strongAnswers, weakAnswers, topTopic } = result;
   const s = clamp(score); const g = grade(s);
   return (
-    <div ref={cardRef} style={{ position: "fixed", top: -9999, left: -9999, width: 520, fontFamily: F.body, borderRadius: 24, overflow: "hidden", background: "linear-gradient(135deg,#001F6B 0%,#0044C4 44%,#0057E8 72%,#00ADE0 100%)" }}>
+    <div ref={cardRef} style={{ position: "fixed", top: -9999, left: -9999, width: 520, fontFamily: F.body, borderRadius: 24, overflow: "hidden", background: "linear-gradient(160deg,#060E20 0%,#0B1D3E 55%,#10305E 100%)", border: "1px solid rgba(0,200,240,.35)" }}>
       <div style={{ height: 4, background: `linear-gradient(90deg,${g.accent},${g.accent})` }} />
       <div style={{ padding: "28px 32px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
@@ -437,7 +427,7 @@ const ShareCard = ({ result, cardRef }) => {
       </div>
       <div style={{ padding: "12px 32px", background: "rgba(0,0,0,.32)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ fontFamily: F.mono, fontSize: 11, fontWeight: 800, color: g.accent }}>mockmate.app</div>
-        <div style={{ fontFamily: F.mono, fontSize: 10, color: "rgba(255,255,255,.3)" }}>AI interview coaching</div>
+        <div style={{ fontFamily: F.mono, fontSize: 10, color: "rgba(255,255,255,.55)" }}>Think you can beat {s}?</div>
       </div>
     </div>
   );
@@ -569,6 +559,8 @@ const Result = () => {
       <GlobalStyles />
       <div style={{ maxWidth: 1080, margin: "0 auto" }}>
 
+        <ChallengeBanner context="result" />
+
         {/* 2. hero */}
         <AnimSec delay={0} id="res-overview">
           <ErrBound>
@@ -628,7 +620,7 @@ const Result = () => {
         {/* 9. mission report */}
         <AnimSec id="res-report">
           <ErrBound>
-            <MissionReport result={heroResult} totalScore={totalScore} normalizedQuestions={normalizedQuestions} />
+            <MissionReport result={heroResult} totalScore={totalScore} />
           </ErrBound>
         </AnimSec>
 

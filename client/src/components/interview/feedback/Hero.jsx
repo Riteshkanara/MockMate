@@ -19,21 +19,32 @@ const LockMini = () => (
   </svg>
 );
 
-/** Five-step ladder with a marker at the score. Segment widths follow the band ranges. */
+const TIER = [
+  { e: '🌱', c: '#FCA5A5' }, { e: '📈', c: '#FCD34D' }, { e: '💪', c: '#7DD3FC' }, { e: '🔥', c: '#6EE7B7' }, { e: '🏆', c: '#FDE68A' },
+];
+const SEG = ['#F87171', '#FBBF24', '#38BDF8', '#34D399', '#A7F3D0'];
+const SPARKS = [[-8, 12, 0], [104, 0, 0.4], [118, 70, 0.9], [-14, 96, 1.3], [60, -14, 0.6], [24, 150, 1.7]];
+
+/** Five-step ladder: every band has its own colour; the marker carries the score. */
 function BandLadder({ score }) {
   const idx = bandIndex(score);
   const widths = BANDS.map((b, i) => (BANDS[i + 1] ? BANDS[i + 1].min : 100) - b.min);
-  const pos = Math.max(1.5, Math.min(98.5, score));
+  const pos = Math.max(2, Math.min(98, score));
   return (
-    <div style={{ marginTop: 16 }} aria-hidden="true">
-      <div style={{ position: 'relative', display: 'flex', gap: 3, height: 8 }}>
+    <div style={{ marginTop: 20 }} aria-hidden="true">
+      <div style={{ position: 'relative', display: 'flex', gap: 4, height: 10 }}>
         {BANDS.map((b, i) => (
-          <div key={b.label} style={{ flex: widths[i], borderRadius: 99, background: i <= idx ? 'rgba(255,255,255,.88)' : 'rgba(255,255,255,.16)', opacity: i < idx ? 0.55 : 1 }} />
+          <div key={b.label} style={{ flex: widths[i], borderRadius: 99, background: SEG[i], opacity: i < idx ? 0.55 : i === idx ? 1 : 0.2, boxShadow: i === idx ? `0 0 14px ${SEG[i]}99` : 'none' }} />
         ))}
-        <span style={{ position: 'absolute', left: `${pos}%`, top: -4, width: 16, height: 16, marginLeft: -8, borderRadius: '50%', background: '#fff', border: `3px solid ${C.brand600}`, boxShadow: '0 2px 8px rgba(0,0,0,.3)' }} />
+        <span className="fb-marker" style={{ position: 'absolute', left: `${pos}%`, top: -27, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <span style={{ padding: '2px 8px', borderRadius: 8, background: '#fff', color: C.brand700, fontFamily: F.display, fontSize: 12, fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,.28)' }}>{Math.round(score)}</span>
+          <span style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '6px solid #fff' }} />
+        </span>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7, fontSize: 11.5, color: 'rgba(255,255,255,.62)', fontWeight: 600 }}>
-        <span>0</span><span>40</span><span>60</span><span>75</span><span>90</span><span>100</span>
+      <div style={{ display: 'flex', marginTop: 9, gap: 4 }}>
+        {BANDS.map((b, i) => (
+          <span key={b.label} style={{ flex: widths[i], fontSize: 10.5, fontWeight: i === idx ? 800 : 600, color: i === idx ? '#fff' : 'rgba(255,255,255,.5)', textAlign: 'left', overflow: 'hidden', textOverflow: 'clip', whiteSpace: 'nowrap', letterSpacing: '.02em' }}>{b.min}</span>
+        ))}
       </div>
     </div>
   );
@@ -45,14 +56,20 @@ function SessionBars({ previous, score }) {
   if (!previous.length) return null;
   const all = [...previous, score].slice(-8);
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 3, height: 22 }} role="img" aria-label={`Scores this session: ${all.join(', ')}`}>
+    <div style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 3, height: 24, padding: '0 4px' }} role="img" aria-label={`Scores this session: ${all.join(', ')}`}>
       {all.map((v, i) => (
-        <span key={i} style={{ width: 6, height: `${Math.max(14, v)}%`, borderRadius: 2, background: i === all.length - 1 ? '#fff' : 'rgba(255,255,255,.38)' }} />
+        <span key={i} className={i === all.length - 1 ? 'fb-bar' : undefined} style={{ width: 6, height: `${Math.max(14, v)}%`, borderRadius: 3, background: i === all.length - 1 ? '#fff' : 'rgba(255,255,255,.34)', boxShadow: i === all.length - 1 ? '0 0 8px rgba(255,255,255,.7)' : 'none' }} />
       ))}
     </div>
   );
 }
 SessionBars.propTypes = { previous: PropTypes.arrayOf(PropTypes.number).isRequired, score: PropTypes.number.isRequired };
+
+const TILE = {
+  time: { e: '⏱️', bg: 'rgba(0,200,240,.16)', bd: 'rgba(95,224,255,.38)' },
+  kw:   { e: '🎯', bg: 'rgba(52,211,153,.16)', bd: 'rgba(110,231,183,.38)' },
+  conf: { e: '💬', bg: 'rgba(167,139,250,.18)', bd: 'rgba(196,181,253,.4)' },
+};
 
 export function ScoreHero({ score, timeTaken = 0, timeLimit = 0, previousScores = [], feedback = null, basic = false }) {
   const { openUpgrade } = useUpgrade();
@@ -61,7 +78,9 @@ export function ScoreHero({ score, timeTaken = 0, timeLimit = 0, previousScores 
   const accent = heroScoreColor(score);
   const next = nextBand(score);
   const cmp = compareToSession(score, previousScores);
-  const SIZE = 116, R = 47, CIRC = 2 * Math.PI * R;
+  const idx = bandIndex(score);
+  const tier = TIER[idx];
+  const SIZE = 156, R = 64, CIRC = 2 * Math.PI * R;
   const [go, setGo] = useState(false);
   useEffect(() => { const id = setTimeout(() => setGo(true), 40); return () => clearTimeout(id); }, []);
 
@@ -70,34 +89,49 @@ export function ScoreHero({ score, timeTaken = 0, timeLimit = 0, previousScores 
   const total = hit + safeArr(kw?.missed).length;
   const conf = num(feedback?.confidenceScore);
   const stats = [
-    timeTaken > 0 ? { k: 'Time used', v: timeLimit ? `${fmtTime(timeTaken)} of ${fmtTime(timeLimit)}` : fmtTime(timeTaken) } : null,
-    basic ? { k: 'Keywords covered', locked: true } : (total > 0 ? { k: 'Keywords covered', v: `${hit} of ${total}` } : null),
-    basic ? { k: 'Confidence', locked: true } : (conf != null ? { k: 'Confidence', v: `${conf}%` } : null),
+    timeTaken > 0 ? { k: 'Time used', t: 'time', v: timeLimit ? `${fmtTime(timeTaken)} / ${fmtTime(timeLimit)}` : fmtTime(timeTaken) } : null,
+    basic ? { k: 'Keywords', t: 'kw', locked: true } : (total > 0 ? { k: 'Keywords', t: 'kw', v: `${hit} of ${total}` } : null),
+    basic ? { k: 'Confidence', t: 'conf', locked: true } : (conf != null ? { k: 'Confidence', t: 'conf', v: `${conf}%` } : null),
   ].filter(Boolean);
+  const celebrate = score >= 60;
 
   return (
-    <div style={{ background: HERO_BG, borderRadius: 22, padding: '22px 20px 18px', color: '#fff', position: 'relative', overflow: 'hidden', boxShadow: heroShadow }}>
-      <div aria-hidden="true" className="fb-glow" style={{ position: 'absolute', top: -70, right: -50, width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,.22), rgba(255,255,255,0) 68%)', pointerEvents: 'none' }} />
-      <div className="fb-hero-top" style={{ display: 'flex', alignItems: 'center', gap: 20, position: 'relative' }}>
+    <div className="fb-hero" style={{ background: HERO_BG, borderRadius: 26, padding: '24px 20px 20px', color: '#fff', position: 'relative', overflow: 'hidden', boxShadow: heroShadow }}>
+      <div aria-hidden="true" className="fb-glow" style={{ position: 'absolute', top: -80, right: -60, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,.24), rgba(255,255,255,0) 68%)', pointerEvents: 'none' }} />
+      <div aria-hidden="true" style={{ position: 'absolute', bottom: -90, left: -70, width: 240, height: 240, borderRadius: '50%', background: `radial-gradient(circle, ${accent}33, transparent 70%)`, pointerEvents: 'none' }} />
+      <span aria-hidden="true" className="fb-hero-sweep" />
+
+      <div className="fb-hero-top" style={{ display: 'flex', alignItems: 'center', gap: 22, position: 'relative' }}>
         <div style={{ position: 'relative', width: SIZE, height: SIZE, flexShrink: 0 }} role="img" aria-label={`Score ${score} out of 100`}>
-          <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ transform: 'rotate(-90deg)', display: 'block' }} aria-hidden="true">
-            <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke="rgba(255,255,255,.16)" strokeWidth={9} />
-            <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke={accent} strokeWidth={9} strokeLinecap="round"
+          {celebrate && SPARKS.map(([x, y, d], i) => (
+            <span key={i} aria-hidden="true" className="fb-spark" style={{ position: 'absolute', left: x, top: y, fontSize: i % 2 ? 11 : 14, animationDelay: `${d + 0.5}s`, color: i % 3 === 0 ? '#FDE68A' : '#A5F3FC' }}>✦</span>
+          ))}
+          <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ transform: 'rotate(-90deg)', display: 'block', overflow: 'visible' }} aria-hidden="true">
+            <defs>
+              <linearGradient id="fbRing" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor={accent} /><stop offset="100%" stopColor="#ffffff" />
+              </linearGradient>
+            </defs>
+            <circle cx={SIZE / 2} cy={SIZE / 2} r={R + 11} fill="none" stroke="rgba(255,255,255,.28)" strokeWidth={4} strokeDasharray="1.2 5.4" />
+            <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.15)" strokeWidth={11} />
+            <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke="url(#fbRing)" strokeWidth={11} strokeLinecap="round"
               strokeDasharray={CIRC} strokeDashoffset={go ? CIRC * (1 - Math.max(0, Math.min(100, score)) / 100) : CIRC}
-              style={{ transition: 'stroke-dashoffset 1.1s cubic-bezier(.16,1,.3,1)', filter: `drop-shadow(0 0 6px ${accent}88)` }} />
+              style={{ transition: 'stroke-dashoffset 1.3s cubic-bezier(.16,1,.3,1)', filter: `drop-shadow(0 0 9px ${accent}aa)` }} />
           </svg>
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontFamily: F.display, fontSize: 40, fontWeight: 800, lineHeight: 1, letterSpacing: '-1.8px', fontVariantNumeric: 'tabular-nums' }}>{shown}</span>
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,.7)', marginTop: 3 }}>out of 100</span>
+            <span style={{ fontFamily: F.display, fontSize: 52, fontWeight: 800, lineHeight: 1, letterSpacing: '-2.4px', fontVariantNumeric: 'tabular-nums', textShadow: '0 4px 18px rgba(0,0,0,.25)' }}>{shown}</span>
+            <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,.7)', marginTop: 4, fontWeight: 600, letterSpacing: '.08em' }}>OUT OF 100</span>
           </div>
+          <span className="fb-pop" aria-hidden="true" style={{ position: 'absolute', right: -4, bottom: 2, width: 46, height: 46, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 25, background: '#fff', boxShadow: `0 8px 20px rgba(0,0,0,.3), 0 0 0 3px ${tier.c}` }}>{tier.e}</span>
         </div>
 
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontFamily: F.display, fontSize: 24, fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1.15 }}>{v.label}</div>
-          <p style={{ margin: '6px 0 0', fontSize: 14, lineHeight: 1.55, color: 'rgba(255,255,255,.88)' }}>{v.sub}</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 11 }}>
+          <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 99, background: 'rgba(255,255,255,.14)', border: '1px solid rgba(255,255,255,.24)', fontFamily: F.mono, fontSize: 11, fontWeight: 800, letterSpacing: '.12em', color: tier.c }}>{`BAND ${idx + 1} OF ${BANDS.length}`}</span>
+          <div style={{ fontFamily: F.display, fontSize: 28, fontWeight: 800, letterSpacing: '-0.7px', lineHeight: 1.1, marginTop: 8 }}>{v.label}</div>
+          <p style={{ margin: '7px 0 0', fontSize: 14, lineHeight: 1.55, color: 'rgba(255,255,255,.88)' }}>{v.sub}</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 12 }}>
             {cmp && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '4px 11px', borderRadius: 99, background: 'rgba(255,255,255,.14)', border: '1px solid rgba(255,255,255,.22)', fontSize: 13, fontWeight: 600 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 99, background: cmp.dir === 'up' ? 'rgba(52,211,153,.2)' : cmp.dir === 'down' ? 'rgba(248,113,113,.2)' : 'rgba(255,255,255,.14)', border: `1px solid ${cmp.dir === 'up' ? 'rgba(110,231,183,.5)' : cmp.dir === 'down' ? 'rgba(252,165,165,.5)' : 'rgba(255,255,255,.24)'}`, fontSize: 13, fontWeight: 700 }}>
                 {cmp.dir === 'up' && <span aria-hidden="true">▲</span>}
                 {cmp.dir === 'down' && <span aria-hidden="true">▼</span>}
                 {cmp.text}
@@ -109,24 +143,27 @@ export function ScoreHero({ score, timeTaken = 0, timeLimit = 0, previousScores 
       </div>
 
       <BandLadder score={score} />
-      <p style={{ margin: '10px 0 0', fontSize: 13.5, color: 'rgba(255,255,255,.86)', fontWeight: 600 }}>
-        {next ? `${next.need} more point${next.need === 1 ? '' : 's'} to reach "${next.label}"` : 'Top band reached. Keep this answer as your benchmark.'}
-      </p>
+      <div style={{ marginTop: 12, padding: '9px 13px', borderRadius: 12, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.18)', fontSize: 13.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span aria-hidden="true" style={{ fontSize: 17 }}>{next ? '🚀' : '🏆'}</span>
+        {next ? <span>{`${next.need} more point${next.need === 1 ? '' : 's'} to reach `}<span style={{ color: SEG[idx + 1] }}>{`“${next.label}”`}</span></span> : 'Top band reached. Keep this answer as your benchmark.'}
+      </div>
 
       {stats.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stats.length}, 1fr)`, marginTop: 16, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,.2)', background: 'rgba(255,255,255,.08)' }}>
-          {stats.map((st, i) => {
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stats.length}, 1fr)`, gap: 8, marginTop: 12 }}>
+          {stats.map((st) => {
+            const t = TILE[st.t];
             const body = (
               <>
-                <div style={{ fontFamily: F.display, fontSize: 15.5, fontWeight: 800, minHeight: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1 }}>{t.e}</span>
+                <div style={{ fontFamily: F.display, fontSize: 16, fontWeight: 800, minHeight: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 5 }}>
                   {st.locked ? <LockMini /> : st.v}
                 </div>
-                <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.7)', marginTop: 2 }}>{st.k}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,.72)', marginTop: 1, fontWeight: 600 }}>{st.k}</div>
               </>
             );
-            const base = { padding: '10px 8px', textAlign: 'center', borderLeft: i ? '1px solid rgba(255,255,255,.16)' : 'none' };
+            const base = { padding: '11px 6px', textAlign: 'center', borderRadius: 14, background: t.bg, border: `1px solid ${t.bd}` };
             return st.locked
-              ? <button key={st.k} type="button" onClick={() => openUpgrade('detailedFeedback')} aria-label={`${st.k}: Pro feature. Opens upgrade options.`} style={{ ...base, border: 'none', borderLeft: base.borderLeft, background: 'transparent', color: '#fff', cursor: 'pointer', fontFamily: F.body }}>{body}</button>
+              ? <button key={st.k} type="button" onClick={() => openUpgrade('detailedFeedback')} aria-label={`${st.k}: Pro feature. Opens upgrade options.`} style={{ ...base, color: '#fff', cursor: 'pointer', fontFamily: F.body }}>{body}</button>
               : <div key={st.k} style={base}>{body}</div>;
           })}
         </div>

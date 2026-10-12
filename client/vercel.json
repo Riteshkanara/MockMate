@@ -1,5 +1,16 @@
 {
   "rewrites": [
+    {
+      "source": "/p/:slug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(WhatsApp|facebookexternalhit|LinkedInBot|Twitterbot|Slackbot|TelegramBot|Discordbot|SkypeUriPreview|Pinterest|redditbot|Googlebot).*"
+        }
+      ],
+      "destination": "https://mockmate-server-hsjj.onrender.com/profile/:slug/share"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

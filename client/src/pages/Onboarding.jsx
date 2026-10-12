@@ -1,6 +1,7 @@
 import { useState, useEffect} from 'react'
 import toast from 'react-hot-toast';
 import API_BASE from '../config/api.js';
+import { INDIAN_STATES } from '../utils/indianStates';
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
 const C = {
@@ -155,7 +156,7 @@ const STEPS = [
 ];
 
 // ─── Initial state ──────────────────────────────────────────────────────────
-const INIT_PROFILE  = { college: '', branch: '', semester: '', cgpa: '', placementTimeline: 'near', codingExperience: '1-2', preferredLanguage: 'javascript' };
+const INIT_PROFILE  = { college: '', state: '', branch: '', semester: '', cgpa: '', placementTimeline: 'near', codingExperience: '1-2', preferredLanguage: 'javascript' };
 const INIT_GOALS    = { primaryGoal: 'campus', targetRole: 'sde', packageTarget: '6-12', targetCompanies: [] };
 const INIT_FOCUS    = { weakAreas: [] };
 const INIT_TRAINING = { answerStyle: 'mixed', difficultyPref: 'medium', weeklyDays: 4, projectUrl: '' };
@@ -208,6 +209,7 @@ export default function Onboarding() {
     try {
       const payload = {
         college:           profile.college.trim(),
+        state:             profile.state || undefined,
         branch:            profile.branch,
         semester:          Number(profile.semester),
         cgpa:              profile.cgpa ? Number(profile.cgpa) : null,
@@ -387,6 +389,19 @@ function ProfileStep({ profile, setProfile, focusedField, setFocusedField }) {
               onBlur={() => setFocusedField(null)}
               onChange={e => set('college', e.target.value)}
             />
+          </InputWrap>
+        </FormField>
+
+        <FormField label="State (optional — unlocks your state rank)">
+          <InputWrap focused={focusedField === 'state'}>
+            <span style={S.iIcon}>📍</span>
+            <select value={profile.state} style={S.iSelect}
+              onFocus={() => setFocusedField('state')}
+              onBlur={() => setFocusedField(null)}
+              onChange={e => set('state', e.target.value)}>
+              <option value="">Select state</option>
+              {INDIAN_STATES.map(st => <option key={st} value={st}>{st}</option>)}
+            </select>
           </InputWrap>
         </FormField>
 
